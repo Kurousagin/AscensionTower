@@ -442,7 +442,8 @@ class GameEngine {
       if (availableFloors.isEmpty) continue;
       final floor = availableFloors[_rng.nextInt(availableFloors.length)];
 
-      // Treina sozinho com risco baixo
+      // Treina sozinho com risco baixo + fadiga leve
+      npc.fatigue = (npc.fatigue + 6.0).clamp(0.0, 100.0);
       final statGain = 0.05 + (_rng.nextDouble() * 0.15);
       switch (floor.type) {
         case FloorType.combat:
@@ -496,7 +497,8 @@ class GameEngine {
 
     final explorers = aliveNpcs.where((n) =>
         (n.profession == Profession.explorer || n.profession == Profession.scout) &&
-        n.attributes.mentalStability > 35).toList();
+        n.attributes.mentalStability > 35 &&
+        n.fatigue < 50).toList();
 
     if (explorers.isEmpty) return;
 
@@ -611,9 +613,16 @@ class GameEngine {
     final npc = npcs.firstWhere((n) => n.id == suggestion.targetId);
     npc.trainingSuggestionsReceived++;
 
-    final fatigue = (100 - npc.attributes.endurance * 10).clamp(0, 100).toDouble();
+    // Incapacitado recusa automaticamente
+    if (npc.isIncapacitated) {
+      suggestion.response = TrainingResponse.refused;
+      suggestion.responseDetail = '${npc.name} esta incapacitado(a) por exaustao. Nao consegue nem se levantar.';
+      _addEvent(GameEventType.trainingSuggestion, 'Impossivel Treinar',
+          suggestion.responseDetail, involvedIds: [npc.id]);
+      return;
+    }
+
     final acceptance = npc.calculateTrainingAcceptance(
-      fatigue: fatigue,
       hasTrainingField: hasTrainingField && suggestion.floorNumber == -1,
     );
 
@@ -653,9 +662,13 @@ class GameEngine {
       suggestion.response = TrainingResponse.refused;
       npc.loyalty -= 1;
 
-      // Razao da recusa baseada em personalidade
+      // Razao da recusa baseada em personalidade e fadiga
       String reason;
-      if (npc.traits.contains(PersonalityTrait.coward)) {
+      if (npc.isExhausted) {
+        reason = '"Mal consigo ficar de pe. Me deixe descansar."';
+      } else if (npc.fatigue >= 50) {
+        reason = '"Estou cansado demais. Preciso recuperar as energias primeiro."';
+      } else if (npc.traits.contains(PersonalityTrait.coward)) {
         reason = '"E perigoso demais. Nao vou arriscar minha vida por um treino."';
       } else if (npc.attributes.mentalStability < 40) {
         reason = '"Nao estou em condicoes de treinar. Preciso de descanso."';
@@ -697,9 +710,12 @@ class GameEngine {
 
     for (final npc in members) {
       npc.trainingSuggestionsReceived++;
-      final fatigue = (100 - npc.attributes.endurance * 10).clamp(0, 100).toDouble();
+      // Incapacitado nao pode participar
+      if (npc.isIncapacitated) {
+        refused++;
+        continue;
+      }
       final acceptance = npc.calculateTrainingAcceptance(
-        fatigue: fatigue,
         hasTrainingField: hasTrainingField && suggestion.floorNumber == -1,
       );
 

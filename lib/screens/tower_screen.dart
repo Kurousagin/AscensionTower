@@ -887,8 +887,13 @@ class _TowerScreenState extends State<TowerScreen> {
                   ...gp.aliveNpcs.map((npc) {
                     final selected = selectedIds.contains(npc.id);
                     final power = npc.attributes.combatPower;
+                    final isDisabled = npc.isIncapacitated;
+                    final fatigueColor = npc.fatigue >= 90 ? const Color(0xFFFF0044) :
+                        npc.fatigue >= 70 ? AppTheme.red :
+                        npc.fatigue >= 50 ? AppTheme.orange :
+                        npc.fatigue >= 30 ? AppTheme.yellow : AppTheme.green;
                     return GestureDetector(
-                      onTap: () => setModalState(() {
+                      onTap: isDisabled ? null : () => setModalState(() {
                         if (selected) {
                           selectedIds.remove(npc.id);
                         } else {
@@ -900,35 +905,46 @@ class _TowerScreenState extends State<TowerScreen> {
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
                           border: Border.all(
-                              color: selected
-                                  ? AppTheme.orange
-                                  : AppTheme.border),
+                              color: isDisabled
+                                  ? AppTheme.red.withValues(alpha: 0.3)
+                                  : selected
+                                      ? AppTheme.orange
+                                      : AppTheme.border),
                           borderRadius: BorderRadius.circular(3),
-                          color: selected
-                              ? AppTheme.orange.withValues(alpha: 0.05)
-                              : null,
+                          color: isDisabled
+                              ? AppTheme.red.withValues(alpha: 0.03)
+                              : selected
+                                  ? AppTheme.orange.withValues(alpha: 0.05)
+                                  : null,
                         ),
                         child: Row(
                           children: [
                             Icon(
-                                selected
-                                    ? Icons.check_box
-                                    : Icons.check_box_outline_blank,
+                                isDisabled
+                                    ? Icons.block
+                                    : selected
+                                        ? Icons.check_box
+                                        : Icons.check_box_outline_blank,
                                 size: 14,
-                                color: selected
-                                    ? AppTheme.orange
-                                    : AppTheme.textDim),
+                                color: isDisabled
+                                    ? AppTheme.red.withValues(alpha: 0.5)
+                                    : selected
+                                        ? AppTheme.orange
+                                        : AppTheme.textDim),
                             const SizedBox(width: 6),
                             Expanded(
                               child: TerminalText(
-                                '${npc.name} | ${npc.profession.label} | PWR:${power.toStringAsFixed(1)} | Leal:${npc.loyalty.toStringAsFixed(0)}',
+                                '${npc.name} | ${npc.profession.label} | PWR:${power.toStringAsFixed(1)} | Leal:${npc.loyalty.toStringAsFixed(0)}${isDisabled ? " [INCAPACITADO]" : npc.isExhausted ? " [EXAUSTO]" : ""}',
                                 fontSize: 8,
-                                color: AppTheme.textSecondary,
+                                color: isDisabled ? AppTheme.red.withValues(alpha: 0.5) : AppTheme.textSecondary,
                               ),
                             ),
                             if (npc.isSuspicious)
                               const TerminalText(' [!]',
                                   fontSize: 8, color: AppTheme.red),
+                            const SizedBox(width: 4),
+                            TerminalText('F:${npc.fatigue.toStringAsFixed(0)}',
+                                fontSize: 8, color: fatigueColor),
                             TerminalText(' ${power.toStringAsFixed(1)}',
                                 fontSize: 9, color: AppTheme.orange),
                           ],
@@ -1237,8 +1253,13 @@ class _TowerScreenState extends State<TowerScreen> {
 
                   ...gp.aliveNpcs.map((npc) {
                     final selected = selectedIds.contains(npc.id);
+                    final isDisabled = npc.isIncapacitated;
+                    final fatigueColor = npc.fatigue >= 90 ? const Color(0xFFFF0044) :
+                        npc.fatigue >= 70 ? AppTheme.red :
+                        npc.fatigue >= 50 ? AppTheme.orange :
+                        npc.fatigue >= 30 ? AppTheme.yellow : AppTheme.green;
                     return GestureDetector(
-                      onTap: () => setModalState(() {
+                      onTap: isDisabled ? null : () => setModalState(() {
                         if (selected) {
                           selectedIds.remove(npc.id);
                         } else {
@@ -1250,32 +1271,42 @@ class _TowerScreenState extends State<TowerScreen> {
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
                           border: Border.all(
-                              color: selected
-                                  ? AppTheme.green
-                                  : AppTheme.border),
+                              color: isDisabled
+                                  ? AppTheme.red.withValues(alpha: 0.3)
+                                  : selected
+                                      ? AppTheme.green
+                                      : AppTheme.border),
                           borderRadius: BorderRadius.circular(3),
-                          color: selected
-                              ? AppTheme.green.withValues(alpha: 0.05)
-                              : null,
+                          color: isDisabled
+                              ? AppTheme.red.withValues(alpha: 0.03)
+                              : selected
+                                  ? AppTheme.green.withValues(alpha: 0.05)
+                                  : null,
                         ),
                         child: Row(
                           children: [
                             Icon(
-                                selected
-                                    ? Icons.check_box
-                                    : Icons.check_box_outline_blank,
+                                isDisabled
+                                    ? Icons.block
+                                    : selected
+                                        ? Icons.check_box
+                                        : Icons.check_box_outline_blank,
                                 size: 14,
-                                color: selected
-                                    ? AppTheme.green
-                                    : AppTheme.textDim),
+                                color: isDisabled
+                                    ? AppTheme.red.withValues(alpha: 0.5)
+                                    : selected
+                                        ? AppTheme.green
+                                        : AppTheme.textDim),
                             const SizedBox(width: 6),
                             Expanded(
                               child: TerminalText(
-                                '${npc.name} | ${npc.profession.label} | PWR:${npc.attributes.combatPower.toStringAsFixed(1)}',
+                                '${npc.name} | ${npc.profession.label} | PWR:${npc.attributes.combatPower.toStringAsFixed(1)}${isDisabled ? " [INCAPACITADO]" : npc.isExhausted ? " [EXAUSTO]" : ""}',
                                 fontSize: 9,
-                                color: AppTheme.textSecondary,
+                                color: isDisabled ? AppTheme.red.withValues(alpha: 0.5) : AppTheme.textSecondary,
                               ),
                             ),
+                            TerminalText('F:${npc.fatigue.toStringAsFixed(0)}',
+                                fontSize: 8, color: fatigueColor),
                           ],
                         ),
                       ),

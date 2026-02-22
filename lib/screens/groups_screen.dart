@@ -148,6 +148,16 @@ class _GroupsScreenState extends State<GroupsScreen> {
             children: [
               TerminalText('Poder medio: ${avgPower.toStringAsFixed(1)}', fontSize: 9, color: AppTheme.orange),
               TerminalText('Lealdade media: ${avgLoyalty.toStringAsFixed(0)}', fontSize: 9, color: AppTheme.yellow),
+              Builder(builder: (_) {
+                final avgFatigue = aliveMembers.isEmpty ? 0.0 :
+                    aliveMembers.map((n) => n.fatigue).reduce((a, b) => a + b) / aliveMembers.length;
+                final exhausted = aliveMembers.where((n) => n.isExhausted).length;
+                return TerminalText(
+                  'Fadiga media: ${avgFatigue.toStringAsFixed(0)}%${exhausted > 0 ? " ($exhausted exausto${exhausted > 1 ? "s" : ""})": ""}',
+                  fontSize: 9,
+                  color: avgFatigue >= 70 ? AppTheme.red : avgFatigue >= 50 ? AppTheme.orange : avgFatigue >= 30 ? AppTheme.yellow : AppTheme.green,
+                );
+              }),
             ],
           ),
           if (leader != null)
@@ -157,22 +167,29 @@ class _GroupsScreenState extends State<GroupsScreen> {
                   fontSize: 9, color: AppTheme.cyan),
             ),
           const SizedBox(height: 6),
-          ...aliveMembers.map((npc) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TerminalText(
-                    '${npc.id == group.leaderId ? "[L] " : "  "}${npc.name} | ${npc.profession.tag} | PWR:${npc.attributes.combatPower.toStringAsFixed(1)} | Leal:${npc.loyalty.toStringAsFixed(0)}',
-                    fontSize: 8,
-                    color: npc.isSuspicious ? AppTheme.red : AppTheme.textSecondary,
+          ...aliveMembers.map((npc) {
+            final fatigueColor = npc.fatigue >= 90 ? const Color(0xFFFF0044) :
+                npc.fatigue >= 70 ? AppTheme.red :
+                npc.fatigue >= 50 ? AppTheme.orange :
+                npc.fatigue >= 30 ? AppTheme.yellow : AppTheme.green;
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TerminalText(
+                      '${npc.id == group.leaderId ? "[L] " : "  "}${npc.name} | ${npc.profession.tag} | PWR:${npc.attributes.combatPower.toStringAsFixed(1)} | Leal:${npc.loyalty.toStringAsFixed(0)}${npc.isIncapacitated ? " [INCAP]" : npc.isExhausted ? " [EXAU]" : ""}',
+                      fontSize: 8,
+                      color: npc.isIncapacitated ? AppTheme.red.withValues(alpha: 0.5) : npc.isSuspicious ? AppTheme.red : AppTheme.textSecondary,
+                    ),
                   ),
-                ),
-                if (npc.isSuspicious)
-                  const TerminalText(' [!]', fontSize: 8, color: AppTheme.red),
-              ],
-            ),
-          )),
+                  TerminalText('F:${npc.fatigue.toStringAsFixed(0)}', fontSize: 8, color: fatigueColor),
+                  if (npc.isSuspicious)
+                    const TerminalText(' [!]', fontSize: 8, color: AppTheme.red),
+                ],
+              ),
+            );
+          }),
           const SizedBox(height: 8),
 
           // === ACOES PRINCIPAIS DO GRUPO ===
@@ -634,7 +651,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
                               children: [
                                 TerminalText(npc.name, fontSize: 10, color: AppTheme.textPrimary),
                                 TerminalText(
-                                  'PWR:${npc.attributes.combatPower.toStringAsFixed(1)} | ${npc.profession.label} | Leal:${npc.loyalty.toStringAsFixed(0)}',
+                                  'PWR:${npc.attributes.combatPower.toStringAsFixed(1)} | ${npc.profession.label} | Leal:${npc.loyalty.toStringAsFixed(0)} | Fad:${npc.fatigue.toStringAsFixed(0)}%',
                                   fontSize: 8, color: AppTheme.textDim,
                                 ),
                               ],

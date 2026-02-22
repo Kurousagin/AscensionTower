@@ -400,6 +400,10 @@ class Npc {
   int trainingSuggestionsReceived; // quantas sugestoes recebeu
   int trainingSuggestionsAccepted; // quantas aceitou
   bool isSuspicious; // marcado como suspeito pelo sistema
+  // Sistema de Fadiga
+  double fatigue; // 0-100: 0=descansado, 100=incapacitado
+  int consecutiveExpeditions; // expedicoes/re-exploracoes no mesmo dia
+  int lastExpeditionDay; // ultimo dia que participou de expedicao
 
   Npc({
     required this.id,
@@ -431,12 +435,30 @@ class Npc {
     this.trainingSuggestionsReceived = 0,
     this.trainingSuggestionsAccepted = 0,
     this.isSuspicious = false,
+    this.fatigue = 0.0,
+    this.consecutiveExpeditions = 0,
+    this.lastExpeditionDay = 0,
   })  : attributes = attributes ?? origin.baseAttributes,
         traits = traits ?? [],
         relationships = relationships ?? [],
         traumas = traumas ?? [],
         history = history ?? [],
         childrenIds = childrenIds ?? [];
+
+  /// Status de fadiga formatado
+  String get fatigueLabel {
+    if (fatigue >= 90) return 'Incapacitado';
+    if (fatigue >= 70) return 'Exausto';
+    if (fatigue >= 50) return 'Cansado';
+    if (fatigue >= 30) return 'Levemente cansado';
+    return 'Descansado';
+  }
+
+  /// Verifica se NPC esta exausto demais para expedicoes
+  bool get isExhausted => fatigue >= 70;
+
+  /// Verifica se NPC esta incapacitado
+  bool get isIncapacitated => fatigue >= 90;
 
   MentalCondition get calculatedMentalCondition {
     final ms = attributes.mentalStability;
@@ -493,7 +515,7 @@ class Npc {
           attributes.mentalStability * 0.15 / 10);
 
   /// Chance de aceitar sugestao de treino (0.0 a 1.0)
-  double calculateTrainingAcceptance({required double fatigue, required bool hasTrainingField}) {
+  double calculateTrainingAcceptance({required bool hasTrainingField}) {
     double chance = 0.5;
     // Lealdade alta = aceita mais
     chance += (loyalty - 50) * 0.005;
@@ -505,8 +527,12 @@ class Npc {
     if (traits.contains(PersonalityTrait.loner)) chance -= 0.10;
     // Training field reduz risco, entao aceita mais
     if (hasTrainingField) chance += 0.15;
-    // Fadiga reduz aceitacao
-    chance -= fatigue * 0.003;
+    // Fadiga real do NPC reduz aceitacao
+    chance -= fatigue * 0.005;
+    // Incapacitado recusa sempre
+    if (isIncapacitated) return 0.05;
+    // Exausto quase sempre recusa
+    if (isExhausted) chance -= 0.30;
     // Sanidade baixa = recusa
     if (attributes.mentalStability < 40) chance -= 0.20;
     if (attributes.mentalStability < 20) chance -= 0.20;
@@ -548,6 +574,9 @@ class Npc {
         'trainingSuggestionsReceived': trainingSuggestionsReceived,
         'trainingSuggestionsAccepted': trainingSuggestionsAccepted,
         'isSuspicious': isSuspicious,
+        'fatigue': fatigue,
+        'consecutiveExpeditions': consecutiveExpeditions,
+        'lastExpeditionDay': lastExpeditionDay,
       };
 
   factory Npc.fromJson(Map<String, dynamic> json) => Npc(
@@ -598,6 +627,9 @@ class Npc {
         trainingSuggestionsReceived: json['trainingSuggestionsReceived'] as int? ?? 0,
         trainingSuggestionsAccepted: json['trainingSuggestionsAccepted'] as int? ?? 0,
         isSuspicious: json['isSuspicious'] as bool? ?? false,
+        fatigue: (json['fatigue'] as num?)?.toDouble() ?? 0.0,
+        consecutiveExpeditions: json['consecutiveExpeditions'] as int? ?? 0,
+        lastExpeditionDay: json['lastExpeditionDay'] as int? ?? 0,
       );
 
   static Npc generateRandom(String id, int generation, Random rng, {bool allowDarkOrigins = true}) {

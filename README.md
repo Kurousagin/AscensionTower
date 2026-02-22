@@ -1,5 +1,5 @@
 # THE TOWER OF THE SECOND HUMANITY
-## Simulacao Textual Cyberpunk com IA Narrativa | Flutter MVP v3.0
+## Simulacao Textual Cyberpunk com IA Narrativa | Flutter MVP v4.0
 
 ---
 
@@ -58,6 +58,58 @@ Quando um NPC morre, morre para sempre. Cascata de efeitos:
 
 ### Invocacao Emergencial
 Quando a populacao cai para **5 ou menos**, a Torre invoca automaticamente 1-3 novos humanos a cada 14 dias. RISCO: podem ter origens obscuras!
+
+### Sistema de Fadiga (v4.0)
+
+Enviar NPCs repetidamente custa **fadiga fisica**. Forcar NPCs exaustos tem consequencias graves.
+
+#### Estados de Fadiga
+| Faixa | Status | Efeito |
+|-------|--------|--------|
+| 0-29% | Descansado | Nenhum. Performance normal. |
+| 30-49% | Levemente cansado | Aceitacao de treino levemente reduzida |
+| 50-69% | Cansado | -15% poder de combate. Reducao na recuperacao de sanidade. |
+| 70-89% | **Exausto** | -35% poder de combate. -3 sanidade/dia. -0.5 lealdade/dia. Quase sempre recusa treinos. |
+| 90-100% | **Incapacitado** | -60% poder de combate. -5 sanidade/dia. -1 lealdade/dia. Forcado a Ocioso. Risco de colapso fisico. **Bloqueado de selecao em expedicoes.** |
+
+#### Custo de Fadiga por Atividade
+| Atividade | Fadiga Base | Escala |
+|-----------|------------|--------|
+| Expedicao (andar novo) | 20-35 | +1.5 por tier |
+| Re-exploracao | 15-25 | +1.0 por tier |
+| Treino em andar | 12-22 | +1.0 por tier |
+| Treino no Campo | 8 | Fixo |
+| Treino autonomo | 6 | Fixo |
+
+**Bonus de consecutividade**: Cada expedicao extra **no mesmo dia** adiciona +8~10 de fadiga bonus! Enviar o mesmo NPC 3x no mesmo dia resulta em fadiga massiva.
+
+#### Recuperacao Diaria
+| Fator | Recuperacao |
+|-------|------------|
+| Base | 15 + (RES/15 * 10) por dia |
+| Enfermaria | +5/dia |
+| Templo | +3/dia |
+| Parceiro | +2/dia |
+| Grupo | +1/dia |
+| Fez expedicao hoje | Apenas 30% da recuperacao |
+
+#### Cascata de Consequencias
+```
+Envio excessivo
+  -> Fadiga 70%+ (Exausto)
+    -> -3 sanidade/dia
+    -> -0.5 lealdade/dia
+    -> Recusa treinos
+    -> Alerta narrativo a cada 3 dias
+  -> Fadiga 90%+ (Incapacitado)
+    -> -5 sanidade/dia  
+    -> -1 lealdade/dia
+    -> Profissao forcada a Ocioso
+    -> 8% chance/dia de colapso fisico (trauma + -0.5 RES permanente)
+    -> Bloqueado de expedicoes
+```
+
+**Implicacao Estrategica**: Voce NAO pode mandar o mesmo grupo infinitamente. Forca seus soldados e eles colapsam, perdem sanidade, lealdade, e eventualmente morrem. **Rotacione seus esquadroes.**
 
 ---
 
@@ -740,6 +792,24 @@ currentMinute = floor((gameSeconds % 3600) / 60)  // 0-59
 ---
 
 ## CHANGELOG
+
+### v4.0 — Sistema de Fadiga + Consequencias Fisicas
+- **Sistema de Fadiga (0-100)**: NPCs acumulam fadiga em expedicoes, re-exploracoes e treinos
+- **5 estados de fadiga**: Descansado, Levemente cansado, Cansado, Exausto, Incapacitado
+- **Penalidade de combate**: Cansado (-15%), Exausto (-35%), Incapacitado (-60%)
+- **Fadiga por atividade**: Expedicao (20-35), Re-exploracao (15-25), Treino andar (12-22), Campo (8), Autonomo (6)
+- **Consecutividade penalizada**: Cada expedicao extra no mesmo dia adiciona +8-10 fadiga bonus
+- **Cascata de consequencias**: Exaustao -> perda de sanidade (-3/dia) e lealdade (-0.5/dia)
+- **Incapacitado**: Profissao forcada a Ocioso, bloqueado de expedicoes, 8% chance/dia de colapso fisico
+- **Recuperacao diaria**: 15-25 base (+RES) | Enfermaria +5 | Templo +3 | Parceiro +2 | Grupo +1
+- **Narrativa**: Alertas contextuais quando NPCs sao forcados exaustos
+- **UI**: Barra de fadiga em detalhes do NPC, indicadores na selecao de expedicao/re-exploracao
+- **Filtro**: Novo filtro "EXAUSTOS" e ordenacao por fadiga na lista de NPCs
+- **Grupos**: Fadiga media e contagem de exaustos exibidos por grupo
+- NPCs incapacitados automaticamente removidos da selecao de expedicoes
+- NPCs exaustos recusam sugestoes de treino com dialogo contextual
+- Treino autonomo respeita limite de fadiga (nao treina acima de 60%)
+- Auto-torre respeita fadiga (nao envia NPCs cansados automaticamente)
 
 ### v3.0 — 100 Andares + Construcao Manual
 - Torre expandida de 10 para **100 andares** (10 tiers de 10 andares)

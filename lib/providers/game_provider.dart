@@ -90,6 +90,13 @@ class GameProvider extends ChangeNotifier {
   List<Npc> get suspiciousNpcs =>
       aliveNpcs.where((n) => n.isSuspicious || n.calculatedBetrayalRisk > 30).toList();
 
+  // NPCs exaustos ou incapacitados
+  List<Npc> get exhaustedNpcs =>
+      aliveNpcs.where((n) => n.isExhausted).toList();
+
+  List<Npc> get incapacitatedNpcs =>
+      aliveNpcs.where((n) => n.isIncapacitated).toList();
+
   // ===== DISPLAY DE TEMPO =====
 
   int get currentHour => state.currentHour;
@@ -291,6 +298,7 @@ class GameProvider extends ChangeNotifier {
     final candidates = _engine.aliveNpcs
         .where((n) =>
             n.attributes.mentalStability > 25 &&
+            n.fatigue < 60 && // Nao enviar cansados automaticamente
             (n.profession == Profession.guard ||
                 n.profession == Profession.explorer ||
                 n.profession == Profession.scout))
@@ -333,7 +341,16 @@ class GameProvider extends ChangeNotifier {
     if (floor == null) return null;
     if (partyIds.length < 2) return null;
 
-    _lastChallenge = _engine.attemptFloor(partyIds);
+    // Verificar incapacitados e alertar sobre exaustos
+    final incapacitated = partyIds.where((id) {
+      final npc = _engine.npcs.where((n) => n.id == id).firstOrNull;
+      return npc?.isIncapacitated ?? false;
+    }).toList();
+    // Remover incapacitados da expedicao automaticamente
+    final validPartyIds = partyIds.where((id) => !incapacitated.contains(id)).toList();
+    if (validPartyIds.length < 2) return null;
+
+    _lastChallenge = _engine.attemptFloor(validPartyIds);
 
     // Atualizar missoes do grupo se todos forem do mesmo grupo
     final partyNpcs = partyIds
@@ -367,14 +384,21 @@ class GameProvider extends ChangeNotifier {
     final floor = _engine.floors.where((f) => f.number == floorNumber && f.cleared).firstOrNull;
     if (floor == null) return null;
 
-    final result = _engine.reexploreFloor(floorNumber, partyIds);
+    // Remover incapacitados
+    final validIds = partyIds.where((id) {
+      final npc = _engine.npcs.where((n) => n.id == id).firstOrNull;
+      return npc != null && !npc.isIncapacitated;
+    }).toList();
+    if (validIds.isEmpty) return null;
+
+    final result = _engine.reexploreFloor(floorNumber, validIds);
 
     // Atualizar missoes do grupo
-    final partyNpcs = partyIds
+    final rePartyNpcs = validIds
         .map((id) => _engine.npcs.where((n) => n.id == id).firstOrNull)
         .whereType<Npc>()
         .toList();
-    final groupIds = partyNpcs
+    final groupIds = rePartyNpcs
         .where((n) => n.groupId != null)
         .map((n) => n.groupId!)
         .toSet();

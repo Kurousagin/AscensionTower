@@ -24,6 +24,7 @@ class _NpcListScreenState extends State<NpcListScreen> {
         switch (_filter) {
           case 'alive': npcs = gp.aliveNpcs; break;
           case 'dead': npcs = gp.deadNpcs; break;
+          case 'exhausted': npcs = gp.aliveNpcs.where((n) => n.fatigue >= 50).toList(); break;
           default: npcs = gp.allNpcs;
         }
 
@@ -33,6 +34,7 @@ class _NpcListScreenState extends State<NpcListScreen> {
           case 'fame': npcs.sort((a, b) => b.fame.compareTo(a.fame)); break;
           case 'loyalty': npcs.sort((a, b) => b.loyalty.compareTo(a.loyalty)); break;
           case 'betrayal': npcs.sort((a, b) => b.calculatedBetrayalRisk.compareTo(a.calculatedBetrayalRisk)); break;
+          case 'fatigue': npcs.sort((a, b) => b.fatigue.compareTo(a.fatigue)); break;
           default: npcs.sort((a, b) => a.name.compareTo(b.name));
         }
 
@@ -63,6 +65,7 @@ class _NpcListScreenState extends State<NpcListScreen> {
           _filterChip('TODOS', 'all'),
           _filterChip('VIVOS', 'alive'),
           _filterChip('MORTOS', 'dead'),
+          _filterChip('EXAUSTOS', 'exhausted'),
           const Spacer(),
           const TerminalText('Ordenar:', fontSize: 9, color: AppTheme.textDim),
           const SizedBox(width: 4),
@@ -72,6 +75,7 @@ class _NpcListScreenState extends State<NpcListScreen> {
           _sortChip('Fama', 'fame'),
           _sortChip('Leal.', 'loyalty'),
           _sortChip('Risco', 'betrayal'),
+          _sortChip('Fadiga', 'fatigue'),
         ],
       ),
     );
@@ -157,6 +161,7 @@ class _NpcListScreenState extends State<NpcListScreen> {
               children: [
                 TerminalText('Poder: ${npc.attributes.combatPower.toStringAsFixed(1)}', fontSize: 9, color: AppTheme.orange),
                 TerminalText('Sanidade: ${npc.attributes.mentalStability.toStringAsFixed(0)}%', fontSize: 9, color: mentalColor),
+                _fatigueTag(npc),
                 if (npc.fame > 0)
                   TerminalText('Fama: ${npc.fame.toStringAsFixed(0)}', fontSize: 9, color: AppTheme.yellow),
                 if (npc.fame < 0)
@@ -195,6 +200,26 @@ class _NpcListScreenState extends State<NpcListScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _fatigueTag(Npc npc) {
+    Color color;
+    if (npc.fatigue >= 90) {
+      color = const Color(0xFFFF0044);
+    } else if (npc.fatigue >= 70) {
+      color = AppTheme.red;
+    } else if (npc.fatigue >= 50) {
+      color = AppTheme.orange;
+    } else if (npc.fatigue >= 30) {
+      color = AppTheme.yellow;
+    } else {
+      color = AppTheme.green;
+    }
+    return TerminalText(
+      'Fadiga: ${npc.fatigue.toStringAsFixed(0)}%',
+      fontSize: 9,
+      color: color,
     );
   }
 
@@ -237,6 +262,13 @@ class _NpcListScreenState extends State<NpcListScreen> {
               StatBar(label: 'Sanid.', value: npc.attributes.mentalStability, maxValue: 100,
                   color: npc.attributes.mentalStability > 60 ? AppTheme.green :
                   npc.attributes.mentalStability > 30 ? AppTheme.yellow : AppTheme.red),
+              StatBar(label: 'Fadiga', value: npc.fatigue, maxValue: 100,
+                  color: npc.fatigue < 30 ? AppTheme.green :
+                  npc.fatigue < 50 ? AppTheme.yellow :
+                  npc.fatigue < 70 ? AppTheme.orange : AppTheme.red),
+              const SizedBox(height: 2),
+              TerminalText('Estado fisico: ${npc.fatigueLabel}${npc.isIncapacitated ? " [INCAPACITADO]" : npc.isExhausted ? " [EXAUSTO]" : ""}',
+                  fontSize: 9, color: npc.fatigue >= 70 ? AppTheme.red : npc.fatigue >= 50 ? AppTheme.orange : AppTheme.green),
               const SizedBox(height: 4),
               TerminalText('Poder de combate: ${npc.attributes.combatPower.toStringAsFixed(1)} | Media geral: ${npc.attributes.average.toStringAsFixed(1)}',
                   fontSize: 9, color: AppTheme.orange),
