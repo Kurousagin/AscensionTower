@@ -97,6 +97,18 @@ class GameProvider extends ChangeNotifier {
   List<Npc> get incapacitatedNpcs =>
       aliveNpcs.where((n) => n.isIncapacitated).toList();
 
+  /// Custo estimado de comida para expedicao ao proximo andar
+  double expeditionCostEstimate(int npcCount) {
+    final floor = _engine.nextFloor;
+    if (floor == null) return 0;
+    return _engine.expeditionCostPerNpc(floor.number) * npcCount;
+  }
+
+  /// Custo estimado de re-exploracao
+  double reexploreCostEstimate(int floorNumber, int npcCount) {
+    return _engine.reexploreCostPerNpc(floorNumber) * npcCount;
+  }
+
   // ===== DISPLAY DE TEMPO =====
 
   int get currentHour => state.currentHour;
@@ -509,6 +521,19 @@ class GameProvider extends ChangeNotifier {
     }
     return result;
   }
+
+  /// ACAO DO JOGADOR: Fazer upgrade do armazem
+  bool upgradeStorage() {
+    final result = _engine.upgradeStorage();
+    if (result) {
+      _saveGame();
+      notifyListeners();
+    }
+    return result;
+  }
+
+  /// Verifica se pode fazer upgrade do armazem
+  bool get canUpgradeStorage => _engine.canUpgradeStorage();
 
   /// Verifica se pode evoluir cidadela
   bool get canUpgradeCitadel {

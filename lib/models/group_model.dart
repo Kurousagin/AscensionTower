@@ -139,6 +139,8 @@ class FloorExplorationResult {
   final List<String> casualties;
   final bool hiddenThreatActivated;
   final String narrative;
+  double foodCost;
+  final List<String> expeditionEvents;
 
   FloorExplorationResult({
     required this.floorNumber,
@@ -149,9 +151,12 @@ class FloorExplorationResult {
     List<String>? casualties,
     this.hiddenThreatActivated = false,
     this.narrative = '',
+    this.foodCost = 0.0,
+    List<String>? expeditionEvents,
   })  : resourcesGained = resourcesGained ?? {},
         discoveries = discoveries ?? [],
-        casualties = casualties ?? [];
+        casualties = casualties ?? [],
+        expeditionEvents = expeditionEvents ?? [];
 
   Map<String, dynamic> toJson() => {
         'floorNumber': floorNumber,
@@ -162,5 +167,7 @@ class FloorExplorationResult {
         'casualties': casualties,
         'hiddenThreatActivated': hiddenThreatActivated,
         'narrative': narrative,
+        'foodCost': foodCost,
+        'expeditionEvents': expeditionEvents,
       };
 }

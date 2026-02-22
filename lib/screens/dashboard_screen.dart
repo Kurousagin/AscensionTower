@@ -156,34 +156,70 @@ class DashboardScreen extends StatelessWidget {
   }
 
   Widget _buildResourcePanel(Resources res) {
-    return TerminalCard(
-      title: 'RECURSOS DA CIDADELA',
-      child: Column(
-        children: [
-          _resRow('Comida', res.food, AppTheme.green),
-          _resRow('Madeira', res.wood, AppTheme.orange),
-          _resRow('Pedra', res.stone, AppTheme.textSecondary),
-          _resRow('Ferro', res.iron, AppTheme.blue),
-          _resRow('Conhecimento', res.knowledge, AppTheme.purple),
-          const SizedBox(height: 4),
-          Row(children: [
-            const SizedBox(width: 100, child: TerminalText('Moral', fontSize: 10, color: AppTheme.textPrimary)),
-            Expanded(
-              child: StatBar(label: '', value: res.morale, maxValue: 100,
-                  color: res.morale > 70 ? AppTheme.green : res.morale > 40 ? AppTheme.yellow : AppTheme.red),
-            ),
-          ]),
-        ],
-      ),
+    return Consumer<GameProvider>(
+      builder: (context, gp, _) {
+        final cap = gp.citadel.storageCapacity;
+        final isInfinite = gp.citadel.hasInfiniteStorage;
+        final capStr = isInfinite ? 'INF' : cap.toStringAsFixed(0);
+        return TerminalCard(
+          title: 'RECURSOS (Armazem: ${gp.citadel.storageLabel} | Cap: $capStr)',
+          child: Column(
+            children: [
+              _resRowWithCap('Comida', res.food, cap, isInfinite, AppTheme.green),
+              _resRowWithCap('Madeira', res.wood, cap, isInfinite, AppTheme.orange),
+              _resRowWithCap('Pedra', res.stone, cap, isInfinite, AppTheme.textSecondary),
+              _resRowWithCap('Ferro', res.iron, cap, isInfinite, AppTheme.blue),
+              _resRowWithCap('Conhecimento', res.knowledge, cap, isInfinite, AppTheme.purple),
+              const SizedBox(height: 4),
+              Row(children: [
+                const SizedBox(width: 100, child: TerminalText('Moral', fontSize: 10, color: AppTheme.textPrimary)),
+                Expanded(
+                  child: StatBar(label: '', value: res.morale, maxValue: 100,
+                      color: res.morale > 70 ? AppTheme.green : res.morale > 40 ? AppTheme.yellow : AppTheme.red),
+                ),
+              ]),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _resRow(String label, double value, Color color) {
+  Widget _resRowWithCap(String label, double value, double cap, bool isInfinite, Color color) {
+    final atCap = !isInfinite && value >= cap;
+    final pct = isInfinite ? 0.0 : (value / cap).clamp(0.0, 1.0);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Row(children: [
-        SizedBox(width: 100, child: TerminalText(label, fontSize: 10, color: AppTheme.textPrimary)),
-        TerminalText(value.toStringAsFixed(0), fontSize: 11, color: color, fontWeight: FontWeight.bold),
+        SizedBox(width: 85, child: TerminalText(label, fontSize: 10, color: AppTheme.textPrimary)),
+        TerminalText(value.toStringAsFixed(0), fontSize: 11, color: atCap ? AppTheme.red : color, fontWeight: FontWeight.bold),
+        if (!isInfinite) ...[
+          TerminalText('/${cap.toStringAsFixed(0)}', fontSize: 8, color: AppTheme.textDim),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Container(
+              height: 6,
+              decoration: BoxDecoration(
+                color: AppTheme.bgElevated,
+                borderRadius: BorderRadius.circular(1),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: FractionallySizedBox(
+                widthFactor: pct,
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: atCap ? AppTheme.red : color,
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ] else ...[
+          const SizedBox(width: 6),
+          const Expanded(child: TerminalText('INF', fontSize: 8, color: AppTheme.textDim)),
+        ],
       ]),
     );
   }
@@ -360,6 +396,19 @@ class DashboardScreen extends StatelessWidget {
           Expanded(child: TerminalText(
             '${gp.groups.length} esquadrao(es) ativo(s).',
             fontSize: 9, color: AppTheme.blue,
+          )),
+        ],
+      ));
+    }
+    // Alerta de armazem cheio
+    if (!gp.citadel.hasInfiniteStorage && gp.citadel.resources.anyAtCapacity(gp.citadel.storageLevel)) {
+      alerts.add(Row(
+        children: [
+          const Icon(Icons.warehouse, size: 12, color: AppTheme.orange),
+          const SizedBox(width: 4),
+          Expanded(child: TerminalText(
+            'Armazem no limite! Recursos excedentes serao perdidos. Amplie o armazem.',
+            fontSize: 9, color: AppTheme.orange,
           )),
         ],
       ));

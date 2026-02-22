@@ -525,7 +525,17 @@ class _TowerScreenState extends State<TowerScreen> {
             fontWeight: FontWeight.bold,
           ),
           const SizedBox(height: 4),
+          TerminalText('Custo: ${r.foodCost.toStringAsFixed(0)} comida', fontSize: 9, color: AppTheme.orange),
           TerminalText('Recursos: $resStr', fontSize: 9, color: AppTheme.cyan),
+          if (r.expeditionEvents.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            ...r.expeditionEvents.map((e) => TerminalText(
+                  e, fontSize: 8,
+                  color: e.contains('Traicao') ? AppTheme.red
+                      : e.contains('raro') ? AppTheme.yellow
+                      : e.contains('Conflito') ? AppTheme.orange
+                      : AppTheme.textDim)),
+          ],
           if (hasCasualties)
             TerminalText('Baixas: ${r.casualties.length}',
                 fontSize: 9, color: AppTheme.red),
@@ -769,11 +779,35 @@ class _TowerScreenState extends State<TowerScreen> {
               ? (totalPower / floor.recommendedPower * 100)
               : 0.0;
           final isReady = selectedIds.length >= 2;
+          final totalCost = gp.expeditionCostEstimate(selectedIds.length);
+          final hasFood = gp.citadel.resources.food >= totalCost;
+
+          // Calculos de analise avancada
+          final synergy = selectedIds.length >= 2
+              ? gp.engine.previewGroupSynergy(selectedIds.toList())
+              : 0.0;
+          final personalityMod = selectedIds.isNotEmpty
+              ? gp.engine.previewPartyPersonalityMod(selectedIds.toList())
+              : 0.0;
+          final attrYield = selectedIds.isNotEmpty
+              ? gp.engine.previewPartyAttributeYield(selectedIds.toList(), floor.type)
+              : 0.0;
+          final eventChances = selectedIds.isNotEmpty
+              ? gp.engine.previewEventChances(selectedIds.toList(), floor)
+              : <String, double>{};
+
+          // Analise de traicao
+          final hasSuspect = selectedNpcs.any((n) =>
+              n.isSuspicious || n.calculatedBetrayalRisk > 35);
+          final hasLazy = selectedNpcs.any((n) =>
+              n.traits.contains(PersonalityTrait.lazy));
+          final allExhausted = selectedNpcs.isNotEmpty &&
+              selectedNpcs.every((n) => n.isExhausted);
 
           return DraggableScrollableSheet(
-            initialChildSize: 0.85,
+            initialChildSize: 0.90,
             minChildSize: 0.5,
-            maxChildSize: 0.95,
+            maxChildSize: 0.98,
             expand: false,
             builder: (ctx, scrollController) => SingleChildScrollView(
               controller: scrollController,
@@ -787,6 +821,8 @@ class _TowerScreenState extends State<TowerScreen> {
                           height: 3,
                           color: AppTheme.border,
                           margin: const EdgeInsets.only(bottom: 12))),
+
+                  // === CABECALHO ===
                   TerminalText(
                       'EXPEDICAO: ANDAR ${floor.number} (${floor.difficultyTag})',
                       fontSize: 14,
@@ -794,62 +830,238 @@ class _TowerScreenState extends State<TowerScreen> {
                       fontWeight: FontWeight.bold),
                   const SizedBox(height: 4),
                   TerminalText(
-                      '${floor.type.label} | Dif:${floor.scaledDifficulty.toStringAsFixed(1)} | Mort:${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
+                      '${floor.type.icon} ${floor.type.label} | Dif: ${floor.scaledDifficulty.toStringAsFixed(1)} | Mort: ${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
                       fontSize: 10,
                       color: AppTheme.textSecondary),
-                  const SizedBox(height: 8),
+                  if (floor.specialCondition.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    TerminalText('Condicao: ${floor.specialCondition}',
+                        fontSize: 9, color: AppTheme.yellow),
+                  ],
+                  const SizedBox(height: 10),
 
-                  // Poder
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                          color: powerPct >= 100
-                              ? AppTheme.green
-                              : powerPct >= 60
-                                  ? AppTheme.yellow
-                                  : AppTheme.red),
-                      borderRadius: BorderRadius.circular(4),
-                      color: AppTheme.bgElevated,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              TerminalText(
-                                  'Selecionados: ${selectedIds.length} / Recomendado: ${floor.recommendedPartySize}',
-                                  fontSize: 10,
-                                  color: AppTheme.textPrimary),
-                              TerminalText(
-                                  'Poder: ${totalPower.toStringAsFixed(1)} / ${floor.recommendedPower.toStringAsFixed(1)} (${powerPct.toStringAsFixed(0)}%)',
-                                  fontSize: 10,
-                                  color: powerPct >= 100
-                                      ? AppTheme.green
-                                      : powerPct >= 60
-                                          ? AppTheme.yellow
-                                          : AppTheme.red),
-                            ],
+                  // === PAINEL DE ANALISE (aparece apos selecionar NPCs) ===
+                  if (selectedIds.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                            color: powerPct >= 100
+                                ? AppTheme.green
+                                : powerPct >= 60
+                                    ? AppTheme.yellow
+                                    : AppTheme.red),
+                        borderRadius: BorderRadius.circular(5),
+                        color: AppTheme.bgElevated,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Titulo
+                          Row(children: [
+                            Icon(
+                              powerPct >= 100
+                                  ? Icons.check_circle
+                                  : powerPct >= 60
+                                      ? Icons.warning_amber
+                                      : Icons.dangerous,
+                              color: powerPct >= 100
+                                  ? AppTheme.green
+                                  : powerPct >= 60
+                                      ? AppTheme.yellow
+                                      : AppTheme.red,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            TerminalText(
+                              'ANALISE DA EXPEDICAO',
+                              fontSize: 11,
+                              color: AppTheme.cyan,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ]),
+                          const SizedBox(height: 8),
+
+                          // Poder
+                          _analysisRow(
+                            'Poder de Combate',
+                            '${totalPower.toStringAsFixed(1)} / ${floor.recommendedPower.toStringAsFixed(1)} (${powerPct.toStringAsFixed(0)}%)',
+                            powerPct >= 100 ? AppTheme.green : powerPct >= 60 ? AppTheme.yellow : AppTheme.red,
                           ),
-                        ),
-                        Icon(
-                          powerPct >= 100
-                              ? Icons.check_circle
-                              : powerPct >= 60
-                                  ? Icons.warning
-                                  : Icons.dangerous,
-                          color: powerPct >= 100
-                              ? AppTheme.green
-                              : powerPct >= 60
-                                  ? AppTheme.yellow
-                                  : AppTheme.red,
-                          size: 24,
-                        ),
-                      ],
+
+                          // Custo
+                          _analysisRow(
+                            'Custo Fixo',
+                            '${totalCost.toStringAsFixed(0)} comida (${gp.expeditionCostEstimate(1).toStringAsFixed(1)}/NPC)',
+                            hasFood ? AppTheme.orange : AppTheme.red,
+                          ),
+                          if (!hasFood)
+                            const Padding(
+                              padding: EdgeInsets.only(left: 100, bottom: 2),
+                              child: TerminalText('SEM COMIDA SUFICIENTE!',
+                                  fontSize: 8, color: AppTheme.red),
+                            ),
+
+                          // Sinergia
+                          if (selectedIds.length >= 2) ...[
+                            _analysisRow(
+                              'Sinergia Grupo',
+                              synergy > 0
+                                  ? '+${(synergy * 100).toStringAsFixed(0)}% bonus'
+                                  : synergy < 0
+                                      ? '${(synergy * 100).toStringAsFixed(0)}% penalidade'
+                                      : 'Neutro',
+                              synergy > 0.1
+                                  ? AppTheme.green
+                                  : synergy < -0.1
+                                      ? AppTheme.red
+                                      : AppTheme.textSecondary,
+                            ),
+                          ],
+
+                          // Personalidade
+                          _analysisRow(
+                            'Personalidade',
+                            personalityMod > 0
+                                ? '+${(personalityMod * 100).toStringAsFixed(0)}% eficiencia'
+                                : personalityMod < 0
+                                    ? '${(personalityMod * 100).toStringAsFixed(0)}% eficiencia'
+                                    : 'Neutro',
+                            personalityMod >= 0 ? AppTheme.cyan : AppTheme.orange,
+                          ),
+
+                          // Atributos
+                          _analysisRow(
+                            'Yield de Atributos',
+                            '${(attrYield * 100).toStringAsFixed(0)}% media',
+                            attrYield >= 1.2
+                                ? AppTheme.green
+                                : attrYield >= 0.8
+                                    ? AppTheme.cyan
+                                    : AppTheme.orange,
+                          ),
+
+                          const SizedBox(height: 6),
+                          const Divider(color: AppTheme.border, height: 1),
+                          const SizedBox(height: 6),
+
+                          // Riscos de evento
+                          const TerminalText('RISCOS ESTIMADOS:',
+                              fontSize: 9, color: AppTheme.textDim),
+                          const SizedBox(height: 3),
+                          if (eventChances.containsKey('acidente'))
+                            _riskRow('Acidente', eventChances['acidente']!),
+                          if (eventChances.containsKey('doenca'))
+                            _riskRow('Doenca', eventChances['doenca']!),
+                          if (eventChances.containsKey('conflito') && eventChances['conflito']! > 0.05)
+                            _riskRow('Conflito Interno', eventChances['conflito']!),
+                          if (eventChances.containsKey('traicao') && eventChances['traicao']! > 0)
+                            _riskRow('Traicao', eventChances['traicao']!, isWarning: true),
+                          if (eventChances.containsKey('evento_raro'))
+                            _riskRow('Evento Raro (+)', eventChances['evento_raro']!, isPositive: true),
+
+                          // Alertas criticos
+                          if (hasSuspect) ...[
+                            const SizedBox(height: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppTheme.red.withValues(alpha: 0.12),
+                                border: Border.all(color: AppTheme.red.withValues(alpha: 0.5)),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: const Row(children: [
+                                Icon(Icons.warning, size: 11, color: AppTheme.red),
+                                SizedBox(width: 4),
+                                TerminalText('NPC SUSPEITO na expedicao! Risco de traicao elevado.',
+                                    fontSize: 8, color: AppTheme.red),
+                              ]),
+                            ),
+                          ],
+                          if (hasLazy) ...[
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppTheme.orange.withValues(alpha: 0.08),
+                                border: Border.all(color: AppTheme.orange.withValues(alpha: 0.4)),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: const Row(children: [
+                                Icon(Icons.bedtime, size: 11, color: AppTheme.orange),
+                                SizedBox(width: 4),
+                                TerminalText('NPC PREGUICOSO reduz eficiencia do grupo.',
+                                    fontSize: 8, color: AppTheme.orange),
+                              ]),
+                            ),
+                          ],
+                          if (allExhausted) ...[
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppTheme.red.withValues(alpha: 0.12),
+                                border: Border.all(color: AppTheme.red.withValues(alpha: 0.5)),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: const Row(children: [
+                                Icon(Icons.dangerous, size: 11, color: AppTheme.red),
+                                SizedBox(width: 4),
+                                TerminalText('TODOS EXAUSTOS! Rendimento drasticamente reduzido.',
+                                    fontSize: 8, color: AppTheme.red),
+                              ]),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 12),
+                  ] else ...[
+                    // Painel vazio (aguardando selecao)
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppTheme.border),
+                        borderRadius: BorderRadius.circular(5),
+                        color: AppTheme.bgElevated,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  TerminalText(
+                                      'Selecionados: 0 / Recomendado: ${floor.recommendedPartySize}',
+                                      fontSize: 10,
+                                      color: AppTheme.textPrimary),
+                                  TerminalText(
+                                      'Poder Necesssario: ${floor.recommendedPower.toStringAsFixed(1)}',
+                                      fontSize: 10,
+                                      color: AppTheme.textSecondary),
+                                ],
+                              ),
+                            ),
+                          ]),
+                          const SizedBox(height: 4),
+                          TerminalText(
+                            'Custo: ${gp.expeditionCostEstimate(1).toStringAsFixed(1)}/NPC | Estoque: ${gp.citadel.resources.food.toStringAsFixed(0)} comida',
+                            fontSize: 9,
+                            color: AppTheme.orange,
+                          ),
+                          const SizedBox(height: 4),
+                          const TerminalText(
+                            'Selecione ao menos 2 NPCs para ver a analise completa.',
+                            fontSize: 8,
+                            color: AppTheme.textDim,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
 
                   // Grupos
                   if (gp.groups.isNotEmpty) ...[
@@ -880,9 +1092,9 @@ class _TowerScreenState extends State<TowerScreen> {
                     const SizedBox(height: 12),
                   ],
 
-                  TerminalText('Habitantes (${selectedIds.length}):',
+                  TerminalText('Habitantes (${gp.aliveNpcs.length} vivos):',
                       fontSize: 10, color: AppTheme.textSecondary),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
 
                   ...gp.aliveNpcs.map((npc) {
                     final selected = selectedIds.contains(npc.id);
@@ -892,6 +1104,26 @@ class _TowerScreenState extends State<TowerScreen> {
                         npc.fatigue >= 70 ? AppTheme.red :
                         npc.fatigue >= 50 ? AppTheme.orange :
                         npc.fatigue >= 30 ? AppTheme.yellow : AppTheme.green;
+
+                    // Tags de personalidade relevantes
+                    final dangerTraits = npc.traits
+                        .where((t) =>
+                            t == PersonalityTrait.lazy ||
+                            t == PersonalityTrait.coward ||
+                            t == PersonalityTrait.treacherous ||
+                            t == PersonalityTrait.individualist)
+                        .map((t) => t.label)
+                        .toList();
+                    final goodTraits = npc.traits
+                        .where((t) =>
+                            t == PersonalityTrait.brave ||
+                            t == PersonalityTrait.loyal ||
+                            t == PersonalityTrait.ambitious ||
+                            t == PersonalityTrait.analytical ||
+                            t == PersonalityTrait.leader)
+                        .map((t) => t.label)
+                        .toList();
+
                     return GestureDetector(
                       onTap: isDisabled ? null : () => setModalState(() {
                         if (selected) {
@@ -901,8 +1133,8 @@ class _TowerScreenState extends State<TowerScreen> {
                         }
                       }),
                       child: Container(
-                        margin: const EdgeInsets.only(bottom: 3),
-                        padding: const EdgeInsets.all(6),
+                        margin: const EdgeInsets.only(bottom: 4),
+                        padding: const EdgeInsets.all(7),
                         decoration: BoxDecoration(
                           border: Border.all(
                               color: isDisabled
@@ -910,43 +1142,79 @@ class _TowerScreenState extends State<TowerScreen> {
                                   : selected
                                       ? AppTheme.orange
                                       : AppTheme.border),
-                          borderRadius: BorderRadius.circular(3),
+                          borderRadius: BorderRadius.circular(4),
                           color: isDisabled
                               ? AppTheme.red.withValues(alpha: 0.03)
                               : selected
-                                  ? AppTheme.orange.withValues(alpha: 0.05)
+                                  ? AppTheme.orange.withValues(alpha: 0.06)
                                   : null,
                         ),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                                isDisabled
-                                    ? Icons.block
-                                    : selected
-                                        ? Icons.check_box
-                                        : Icons.check_box_outline_blank,
-                                size: 14,
-                                color: isDisabled
-                                    ? AppTheme.red.withValues(alpha: 0.5)
-                                    : selected
-                                        ? AppTheme.orange
-                                        : AppTheme.textDim),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: TerminalText(
-                                '${npc.name} | ${npc.profession.label} | PWR:${power.toStringAsFixed(1)} | Leal:${npc.loyalty.toStringAsFixed(0)}${isDisabled ? " [INCAPACITADO]" : npc.isExhausted ? " [EXAUSTO]" : ""}',
-                                fontSize: 8,
-                                color: isDisabled ? AppTheme.red.withValues(alpha: 0.5) : AppTheme.textSecondary,
-                              ),
+                            Row(
+                              children: [
+                                Icon(
+                                    isDisabled
+                                        ? Icons.block
+                                        : selected
+                                            ? Icons.check_box
+                                            : Icons.check_box_outline_blank,
+                                    size: 14,
+                                    color: isDisabled
+                                        ? AppTheme.red.withValues(alpha: 0.5)
+                                        : selected
+                                            ? AppTheme.orange
+                                            : AppTheme.textDim),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: TerminalText(
+                                    '${npc.name} | ${npc.profession.label}',
+                                    fontSize: 9,
+                                    color: isDisabled
+                                        ? AppTheme.red.withValues(alpha: 0.5)
+                                        : selected
+                                            ? AppTheme.textPrimary
+                                            : AppTheme.textSecondary,
+                                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                ),
+                                if (npc.isSuspicious)
+                                  const Icon(Icons.warning, size: 12, color: AppTheme.red),
+                                const SizedBox(width: 4),
+                                TerminalText('F:${npc.fatigue.toStringAsFixed(0)}',
+                                    fontSize: 8, color: fatigueColor),
+                                const SizedBox(width: 6),
+                                TerminalText('PWR:${power.toStringAsFixed(1)}',
+                                    fontSize: 9, color: AppTheme.orange, fontWeight: FontWeight.bold),
+                              ],
                             ),
-                            if (npc.isSuspicious)
-                              const TerminalText(' [!]',
-                                  fontSize: 8, color: AppTheme.red),
-                            const SizedBox(width: 4),
-                            TerminalText('F:${npc.fatigue.toStringAsFixed(0)}',
-                                fontSize: 8, color: fatigueColor),
-                            TerminalText(' ${power.toStringAsFixed(1)}',
-                                fontSize: 9, color: AppTheme.orange),
+                            if (isDisabled)
+                              const Padding(
+                                padding: EdgeInsets.only(left: 20, top: 2),
+                                child: TerminalText('[INCAPACITADO - NAO PODE PARTICIPAR]',
+                                    fontSize: 7, color: AppTheme.red),
+                              )
+                            else if (npc.isExhausted)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 20, top: 2),
+                                child: TerminalText('[EXAUSTO - rendimento severamente reduzido]',
+                                    fontSize: 7, color: AppTheme.red),
+                              )
+                            else if (dangerTraits.isNotEmpty || goodTraits.isNotEmpty) ...[
+                              Padding(
+                                padding: const EdgeInsets.only(left: 20, top: 2),
+                                child: Wrap(
+                                  spacing: 4,
+                                  children: [
+                                    ...goodTraits.map((t) => TerminalText(
+                                        '[+$t]', fontSize: 7, color: AppTheme.green)),
+                                    ...dangerTraits.map((t) => TerminalText(
+                                        '[-$t]', fontSize: 7, color: AppTheme.orange)),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -954,20 +1222,53 @@ class _TowerScreenState extends State<TowerScreen> {
                   }),
 
                   const SizedBox(height: 16),
+
+                  // Alertas finais
                   if (powerPct < 60 && isReady)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 8),
-                      child: TerminalText(
-                          'AVISO: Poder abaixo de 60%. Risco altissimo!',
-                          fontSize: 9,
-                          color: AppTheme.red),
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.red.withValues(alpha: 0.1),
+                        border: Border.all(color: AppTheme.red),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Row(children: [
+                        Icon(Icons.dangerous, size: 14, color: AppTheme.red),
+                        SizedBox(width: 6),
+                        Expanded(child: TerminalText(
+                            'PODER INSUFICIENTE (<60%). Probabilidade de DERROTA muito alta. Mortes certas.',
+                            fontSize: 9, color: AppTheme.red)),
+                      ]),
                     ),
+                  if (!hasFood && isReady)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.red.withValues(alpha: 0.1),
+                        border: Border.all(color: AppTheme.red),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.no_food, size: 14, color: AppTheme.red),
+                        const SizedBox(width: 6),
+                        Expanded(child: TerminalText(
+                            'COMIDA INSUFICIENTE! Precisa: ${totalCost.toStringAsFixed(0)}, Tem: ${gp.citadel.resources.food.toStringAsFixed(0)}.',
+                            fontSize: 9, color: AppTheme.red)),
+                      ]),
+                    ),
+
                   TerminalButton(
-                    label: isReady ? 'ENVIAR' : 'SELECIONE 2+',
+                    label: !isReady
+                        ? 'SELECIONE 2+ NPCs'
+                        : !hasFood
+                            ? 'SEM COMIDA SUFICIENTE'
+                            : 'CONFIRMAR EXPEDICAO',
                     icon: Icons.rocket_launch,
                     expanded: true,
-                    color: AppTheme.orange,
-                    onPressed: isReady
+                    color: !isReady || !hasFood ? AppTheme.textDim : AppTheme.orange,
+                    onPressed: isReady && hasFood
                         ? () {
                             Navigator.pop(ctx);
                             _executeExpedition(
@@ -981,6 +1282,49 @@ class _TowerScreenState extends State<TowerScreen> {
           );
         },
       ),
+    );
+  }
+
+  Widget _analysisRow(String label, String value, Color valueColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(children: [
+        SizedBox(
+          width: 115,
+          child: TerminalText(label, fontSize: 9, color: AppTheme.textDim),
+        ),
+        Expanded(
+          child: TerminalText(value, fontSize: 9, color: valueColor, fontWeight: FontWeight.bold),
+        ),
+      ]),
+    );
+  }
+
+  Widget _riskRow(String label, double chance, {bool isWarning = false, bool isPositive = false}) {
+    final pct = (chance * 100).toStringAsFixed(0);
+    Color color;
+    if (isPositive) {
+      color = AppTheme.green;
+    } else if (isWarning || chance > 0.20) {
+      color = AppTheme.red;
+    } else if (chance > 0.10) {
+      color = AppTheme.orange;
+    } else {
+      color = AppTheme.yellow;
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Row(children: [
+        SizedBox(
+          width: 115,
+          child: TerminalText(
+            isPositive ? '  + $label' : '  - $label',
+            fontSize: 8,
+            color: AppTheme.textSecondary,
+          ),
+        ),
+        TerminalText('$pct%', fontSize: 8, color: color, fontWeight: FontWeight.bold),
+      ]),
     );
   }
 
@@ -1057,54 +1401,181 @@ class _TowerScreenState extends State<TowerScreen> {
     final floor = gp.nextFloor;
     if (floor == null) return;
 
-    final totalPower = partyIds
-        .map((id) => gp.allNpcs.firstWhere((n) => n.id == id))
-        .fold<double>(0.0, (sum, n) => sum + n.attributes.combatPower);
+    final partyNpcs = partyIds
+        .map((id) => gp.allNpcs.where((n) => n.id == id).firstOrNull)
+        .whereType<Npc>()
+        .toList();
+    final totalPower = partyNpcs.fold<double>(
+        0.0, (sum, n) => sum + n.attributes.combatPower);
     final powerPct = floor.recommendedPower > 0
         ? (totalPower / floor.recommendedPower * 100)
         : 0.0;
+    final totalCost = gp.expeditionCostEstimate(partyIds.length);
+    final isBoss = floor.number % 10 == 0;
+    final isElite = floor.number % 5 == 0 && !isBoss;
+
+    // Avaliacao de risco
+    String riskTag;
+    Color riskColor;
+    if (powerPct >= 110) {
+      riskTag = 'VANTAGEM';
+      riskColor = AppTheme.green;
+    } else if (powerPct >= 90) {
+      riskTag = 'EQUILIBRADO';
+      riskColor = AppTheme.cyan;
+    } else if (powerPct >= 70) {
+      riskTag = 'ARRISCADO';
+      riskColor = AppTheme.yellow;
+    } else if (powerPct >= 50) {
+      riskTag = 'PERIGOSO';
+      riskColor = AppTheme.orange;
+    } else {
+      riskTag = 'SUICIDA';
+      riskColor = AppTheme.red;
+    }
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.bgCard,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
-          side: const BorderSide(color: AppTheme.orange),
+          side: BorderSide(
+              color: isBoss ? AppTheme.red : isElite ? const Color(0xFFFF44FF) : AppTheme.orange,
+              width: isBoss ? 2 : 1),
         ),
-        title: const TerminalText('CONFIRMAR?',
-            fontSize: 14,
-            color: AppTheme.orange,
-            fontWeight: FontWeight.bold),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TerminalText('Andar ${floor.number}: ${floor.type.label}',
-                fontSize: 11, color: AppTheme.textPrimary),
-            TerminalText('${partyIds.length} habitantes',
-                fontSize: 10, color: AppTheme.textSecondary),
             TerminalText(
-                'Poder: ${totalPower.toStringAsFixed(1)} (${powerPct.toStringAsFixed(0)}%)',
-                fontSize: 10,
-                color: powerPct >= 100 ? AppTheme.green : AppTheme.red),
-            const SizedBox(height: 8),
-            const TerminalText('MORTE PERMANENTE.',
-                fontSize: 10,
-                color: AppTheme.red,
-                fontWeight: FontWeight.bold),
+              isBoss ? 'CONFRONTO FINAL - BOSS!' : isElite ? 'ANDAR ELITE' : 'CONFIRMAR EXPEDICAO',
+              fontSize: 13,
+              color: isBoss ? AppTheme.red : isElite ? const Color(0xFFFF44FF) : AppTheme.orange,
+              fontWeight: FontWeight.bold,
+            ),
+            TerminalText(
+              'Andar ${floor.number} | ${floor.type.label}',
+              fontSize: 10,
+              color: AppTheme.textSecondary,
+            ),
           ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // NPCs selecionados
+              TerminalText('Enviando ${partyNpcs.length} NPC${partyNpcs.length > 1 ? "s" : ""}:',
+                  fontSize: 9, color: AppTheme.textDim),
+              const SizedBox(height: 2),
+              ...partyNpcs.take(5).map((npc) => Padding(
+                padding: const EdgeInsets.only(left: 8, bottom: 1),
+                child: TerminalText(
+                  '> ${npc.name} (PWR:${npc.attributes.combatPower.toStringAsFixed(1)}, F:${npc.fatigue.toStringAsFixed(0)})',
+                  fontSize: 8,
+                  color: npc.isExhausted ? AppTheme.orange : AppTheme.textSecondary,
+                ),
+              )),
+              if (partyNpcs.length > 5)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: TerminalText('... e mais ${partyNpcs.length - 5}',
+                      fontSize: 8, color: AppTheme.textDim),
+                ),
+              const SizedBox(height: 10),
+
+              // Custo fixo
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.orange.withValues(alpha: 0.06),
+                  border: Border.all(color: AppTheme.orange.withValues(alpha: 0.4)),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.restaurant, size: 12, color: AppTheme.orange),
+                  const SizedBox(width: 6),
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    TerminalText(
+                      'CUSTO FIXO: ${totalCost.toStringAsFixed(0)} comida',
+                      fontSize: 9,
+                      color: AppTheme.orange,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    TerminalText(
+                      'Pago AGORA independente do resultado',
+                      fontSize: 7,
+                      color: AppTheme.textDim,
+                    ),
+                  ]),
+                ]),
+              ),
+              const SizedBox(height: 8),
+
+              // Avaliacao de risco
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: riskColor.withValues(alpha: 0.06),
+                  border: Border.all(color: riskColor.withValues(alpha: 0.5)),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: Row(children: [
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        TerminalText('RISCO: ', fontSize: 9, color: AppTheme.textDim),
+                        TerminalText(riskTag, fontSize: 10, color: riskColor, fontWeight: FontWeight.bold),
+                      ]),
+                      TerminalText(
+                        'Poder: ${totalPower.toStringAsFixed(1)} / ${floor.recommendedPower.toStringAsFixed(1)} (${powerPct.toStringAsFixed(0)}%)',
+                        fontSize: 8, color: AppTheme.textSecondary,
+                      ),
+                      TerminalText(
+                        'Mortalidade base: ${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
+                        fontSize: 8, color: AppTheme.red,
+                      ),
+                    ],
+                  )),
+                ]),
+              ),
+              const SizedBox(height: 10),
+
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.red.withValues(alpha: 0.10),
+                  border: Border.all(color: AppTheme.red.withValues(alpha: 0.6)),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: const Row(children: [
+                  Icon(Icons.close, size: 14, color: AppTheme.red),
+                  SizedBox(width: 6),
+                  Expanded(child: TerminalText(
+                    'MORTE PERMANENTE. Nao ha retorno.',
+                    fontSize: 9,
+                    color: AppTheme.red,
+                    fontWeight: FontWeight.bold,
+                  )),
+                ]),
+              ),
+            ],
+          ),
         ),
         actions: [
           TerminalButton(
-            label: 'CANCELAR',
+            label: 'RECUAR',
             color: AppTheme.textDim,
             onPressed: () => Navigator.pop(ctx),
           ),
           TerminalButton(
-            label: 'ENVIAR',
+            label: isBoss ? 'ENFRENTAR BOSS' : 'ENVIAR',
             icon: Icons.rocket_launch,
-            color: AppTheme.orange,
+            color: isBoss ? AppTheme.red : AppTheme.orange,
             onPressed: () {
               Navigator.pop(ctx);
               final result = gp.sendExpedition(partyIds);

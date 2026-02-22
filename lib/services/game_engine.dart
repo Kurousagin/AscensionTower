@@ -131,6 +131,7 @@ class GameEngine {
 
     _processResourceProduction();
     _processResourceConsumption();
+    _processFatigueRecovery();
     _processRelationships();
     _processMentalHealth();
     _processLoyalty();
@@ -146,7 +147,18 @@ class GameEngine {
     _processTavernEvents();
     _processEmergencySummon();
 
-    citadel.resources.clampAll();
+    // Clamp com capacidade do armazem — excedente e PERDIDO
+    final overflow = citadel.resources.clampToCapacity(citadel.storageLevel);
+    if (overflow.totalLost > 0) {
+      _addEvent(GameEventType.resourceLoss, 'Armazem Cheio!',
+          'Recursos excedentes foram perdidos por falta de espaco: '
+          '${overflow.food > 0 ? "Comida:${overflow.food.toStringAsFixed(0)} " : ""}'
+          '${overflow.wood > 0 ? "Madeira:${overflow.wood.toStringAsFixed(0)} " : ""}'
+          '${overflow.stone > 0 ? "Pedra:${overflow.stone.toStringAsFixed(0)} " : ""}'
+          '${overflow.iron > 0 ? "Ferro:${overflow.iron.toStringAsFixed(0)} " : ""}'
+          '${overflow.knowledge > 0 ? "Conhec.:${overflow.knowledge.toStringAsFixed(0)}" : ""}'
+          '\nAmplie o Armazem para evitar perdas.');
+    }
 
     for (final npc in aliveNpcs) {
       npc.daysSurvived++;
@@ -203,6 +215,60 @@ class GameEngine {
         npc.loyalty -= 2; // Fome reduz lealdade
         if (_rng.nextDouble() < 0.05) {
           _killNpc(npc, 'Morreu de fome');
+        }
+      }
+    }
+  }
+
+  // ==================== RECUPERACAO DE FADIGA ====================
+
+  void _processFatigueRecovery() {
+    for (final npc in aliveNpcs) {
+      // Base: 15 + (RES/15 * 10)
+      double recovery = 15.0 + (npc.attributes.endurance / 15.0) * 10.0;
+
+      // Enfermaria +5
+      if (citadel.hasBuilding(BuildingType.infirmary)) recovery += 5.0;
+      // Templo +3
+      if (citadel.hasBuilding(BuildingType.temple)) recovery += 3.0;
+      // Parceiro +2
+      if (npc.partnerId != null) {
+        final partner = npcs.where((n) => n.id == npc.partnerId && n.alive).firstOrNull;
+        if (partner != null) recovery += 2.0;
+      }
+      // Grupo +1
+      if (npc.groupId != null) recovery += 1.0;
+
+      // Se fez expedicao hoje, apenas 30% da recuperacao
+      if (npc.lastExpeditionDay == state.currentDay) {
+        recovery *= 0.3;
+      }
+
+      npc.fatigue = (npc.fatigue - recovery).clamp(0.0, 100.0);
+
+      // === CONSEQUENCIAS DE FADIGA ALTA ===
+      if (npc.fatigue >= 90) {
+        // Incapacitado: consequencias graves
+        npc.attributes.mentalStability -= 5;
+        npc.loyalty -= 1;
+        npc.profession = Profession.idle;
+        // 8% chance de colapso fisico
+        if (_rng.nextDouble() < 0.08) {
+          npc.attributes.endurance -= 0.5;
+          npc.traumas.add('Colapso fisico por exaustao no dia ${state.currentDay}');
+          _addEvent(GameEventType.crisis, 'Colapso Fisico!',
+              '${npc.name} colapsou por exaustao extrema. Resistencia permanentemente reduzida.',
+              involvedIds: [npc.id], isMajor: true);
+        }
+      } else if (npc.fatigue >= 70) {
+        // Exausto: consequencias moderadas
+        npc.attributes.mentalStability -= 3;
+        npc.loyalty -= 0.5;
+        // Alerta a cada 3 dias
+        if (state.currentDay % 3 == 0) {
+          _addEvent(GameEventType.crisis, 'NPC Exausto',
+              '${npc.name} esta exausto(a). Precisa de descanso urgente.',
+              involvedIds: [npc.id]);
         }
       }
     }
@@ -510,10 +576,311 @@ class GameEngine {
     reexploreFloor(floor.number, partyIds);
   }
 
-  /// Re-explorar um andar conquistado para coletar recursos
+  // ==================== SISTEMA DE EXPEDICAO HARDCORE ====================
+  // Custo fixo por NPC, recompensa escalavel, eventos aleatorios,
+  // personalidade influencia resultado, sinergia de grupo importa.
+  // =====================================================================
+
+  /// Custo base de comida por NPC em expedicao
+  /// Tier 1: 4.0 | Tier 5: 8.0 | Tier 10: 13.0
+  double expeditionCostPerNpc(int floorNumber) {
+    final tier = ((floorNumber - 1) ~/ 10) + 1;
+    return 3.0 + tier * 1.0; // Custo mais significativo para punicao real
+  }
+
+  /// Custo base de comida por NPC em re-exploracao
+  /// Tier 1: 2.5 | Tier 5: 5.0 | Tier 10: 8.0
+  double reexploreCostPerNpc(int floorNumber) {
+    final tier = ((floorNumber - 1) ~/ 10) + 1;
+    return 2.0 + tier * 0.6;
+  }
+
+  /// Preview de sinergia para UI (exposto publicamente)
+  double previewGroupSynergy(List<String> partyIds) {
+    final party = partyIds
+        .map((id) => npcs.where((n) => n.id == id && n.alive).firstOrNull)
+        .whereType<Npc>()
+        .toList();
+    if (party.isEmpty) return 0.0;
+    return _calculateGroupSynergy(party);
+  }
+
+  /// Preview de modificador de personalidade medio para UI
+  double previewPartyPersonalityMod(List<String> partyIds) {
+    final party = partyIds
+        .map((id) => npcs.where((n) => n.id == id && n.alive).firstOrNull)
+        .whereType<Npc>()
+        .toList();
+    if (party.isEmpty) return 0.0;
+    return party.fold<double>(0, (s, n) => s + _personalityRewardMod(n)) / party.length;
+  }
+
+  /// Preview de eficiencia de atributos medio para UI
+  double previewPartyAttributeYield(List<String> partyIds, FloorType floorType) {
+    final party = partyIds
+        .map((id) => npcs.where((n) => n.id == id && n.alive).firstOrNull)
+        .whereType<Npc>()
+        .toList();
+    if (party.isEmpty) return 0.0;
+    return party.fold<double>(0, (s, n) => s + _attributeYield(n, floorType)) / party.length;
+  }
+
+  /// Calcula chance estimada de evento negativo para UI
+  Map<String, double> previewEventChances(List<String> partyIds, TowerFloor floor) {
+    final party = partyIds
+        .map((id) => npcs.where((n) => n.id == id && n.alive).firstOrNull)
+        .whereType<Npc>()
+        .toList();
+    if (party.isEmpty) return {};
+    final tier = floor.tier;
+    final avgEndurance = party.fold<double>(0, (s, n) => s + n.attributes.endurance) / party.length;
+    final cautiousCount = party.where((n) => n.traits.contains(PersonalityTrait.cautious)).length;
+    final ambitiousCount = party.where((n) => n.traits.contains(PersonalityTrait.ambitious)).length;
+    final avgLuck = party.fold<double>(0, (s, n) => s + n.attributes.luck) / party.length;
+    return {
+      'acidente': (0.12 + tier * 0.01 - avgEndurance * 0.005 - cautiousCount * 0.02 + ambitiousCount * 0.02).clamp(0.02, 0.30),
+      'doenca': (0.06 + tier * 0.005).clamp(0.01, 0.20),
+      'conflito': party.length >= 2 ? (0.08 + party.where((n) => n.traits.contains(PersonalityTrait.aggressive)).length * 0.05).clamp(0.02, 0.35) : 0.0,
+      'traicao': party.any((n) => (n.traits.contains(PersonalityTrait.treacherous) || n.origin.isDarkOrigin) && n.loyalty < 40) ? 0.08 : 0.0,
+      'evento_raro': (0.05 + avgLuck * 0.005).clamp(0.03, 0.15),
+    };
+  }
+
+  /// Calcula sinergia do grupo (0.0 a 1.0)
+  double _calculateGroupSynergy(List<Npc> party) {
+    if (party.length <= 1) return 0.0;
+    double synergy = 0.0;
+
+    // Membros do mesmo grupo = bonus alto
+    final groupIds = party.where((n) => n.groupId != null).map((n) => n.groupId!).toSet();
+    if (groupIds.length == 1 && party.every((n) => n.groupId == groupIds.first)) {
+      // Todos do mesmo grupo
+      final group = groups.where((g) => g.id == groupIds.first).firstOrNull;
+      if (group != null) {
+        synergy += (group.cohesion / 100.0) * 0.3; // Ate +0.3 por coesao
+      }
+      synergy += 0.1; // bonus base por serem do mesmo grupo
+    }
+
+    // Relacoes entre membros
+    int positiveRels = 0;
+    int negativeRels = 0;
+    for (final npc in party) {
+      for (final other in party) {
+        if (npc.id == other.id) continue;
+        final rel = npc.relationships.where((r) => r.targetId == other.id).firstOrNull;
+        if (rel != null) {
+          if (rel.affinity > 0.3) positiveRels++;
+          if (rel.affinity < -0.2) negativeRels++;
+        }
+      }
+    }
+    synergy += (positiveRels * 0.03).clamp(0.0, 0.2);
+    synergy -= (negativeRels * 0.05).clamp(0.0, 0.3);
+
+    // Traits que afetam sinergia
+    final loyalCount = party.where((n) => n.traits.contains(PersonalityTrait.loyal)).length;
+    final lonerCount = party.where((n) => n.traits.contains(PersonalityTrait.loner)).length;
+    final leaderCount = party.where((n) => n.traits.contains(PersonalityTrait.leader)).length;
+    final individualistCount = party.where((n) => n.traits.contains(PersonalityTrait.individualist)).length;
+    synergy += loyalCount * 0.05;
+    synergy -= lonerCount * 0.08;
+    synergy -= individualistCount * 0.10; // Individualistas reduzem bonus de grupo
+    if (leaderCount == 1) synergy += 0.1; // 1 lider e ideal
+    if (leaderCount > 1) synergy -= 0.05; // lideres demais conflitam
+
+    // Talento Natural Leader
+    if (party.any((n) => n.talentDiscovered && n.hiddenTalent == HiddenTalent.naturalLeader)) {
+      synergy += 0.15;
+    }
+
+    return synergy.clamp(-0.3, 0.6);
+  }
+
+  /// Calcula modificador de personalidade para recompensa
+  double _personalityRewardMod(Npc npc) {
+    double mod = 0.0;
+    // Cauteloso: menor falha, menor teto
+    if (npc.traits.contains(PersonalityTrait.cautious)) mod -= 0.12;
+    if (npc.traits.contains(PersonalityTrait.calm)) mod -= 0.05;
+    // Ambicioso/impulsivo: maior teto, maior risco
+    if (npc.traits.contains(PersonalityTrait.ambitious)) mod += 0.15;
+    if (npc.traits.contains(PersonalityTrait.impulsive)) mod += 0.08;
+    if (npc.traits.contains(PersonalityTrait.brave)) mod += 0.05;
+    // Preguicoso/covarde: reduz eficiencia
+    if (npc.traits.contains(PersonalityTrait.lazy)) mod -= 0.15;
+    if (npc.traits.contains(PersonalityTrait.coward)) mod -= 0.10;
+    if (npc.traits.contains(PersonalityTrait.pessimist)) mod -= 0.05;
+    // Analitico: bonus estavel
+    if (npc.traits.contains(PersonalityTrait.analytical)) mod += 0.06;
+    if (npc.traits.contains(PersonalityTrait.pragmatic)) mod += 0.04;
+    // Criativo: surpresas
+    if (npc.traits.contains(PersonalityTrait.creative)) mod += 0.03;
+    // Individualista: menos eficaz em grupo
+    if (npc.traits.contains(PersonalityTrait.individualist)) mod -= 0.05;
+    return mod;
+  }
+
+  /// Calcula rendimento de coleta baseado em atributos
+  /// Forca: rendimento bruto | INT: reduz desperdicio | RES: resistencia a penalidades
+  /// Sorte: eventos positivos | AGI: eficiencia geral
+  double _attributeYield(Npc npc, FloorType floorType) {
+    double yield = 1.0;
+    // Forca: rendimento bruto de coleta (+4% por ponto acima de 5)
+    yield += (npc.attributes.strength - 5) * 0.05;
+    // Inteligencia: reduz desperdicio e penalidades (+3% por ponto)
+    yield += (npc.attributes.intelligence - 5) * 0.04;
+    // Resistencia: resistencia a fadiga e acidentes (+2.5% por ponto)
+    yield += (npc.attributes.endurance - 5) * 0.025;
+    // Agilidade: eficiencia geral de coleta (+2% por ponto)
+    yield += (npc.attributes.agility - 5) * 0.025;
+    // Sorte: bonus aleatorio de coleta (+2% por ponto)
+    yield += (npc.attributes.luck - 5) * 0.025;
+    // Fadiga penaliza de forma mais severa
+    yield -= npc.fatigue * 0.004; // Exausto (100) = -40%
+    // Preguicoso: severa penalidade de rendimento
+    if (npc.traits.contains(PersonalityTrait.lazy)) yield *= 0.80;
+    // Tipo do andar favorece atributos especificos
+    switch (floorType) {
+      case FloorType.combat:
+      case FloorType.gauntlet:
+        // Andares de combate favorecem FORCA acima de tudo
+        yield += npc.attributes.strength * 0.025;
+        break;
+      case FloorType.survival:
+      case FloorType.hunt:
+        // Sobrevivencia: RESISTENCIA e crucial
+        yield += npc.attributes.endurance * 0.025;
+        yield += npc.attributes.agility * 0.01;
+        break;
+      case FloorType.strategic:
+      case FloorType.puzzle:
+        // Estrategia: INTELIGENCIA domina
+        yield += npc.attributes.intelligence * 0.035;
+        break;
+      case FloorType.mystery:
+        // Misterio: INTELIGENCIA + SORTE
+        yield += npc.attributes.intelligence * 0.02;
+        yield += npc.attributes.luck * 0.025;
+        break;
+      default:
+        // Andares mistos: mediana dos atributos
+        yield += (npc.attributes.strength + npc.attributes.intelligence) * 0.01;
+        break;
+    }
+    return yield.clamp(0.2, 3.5); // Pode ser muito ruim com atributos baixos
+  }
+
+  /// Processa eventos aleatorios durante expedicao/re-exploracao
+  /// Retorna lista de strings de log narrativo
+  List<String> _processExpeditionEvents(List<Npc> party, TowerFloor floor, FloorExplorationResult result) {
+    final logs = <String>[];
+    final tier = floor.tier;
+
+    // === ACIDENTE (perda extra de comida) ===
+    // Resistencia do grupo reduz chance; Cautelosos reduzem ainda mais
+    final avgEndurance = party.fold<double>(0, (s, n) => s + n.attributes.endurance) / party.length;
+    final cautiousCount = party.where((n) => n.traits.contains(PersonalityTrait.cautious)).length;
+    final ambitiousCount = party.where((n) => n.traits.contains(PersonalityTrait.ambitious)).length;
+    final accidentChance = (0.12 + tier * 0.01 - avgEndurance * 0.005 - cautiousCount * 0.02 + ambitiousCount * 0.02).clamp(0.02, 0.30);
+    if (_rng.nextDouble() < accidentChance) {
+      final victim = party[_rng.nextInt(party.length)];
+      // Resistencia reduz gravidade
+      final severity = (1.0 - victim.attributes.endurance * 0.06).clamp(0.3, 1.0);
+      final foodLost = (3 + tier * 1.5) * severity;
+      citadel.resources.food -= foodLost;
+      victim.attributes.endurance -= 0.3 * severity;
+      victim.fatigue += 8 * severity;
+      logs.add('[ACIDENTE] ${victim.name} sofreu um acidente! -${foodLost.toStringAsFixed(0)} comida extra.');
+      result.expeditionEvents.add('Acidente: ${victim.name}');
+    }
+
+    // === DOENCA (NPC debilitado) ===
+    final diseaseChance = 0.06 + tier * 0.005;
+    if (_rng.nextDouble() < diseaseChance) {
+      final victim = party.where((n) => n.alive).toList();
+      if (victim.isNotEmpty) {
+        final sick = victim[_rng.nextInt(victim.length)];
+        sick.attributes.endurance -= 1.0;
+        sick.attributes.strength -= 0.5;
+        sick.attributes.mentalStability -= 5;
+        sick.fatigue += 20;
+        sick.traumas.add('Doenca contraida no Andar ${floor.number}, dia ${state.currentDay}');
+        logs.add('[DOENCA] ${sick.name} contraiu uma doenca! Debilitado severamente.');
+        result.expeditionEvents.add('Doenca: ${sick.name}');
+      }
+    }
+
+    // === CONFLITO INTERNO (reduz rendimento) ===
+    if (party.length >= 2) {
+      double conflictChance = 0.08;
+      final aggressives = party.where((n) => n.traits.contains(PersonalityTrait.aggressive)).length;
+      final loners = party.where((n) => n.traits.contains(PersonalityTrait.loner)).length;
+      conflictChance += aggressives * 0.05 + loners * 0.03;
+      if (_rng.nextDouble() < conflictChance) {
+        // Reduz recompensa em 20-40%
+        final penalty = 0.2 + _rng.nextDouble() * 0.2;
+        for (final entry in result.resourcesGained.keys.toList()) {
+          result.resourcesGained[entry] = (result.resourcesGained[entry] ?? 0) * (1 - penalty);
+        }
+        citadel.resources.morale -= 2;
+        logs.add('[CONFLITO] Briga interna reduziu a eficiencia em ${(penalty * 100).toStringAsFixed(0)}%!');
+        result.expeditionEvents.add('Conflito interno');
+      }
+    }
+
+    // === TRAICAO (dependente de personalidade) ===
+    final traitors = party.where((n) =>
+        n.alive &&
+        (n.traits.contains(PersonalityTrait.treacherous) || n.origin.isDarkOrigin) &&
+        n.loyalty < 40).toList();
+    for (final traitor in traitors) {
+      final betrayChance = 0.04 + (traitor.calculatedBetrayalRisk * 0.001);
+      if (_rng.nextDouble() < betrayChance) {
+        // Trai: rouba parte dos recursos
+        final stolenPct = 0.15 + _rng.nextDouble() * 0.25;
+        for (final entry in result.resourcesGained.keys.toList()) {
+          final stolen = (result.resourcesGained[entry] ?? 0) * stolenPct;
+          result.resourcesGained[entry] = (result.resourcesGained[entry] ?? 0) - stolen;
+        }
+        traitor.fame -= 8;
+        traitor.loyalty -= 5;
+        traitor.isSuspicious = true;
+        citadel.resources.morale -= 4;
+        logs.add('[TRAICAO] ${traitor.name} roubou ${(stolenPct * 100).toStringAsFixed(0)}% dos recursos coletados!');
+        result.expeditionEvents.add('Traicao: ${traitor.name}');
+        break; // So uma traicao por expedicao
+      }
+    }
+
+    // === EVENTO RARO POSITIVO (dobro de recompensa) ===
+    // Sorte do grupo aumenta chance de evento raro
+    final avgLuck = party.where((n) => n.alive).fold<double>(0, (s, n) => s + n.attributes.luck) / party.where((n) => n.alive).length.clamp(1, 99);
+    final rareChance = (0.05 + avgLuck * 0.005).clamp(0.03, 0.15);
+    if (_rng.nextDouble() < rareChance && result.expeditionEvents.where((e) => e.startsWith('Traicao')).isEmpty) {
+      for (final entry in result.resourcesGained.keys.toList()) {
+        result.resourcesGained[entry] = (result.resourcesGained[entry] ?? 0) * 2.0;
+      }
+      citadel.resources.morale += 3;
+      logs.add('[RARO] Descoberta excepcional! Recompensa DOBRADA!');
+      result.expeditionEvents.add('Evento raro: recompensa dobrada');
+      // Chance de revelar talento
+      final candidates = party.where((n) => n.alive && !n.talentDiscovered && n.hiddenTalent != HiddenTalent.none).toList();
+      if (candidates.isNotEmpty && _rng.nextDouble() < 0.3) {
+        final lucky = candidates[_rng.nextInt(candidates.length)];
+        lucky.talentDiscovered = true;
+        logs.add('[TALENTO] ${lucky.name} revelou ${lucky.hiddenTalent.label}!');
+      }
+    }
+
+    return logs;
+  }
+
+  /// Re-explorar um andar conquistado para coletar recursos (SISTEMA HARDCORE)
   FloorExplorationResult reexploreFloor(int floorNumber, List<String> partyIds) {
     final floor = floors.firstWhere((f) => f.number == floorNumber);
     final party = partyIds.map((id) => npcs.firstWhere((n) => n.id == id)).toList();
+    final tier = floor.tier;
 
     final result = FloorExplorationResult(
       floorNumber: floorNumber,
@@ -521,15 +888,67 @@ class GameEngine {
       partyIds: partyIds,
     );
 
+    // === CUSTO FIXO POR NPC (pago ANTES, independente do resultado) ===
+    final costPerNpc = reexploreCostPerNpc(floorNumber);
+    final totalCost = party.length * costPerNpc;
+    result.foodCost = totalCost;
+    citadel.resources.food -= totalCost;
+
     floor.timesReexplored++;
 
-    // Coletar recursos baseados no bioma do andar
-    final resources = floor.farmableResources;
-    final efficiency = 0.5 + (_rng.nextDouble() * 0.5);
+    // === FADIGA ===
+    for (final npc in party) {
+      final baseFatigue = 15.0 + tier * 1.0;
+      npc.fatigue = (npc.fatigue + baseFatigue).clamp(0.0, 100.0);
+      // Consecutividade
+      if (npc.lastExpeditionDay == state.currentDay) {
+        npc.consecutiveExpeditions++;
+        npc.fatigue = (npc.fatigue + 8.0 + npc.consecutiveExpeditions * 2).clamp(0.0, 100.0);
+      } else {
+        npc.consecutiveExpeditions = 1;
+      }
+      npc.lastExpeditionDay = state.currentDay;
+    }
 
-    for (final entry in resources.entries) {
-      final amount = entry.value * efficiency;
-      result.resourcesGained[entry.key] = amount;
+    // === CALCULO DE RECOMPENSA ===
+    final synergy = _calculateGroupSynergy(party);
+    final baseResources = floor.farmableResources;
+
+    // Recompensa por NPC individual, escalonada por atributos
+    for (final entry in baseResources.entries) {
+      double totalYield = 0;
+      for (final npc in party) {
+        final attrYield = _attributeYield(npc, floor.type);
+        final persYield = 1.0 + _personalityRewardMod(npc);
+        // Eficiencia individual = base * atributo * personalidade
+        totalYield += entry.value * attrYield * persYield;
+      }
+      // Aplicar sinergia de grupo ao total
+      totalYield *= (1.0 + synergy);
+      // Variancia aleatoria (-15% a +15%)
+      totalYield *= (0.85 + _rng.nextDouble() * 0.30);
+      // Diminishing returns por repeticao
+      totalYield *= (1.0 / (1.0 + floor.timesReexplored * 0.05));
+
+      // REGRA HARDCORE: Recompensa NUNCA menor que consumo base de 1 NPC
+      // Para 1 NPC: garante retorno minimo viavel (nao e 0 util)
+      // Para grupos grandes: composicao ruim pode dar PREJUIZO (intencional)
+      final minReward = costPerNpc * 0.5; // 50% do custo por NPC = minimo para 1 NPC
+      if (party.length == 1) {
+        // 1 NPC sozinho sempre tem retorno > custo base (nunca totalmente inutil)
+        totalYield = totalYield.clamp(minReward, double.infinity);
+      }
+      // Grupos com composicao ruim: sem garantia de lucro (design intencional)
+
+      result.resourcesGained[entry.key] = totalYield;
+    }
+
+    // === EVENTOS ALEATORIOS ===
+    final eventLogs = _processExpeditionEvents(party, floor, result);
+
+    // Aplicar recursos ao estoque
+    for (final entry in result.resourcesGained.entries) {
+      final amount = entry.value;
       switch (entry.key) {
         case 'food': citadel.resources.food += amount; break;
         case 'wood': citadel.resources.wood += amount; break;
@@ -539,10 +958,9 @@ class GameEngine {
       }
     }
 
-    // Risco de ameaca oculta reaparecendo
+    // === AMEACA REATIVADA ===
     final threatChance = 0.05 + (floor.timesReexplored * 0.02);
     if (_rng.nextDouble() < threatChance) {
-      // Ameaca ativada!
       for (final npc in party) {
         if (_rng.nextDouble() < floor.scaledMortality * 0.3) {
           _killNpc(npc, 'Morreu em ameaca reativada no Andar ${floor.number}');
@@ -552,32 +970,19 @@ class GameEngine {
           npc.attributes.endurance -= 0.2;
         }
       }
-
-      final narrativeText = 'AMEACA REATIVADA! Novas criaturas surgiram no Andar ${floor.number}! '
-          '${result.casualties.length} baixas. Os sobreviventes voltaram com recursos mas abalados.';
-
-      _addEvent(GameEventType.floorReexplore, 'Re-Exploracao Perigosa - Andar $floorNumber',
-          narrativeText,
+      _addEvent(GameEventType.floorReexplore, 'Re-Exploracao PERIGOSA - Andar $floorNumber',
+          'AMEACA REATIVADA! ${result.casualties.length} baixas. '
+          '${eventLogs.isNotEmpty ? eventLogs.join(' | ') : 'Sobreviventes abalados.'}',
           involvedIds: partyIds, isMajor: result.casualties.isNotEmpty);
     } else {
-      // Sucesso tranquilo + chance de descoberta rara
-      if (_rng.nextDouble() < 0.1) {
-        result.discoveries.add('Recurso raro encontrado no Andar $floorNumber');
-        citadel.resources.knowledge += 5;
-      }
-
       final resStr = result.resourcesGained.entries
           .map((e) => '${e.key}: +${e.value.toStringAsFixed(0)}')
           .join(', ');
-
       _addEvent(GameEventType.floorReexplore, 'Re-Exploracao - Andar $floorNumber',
-          'Grupo re-explorou o Andar $floorNumber. Recursos: $resStr. '
-          'Fauna: ${floor.biome}',
+          'Custo: ${totalCost.toStringAsFixed(0)} comida. Recursos: $resStr. Sinergia: ${(synergy * 100).toStringAsFixed(0)}%. '
+          '${eventLogs.isNotEmpty ? eventLogs.join(' | ') : ''}',
           involvedIds: partyIds);
     }
-
-    // Custo em comida
-    citadel.resources.food -= party.length * 2;
 
     // Fama para participantes
     for (final npc in party.where((n) => n.alive)) {
@@ -1213,12 +1618,31 @@ class GameEngine {
     final party = partyIds.map((id) => npcs.firstWhere((n) => n.id == id)).toList();
     final challenge = TowerChallenge(floor: floor, partyIds: partyIds);
 
+    // === CUSTO FIXO POR NPC (pago ANTES, independente do resultado) ===
+    final costPerNpc = expeditionCostPerNpc(floor.number);
+    final totalCost = party.length * costPerNpc;
+    citadel.resources.food -= totalCost;
+
     challenge.log.add('=== ANDAR ${floor.number}: ${floor.type.label.toUpperCase()} ===');
     challenge.log.add(floor.description);
     if (floor.specialCondition.isNotEmpty) {
       challenge.log.add('> Condicao: ${floor.specialCondition}');
     }
+    challenge.log.add('Custo: ${totalCost.toStringAsFixed(0)} comida (${costPerNpc.toStringAsFixed(1)}/NPC x ${party.length})');
     challenge.log.add('');
+
+    // === FADIGA POR EXPEDICAO ===
+    for (final npc in party) {
+      final baseFatigue = 20.0 + floor.tier * 1.5;
+      npc.fatigue = (npc.fatigue + baseFatigue).clamp(0.0, 100.0);
+      if (npc.lastExpeditionDay == state.currentDay) {
+        npc.consecutiveExpeditions++;
+        npc.fatigue = (npc.fatigue + 10.0 + npc.consecutiveExpeditions * 2).clamp(0.0, 100.0);
+      } else {
+        npc.consecutiveExpeditions = 1;
+      }
+      npc.lastExpeditionDay = state.currentDay;
+    }
 
     double partyPower = 0;
     for (final npc in party) {
@@ -1684,6 +2108,39 @@ class GameEngine {
     // Evolucao aumenta lealdade
     for (final npc in aliveNpcs) { npc.loyalty += 3; }
 
+    return true;
+  }
+
+  /// Upgrade do armazem (jogador ordena)
+  bool upgradeStorage() {
+    final next = citadel.storageLevel.nextLevel;
+    if (next == null) return false;
+    final cost = citadel.storageLevel.upgradeCost;
+    if (!citadel.resources.canAfford(cost)) return false;
+    // Verificar tier da torre necessario
+    final currentTier = ((state.highestFloorCleared) ~/ 10) + (state.highestFloorCleared % 10 > 0 ? 1 : 0);
+    if (currentTier < next.requiredTier) return false;
+
+    citadel.resources.spend(cost);
+    final oldLevel = citadel.storageLevel;
+    citadel.storageLevel = next;
+
+    _addEvent(GameEventType.upgrade, 'Armazem Melhorado!',
+        'Armazem evoluiu de ${oldLevel.label} para ${next.label}! '
+        'Capacidade por recurso: ${next.isInfinite ? "INFINITA" : next.capacity.toStringAsFixed(0)}.',
+        isMajor: true);
+
+    return true;
+  }
+
+  /// Verifica se pode fazer upgrade no armazem
+  bool canUpgradeStorage() {
+    final next = citadel.storageLevel.nextLevel;
+    if (next == null) return false;
+    final cost = citadel.storageLevel.upgradeCost;
+    if (!citadel.resources.canAfford(cost)) return false;
+    final currentTier = ((state.highestFloorCleared) ~/ 10) + (state.highestFloorCleared % 10 > 0 ? 1 : 0);
+    if (currentTier < next.requiredTier) return false;
     return true;
   }
 

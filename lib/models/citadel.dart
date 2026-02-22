@@ -1,3 +1,102 @@
+// ═══════════════════════════════════════════════════════════════
+// SISTEMA DE ARMAZEM — Capacidade limitada, excedente e perdido
+// Nivel 1: ~30 | Nivel 2: ~60 | Nivel 3: ~120 | Espacial: infinito
+// ═══════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════
+// REGRAS DE ARMAZEM (SISTEMA HARDCORE)
+// ═══════════════════════════════════════════════════════════════
+// - Nao e possivel armazenar acima da capacidade maxima
+// - Excedente e PERDIDO sem excecao
+// - O UNICO meio de expandir e construindo/melhorando o armazem
+// - Nivel 0 (Sem Armazem): cap 30
+// - Nivel 1 (Basico): cap 60
+// - Nivel 2 (Expandido): cap 120
+// - Nivel 3 (Grande): cap 250
+// - Nivel Final (Espacial): infinito (muito dificil de alcancar)
+// ═══════════════════════════════════════════════════════════════
+
+enum StorageLevel {
+  none,       // Sem armazem: capacidade base 30
+  basic,      // Armazem Basico: capacidade 60
+  expanded,   // Armazem Expandido: capacidade 120
+  grand,      // Grande Armazem: capacidade 250
+  spatial,    // Armazem Espacial: capacidade infinita (endgame)
+}
+
+extension StorageLevelExt on StorageLevel {
+  String get label {
+    switch (this) {
+      case StorageLevel.none: return 'Sem Armazem';
+      case StorageLevel.basic: return 'Armazem Basico';
+      case StorageLevel.expanded: return 'Armazem Expandido';
+      case StorageLevel.grand: return 'Grande Armazem';
+      case StorageLevel.spatial: return 'Armazem Espacial';
+    }
+  }
+
+  String get shortLabel {
+    switch (this) {
+      case StorageLevel.none: return 'Nenhum';
+      case StorageLevel.basic: return 'Basico';
+      case StorageLevel.expanded: return 'Expandido';
+      case StorageLevel.grand: return 'Grande';
+      case StorageLevel.spatial: return 'Espacial';
+    }
+  }
+
+  /// Capacidade maxima por recurso. -1 = infinito
+  double get capacity {
+    switch (this) {
+      case StorageLevel.none: return 30;
+      case StorageLevel.basic: return 60;
+      case StorageLevel.expanded: return 120;
+      case StorageLevel.grand: return 250;
+      case StorageLevel.spatial: return -1; // infinito
+    }
+  }
+
+  String get capacityDisplay {
+    if (this == StorageLevel.spatial) return 'INFINITO';
+    return capacity.toStringAsFixed(0);
+  }
+
+  bool get isInfinite => this == StorageLevel.spatial;
+
+  /// Custo para upgrade ao proximo nivel
+  Resources get upgradeCost {
+    switch (this) {
+      case StorageLevel.none:
+        return Resources(wood: 15, stone: 10);
+      case StorageLevel.basic:
+        return Resources(wood: 40, stone: 30, iron: 10);
+      case StorageLevel.expanded:
+        return Resources(wood: 80, stone: 60, iron: 30, knowledge: 15);
+      case StorageLevel.grand:
+        return Resources(iron: 80, stone: 100, knowledge: 60, wood: 60);
+      case StorageLevel.spatial:
+        return Resources(); // ja e maximo
+    }
+  }
+
+  /// Tier minimo da torre para desbloquear este nivel de armazem
+  int get requiredTier {
+    switch (this) {
+      case StorageLevel.none: return 0;
+      case StorageLevel.basic: return 0;
+      case StorageLevel.expanded: return 2;
+      case StorageLevel.grand: return 5;
+      case StorageLevel.spatial: return 9;
+    }
+  }
+
+  StorageLevel? get nextLevel {
+    final idx = index + 1;
+    if (idx >= StorageLevel.values.length) return null;
+    return StorageLevel.values[idx];
+  }
+}
+
 class Resources {
   double food;
   double wood;
@@ -57,6 +156,39 @@ class Resources {
     morale += gain.morale;
   }
 
+  /// Adiciona recursos e aplica capacidade imediatamente.
+  /// Retorna o excedente perdido. Use este metodo para garantir integridade.
+  Resources addCapped(Resources gain, StorageLevel storage) {
+    add(gain);
+    return clampToCapacity(storage);
+  }
+
+  /// Clamp com capacidade do armazem. Excedente e PERDIDO.
+  /// Retorna quanto foi perdido por overflow.
+  Resources clampToCapacity(StorageLevel storage) {
+    final cap = storage.capacity;
+    final lost = Resources(food: 0, wood: 0, stone: 0, iron: 0, knowledge: 0, morale: 0);
+
+    if (!storage.isInfinite) {
+      if (food > cap) { lost.food = food - cap; food = cap; }
+      if (wood > cap) { lost.wood = wood - cap; wood = cap; }
+      if (stone > cap) { lost.stone = stone - cap; stone = cap; }
+      if (iron > cap) { lost.iron = iron - cap; iron = cap; }
+      if (knowledge > cap) { lost.knowledge = knowledge - cap; knowledge = cap; }
+    }
+
+    // Garantir minimo 0
+    if (food < 0) food = 0;
+    if (wood < 0) wood = 0;
+    if (stone < 0) stone = 0;
+    if (iron < 0) iron = 0;
+    if (knowledge < 0) knowledge = 0;
+    morale = morale.clamp(0, 100);
+
+    return lost;
+  }
+
+  /// Clamp basico de minimos (nunca negativos)
   void clampAll() {
     food = food.clamp(0, 99999);
     wood = wood.clamp(0, 99999);
@@ -64,6 +196,29 @@ class Resources {
     iron = iron.clamp(0, 99999);
     knowledge = knowledge.clamp(0, 99999);
     morale = morale.clamp(0, 100);
+  }
+
+  /// Verifica e relata qualquer recurso acima da capacidade (debug/validacao)
+  bool hasOverflow(StorageLevel storage) {
+    if (storage.isInfinite) return false;
+    final cap = storage.capacity;
+    return food > cap || wood > cap || stone > cap || iron > cap || knowledge > cap;
+  }
+
+  /// Retorna string formatada para display do armazem
+  String storageDisplay(StorageLevel storage) {
+    if (storage.isInfinite) return 'INF';
+    return storage.capacity.toStringAsFixed(0);
+  }
+
+  /// Total de recursos perdidos (para UI)
+  double get totalLost => food + wood + stone + iron + knowledge;
+
+  /// Verifica se algum recurso esta no cap
+  bool anyAtCapacity(StorageLevel storage) {
+    if (storage.isInfinite) return false;
+    final cap = storage.capacity;
+    return food >= cap || wood >= cap || stone >= cap || iron >= cap || knowledge >= cap;
   }
 
   Resources clone() => Resources(
@@ -430,14 +585,28 @@ class Citadel {
   List<Building> buildings;
   Resources resources;
   int populationCapacity;
+  StorageLevel storageLevel;
 
   Citadel({
     this.level = CitadelLevel.shelter,
     List<Building>? buildings,
     Resources? resources,
     this.populationCapacity = 15,
+    this.storageLevel = StorageLevel.none,
   })  : buildings = buildings ?? [],
         resources = resources ?? Resources();
+
+  /// Capacidade atual do armazem
+  double get storageCapacity => storageLevel.capacity;
+  bool get hasInfiniteStorage => storageLevel.isInfinite;
+  String get storageLabel => storageLevel.label;
+
+  /// Pode fazer upgrade no armazem?
+  bool get canUpgradeStorage {
+    final next = storageLevel.nextLevel;
+    if (next == null) return false;
+    return true;
+  }
 
   bool get canUpgrade {
     final nextIdx = level.index + 1;
@@ -492,6 +661,7 @@ class Citadel {
         'buildings': buildings.map((b) => b.toJson()).toList(),
         'resources': resources.toJson(),
         'populationCapacity': populationCapacity,
+        'storageLevel': storageLevel.index,
       };
 
   factory Citadel.fromJson(Map<String, dynamic> json) => Citadel(
@@ -504,5 +674,7 @@ class Citadel {
             ? Resources.fromJson(json['resources'] as Map<String, dynamic>)
             : null,
         populationCapacity: json['populationCapacity'] as int? ?? 15,
+        storageLevel: StorageLevel.values[
+            (json['storageLevel'] as int? ?? 0).clamp(0, StorageLevel.values.length - 1)],
       );
 }

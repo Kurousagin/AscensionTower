@@ -13,7 +13,6 @@ class CitadelScreen extends StatelessWidget {
     return Consumer<GameProvider>(
       builder: (context, gp, _) {
         final citadel = gp.citadel;
-        final res = citadel.resources;
 
         return ScanlineOverlay(
           child: SingleChildScrollView(
@@ -23,7 +22,9 @@ class CitadelScreen extends StatelessWidget {
               children: [
                 _buildCitadelHeader(citadel, gp),
                 const SizedBox(height: 12),
-                _buildResourcesDetailed(res),
+                _buildResourcesDetailed(citadel, gp),
+                const SizedBox(height: 12),
+                _buildStorageUpgrade(context, citadel, gp),
                 const SizedBox(height: 12),
                 _buildUpgradeSection(context, citadel, gp),
                 const SizedBox(height: 12),
@@ -97,17 +98,99 @@ class CitadelScreen extends StatelessWidget {
     return TerminalText(art, fontSize: 9, color: AppTheme.cyan);
   }
 
-  Widget _buildResourcesDetailed(Resources res) {
+  Widget _buildResourcesDetailed(Citadel citadel, GameProvider gp) {
+    final res = citadel.resources;
+    final cap = citadel.storageCapacity;
+    final isInfinite = citadel.hasInfiniteStorage;
+    final atCapacity = !isInfinite && res.anyAtCapacity(citadel.storageLevel);
+
+    // Calcular uso percentual medio
+    final maxUsage = isInfinite ? 0.0 : [
+      res.food / cap,
+      res.wood / cap,
+      res.stone / cap,
+      res.iron / cap,
+      res.knowledge / cap,
+    ].reduce((a, b) => a > b ? a : b);
+
+    Color storageBorderColor = AppTheme.border;
+    if (!isInfinite) {
+      if (maxUsage >= 1.0) storageBorderColor = AppTheme.red;
+      else if (maxUsage >= 0.8) storageBorderColor = AppTheme.orange;
+      else if (maxUsage >= 0.6) storageBorderColor = AppTheme.yellow;
+    }
+
     return TerminalCard(
       title: 'RECURSOS',
+      borderColor: storageBorderColor,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _resRow('Comida', res.food, AppTheme.green,
-              'Consumo: ~${(res.food > 0 ? "estavel" : "CRITICO")}'),
-          _resRow('Madeira', res.wood, AppTheme.orange, 'Material de construcao'),
-          _resRow('Pedra', res.stone, AppTheme.textSecondary, 'Construcao avancada'),
-          _resRow('Ferro', res.iron, AppTheme.blue, 'Armas e ferramentas'),
-          _resRow('Conhecimento', res.knowledge, AppTheme.purple,
+          // Indicador de capacidade do armazem
+          Row(children: [
+            Icon(
+              isInfinite ? Icons.all_inclusive : Icons.warehouse,
+              size: 11,
+              color: isInfinite ? AppTheme.green : atCapacity ? AppTheme.red : AppTheme.cyan,
+            ),
+            const SizedBox(width: 4),
+            TerminalText(
+              '${citadel.storageLabel}  ',
+              fontSize: 9,
+              color: isInfinite ? AppTheme.green : AppTheme.cyan,
+            ),
+            TerminalText(
+              isInfinite
+                  ? 'Capacidade: INFINITA'
+                  : 'Capacidade: ${cap.toStringAsFixed(0)} por recurso',
+              fontSize: 9,
+              color: atCapacity ? AppTheme.red : AppTheme.textDim,
+            ),
+            const Spacer(),
+            if (!isInfinite)
+              TerminalText(
+                '${(maxUsage * 100).toStringAsFixed(0)}% cheio',
+                fontSize: 8,
+                color: maxUsage >= 0.9 ? AppTheme.red : maxUsage >= 0.7 ? AppTheme.orange : AppTheme.textDim,
+              ),
+          ]),
+          const SizedBox(height: 6),
+
+          // Barra de uso geral do armazem
+          if (!isInfinite) ...[
+            Container(
+              height: 6,
+              decoration: BoxDecoration(
+                color: AppTheme.bgElevated,
+                borderRadius: BorderRadius.circular(1),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: FractionallySizedBox(
+                widthFactor: maxUsage.clamp(0.0, 1.0),
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: maxUsage >= 1.0
+                        ? AppTheme.red
+                        : maxUsage >= 0.8
+                            ? AppTheme.orange
+                            : maxUsage >= 0.6
+                                ? AppTheme.yellow
+                                : AppTheme.green,
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+
+          _resRowCapped('Comida', res.food, cap, isInfinite, AppTheme.green,
+              'Consumo: ~${(gp.population * 1.5).toStringAsFixed(0)}/dia'),
+          _resRowCapped('Madeira', res.wood, cap, isInfinite, AppTheme.orange, 'Material de construcao'),
+          _resRowCapped('Pedra', res.stone, cap, isInfinite, AppTheme.textSecondary, 'Construcao avancada'),
+          _resRowCapped('Ferro', res.iron, cap, isInfinite, AppTheme.blue, 'Armas e ferramentas'),
+          _resRowCapped('Conhecimento', res.knowledge, cap, isInfinite, AppTheme.purple,
               'Pesquisa e evolucao'),
           const SizedBox(height: 4),
           StatBar(
@@ -119,23 +202,231 @@ class CitadelScreen extends StatelessWidget {
                   : res.morale > 40
                       ? AppTheme.yellow
                       : AppTheme.red),
+          const SizedBox(height: 6),
+
+          // Avisos de capacidade
+          if (!isInfinite && atCapacity)
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.red.withValues(alpha: 0.10),
+                border: Border.all(color: AppTheme.red.withValues(alpha: 0.6)),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: const Row(children: [
+                Icon(Icons.warning, size: 14, color: AppTheme.red),
+                SizedBox(width: 6),
+                Expanded(child: TerminalText(
+                  'ARMAZEM CHEIO! Excedente sendo PERDIDO. Amplie o armazem urgente.',
+                  fontSize: 8, color: AppTheme.red, fontWeight: FontWeight.bold,
+                )),
+              ]),
+            )
+          else if (!isInfinite && maxUsage >= 0.80)
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.orange.withValues(alpha: 0.08),
+                border: Border.all(color: AppTheme.orange.withValues(alpha: 0.4)),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: const Row(children: [
+                Icon(Icons.warning_amber, size: 12, color: AppTheme.orange),
+                SizedBox(width: 6),
+                Expanded(child: TerminalText(
+                  'Armazem quase cheio. Recursos podem ser perdidos em breve.',
+                  fontSize: 8, color: AppTheme.orange,
+                )),
+              ]),
+            ),
         ],
       ),
     );
   }
 
-  Widget _resRow(String label, double value, Color color, String desc) {
+  Widget _resRowCapped(String label, double value, double cap, bool isInfinite, Color color, String desc) {
+    final pct = isInfinite ? 0.0 : (value / cap).clamp(0.0, 1.0);
+    final atCap = !isInfinite && value >= cap;
+    final nearCap = !isInfinite && pct >= 0.80 && !atCap;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(children: [
         SizedBox(
-            width: 100,
-            child: TerminalText(label, fontSize: 10, color: color)),
-        TerminalText(value.toStringAsFixed(0),
-            fontSize: 11, color: color, fontWeight: FontWeight.bold),
-        const SizedBox(width: 8),
+          width: 85,
+          child: TerminalText(label, fontSize: 10, color: color),
+        ),
+        TerminalText(
+          value.toStringAsFixed(0),
+          fontSize: 11,
+          color: atCap ? AppTheme.red : nearCap ? AppTheme.orange : color,
+          fontWeight: FontWeight.bold,
+        ),
+        if (!isInfinite) ...[
+          TerminalText(
+            '/${cap.toStringAsFixed(0)}',
+            fontSize: 8,
+            color: AppTheme.textDim,
+          ),
+          const SizedBox(width: 3),
+          if (atCap)
+            const TerminalText('[MAX]', fontSize: 7, color: AppTheme.red)
+          else if (nearCap)
+            TerminalText('[${(pct * 100).toStringAsFixed(0)}%]',
+                fontSize: 7, color: AppTheme.orange),
+        ] else
+          const TerminalText('/INF', fontSize: 8, color: AppTheme.green),
+        const SizedBox(width: 6),
         Expanded(child: TerminalText(desc, fontSize: 8, color: AppTheme.textDim)),
       ]),
+    );
+  }
+
+  Widget _buildStorageUpgrade(BuildContext context, Citadel citadel, GameProvider gp) {
+    final next = citadel.storageLevel.nextLevel;
+    if (next == null) {
+      return TerminalCard(
+        title: 'ARMAZEM ESPACIAL',
+        borderColor: AppTheme.green,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Row(children: [
+              Icon(Icons.all_inclusive, size: 16, color: AppTheme.green),
+              SizedBox(width: 6),
+              TerminalText('Armazem Espacial ativo!',
+                  color: AppTheme.green, fontSize: 11, fontWeight: FontWeight.bold),
+            ]),
+            SizedBox(height: 4),
+            TerminalText(
+              'Capacidade INFINITA. Nunca mais perca recursos por falta de espaco.',
+              fontSize: 9, color: AppTheme.textSecondary,
+            ),
+          ],
+        ),
+      );
+    }
+
+    final cost = citadel.storageLevel.upgradeCost;
+    final canAfford = citadel.resources.canAfford(cost);
+    final currentTier = ((gp.state.highestFloorCleared) ~/ 10) +
+        (gp.state.highestFloorCleared % 10 > 0 ? 1 : 0);
+    final hasTier = currentTier >= next.requiredTier;
+    final canUpgrade = canAfford && hasTier;
+    final atCapacity = citadel.resources.anyAtCapacity(citadel.storageLevel);
+    final isUrgent = atCapacity && !canUpgrade;
+
+    return TerminalCard(
+      title: 'ARMAZEM',
+      borderColor: atCapacity
+          ? (canUpgrade ? AppTheme.orange : AppTheme.red)
+          : AppTheme.border,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Status atual do armazem
+          Row(children: [
+            // Niveis em sequencia visual
+            for (int i = 0; i < StorageLevel.values.length; i++) ...[
+              if (i > 0) const TerminalText(' > ', fontSize: 8, color: AppTheme.textDim),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                      color: StorageLevel.values[i] == citadel.storageLevel
+                          ? AppTheme.orange
+                          : AppTheme.border),
+                  borderRadius: BorderRadius.circular(2),
+                  color: StorageLevel.values[i] == citadel.storageLevel
+                      ? AppTheme.orange.withValues(alpha: 0.1)
+                      : null,
+                ),
+                child: TerminalText(
+                  StorageLevel.values[i].isInfinite
+                      ? 'INF'
+                      : StorageLevel.values[i].capacity.toStringAsFixed(0),
+                  fontSize: 8,
+                  color: StorageLevel.values[i] == citadel.storageLevel
+                      ? AppTheme.orange
+                      : AppTheme.textDim,
+                  fontWeight: StorageLevel.values[i] == citadel.storageLevel
+                      ? FontWeight.bold
+                      : FontWeight.normal,
+                ),
+              ),
+            ],
+          ]),
+          const SizedBox(height: 8),
+
+          if (isUrgent)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: AppTheme.red.withValues(alpha: 0.10),
+                border: Border.all(color: AppTheme.red),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: const Row(children: [
+                Icon(Icons.block, size: 12, color: AppTheme.red),
+                SizedBox(width: 6),
+                Expanded(child: TerminalText(
+                  'ARMAZEM CHEIO! Recursos estao sendo PERDIDOS. '
+                  'Expanda sua capacidade para parar o desperdicio.',
+                  fontSize: 8, color: AppTheme.red,
+                )),
+              ]),
+            ),
+
+          Row(children: [
+            TerminalText('${citadel.storageLevel.shortLabel} (${citadel.storageCapacity.toStringAsFixed(0)})',
+                fontSize: 10, color: AppTheme.textSecondary),
+            const TerminalText('  ->  ', fontSize: 9, color: AppTheme.textDim),
+            TerminalText(
+              next.isInfinite ? '${next.shortLabel} (INFINITO)' : '${next.shortLabel} (${next.capacity.toStringAsFixed(0)})',
+              fontSize: 11, color: AppTheme.orange, fontWeight: FontWeight.bold,
+            ),
+          ]),
+          const SizedBox(height: 4),
+          TerminalText('Custo: ${_costString(cost)}',
+              fontSize: 9, color: canAfford ? AppTheme.green : AppTheme.red),
+          if (!canAfford)
+            TerminalText('Faltam recursos para construir.',
+                fontSize: 8, color: AppTheme.red),
+          if (!hasTier)
+            TerminalText('Requer Tier ${next.requiredTier} da Torre (atual: $currentTier)',
+                fontSize: 9, color: AppTheme.red),
+
+          if (next.isInfinite)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: const TerminalText(
+                'ARMAZEM ESPACIAL: Marco de progressao final. Extremamente dificil de alcancar.',
+                fontSize: 8, color: AppTheme.yellow,
+              ),
+            ),
+
+          const SizedBox(height: 8),
+          TerminalButton(
+            label: canUpgrade ? 'AMPLIAR ARMAZEM' : 'REQUISITOS FALTANDO',
+            icon: Icons.warehouse,
+            color: canUpgrade ? AppTheme.orange : AppTheme.textDim,
+            expanded: true,
+            onPressed: canUpgrade
+                ? () {
+                    gp.upgradeStorage();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: AppTheme.bgCard,
+                        content: TerminalText(
+                            'Armazem evoluiu para ${next.label}! Cap: ${next.isInfinite ? "INFINITA" : next.capacity.toStringAsFixed(0)}',
+                            color: AppTheme.orange),
+                      ),
+                    );
+                  }
+                : null,
+          ),
+        ],
+      ),
     );
   }
 

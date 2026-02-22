@@ -7,6 +7,7 @@ class NpcAttributes {
   double endurance;
   double charisma;
   double mentalStability;
+  double luck;
 
   NpcAttributes({
     this.strength = 5.0,
@@ -15,6 +16,7 @@ class NpcAttributes {
     this.endurance = 5.0,
     this.charisma = 5.0,
     this.mentalStability = 70.0,
+    this.luck = 5.0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -24,6 +26,7 @@ class NpcAttributes {
         'endurance': endurance,
         'charisma': charisma,
         'mentalStability': mentalStability,
+        'luck': luck,
       };
 
   factory NpcAttributes.fromJson(Map<String, dynamic> json) => NpcAttributes(
@@ -33,6 +36,7 @@ class NpcAttributes {
         endurance: (json['endurance'] as num?)?.toDouble() ?? 5.0,
         charisma: (json['charisma'] as num?)?.toDouble() ?? 5.0,
         mentalStability: (json['mentalStability'] as num?)?.toDouble() ?? 70.0,
+        luck: (json['luck'] as num?)?.toDouble() ?? 5.0,
       );
 
   double get average =>
@@ -48,6 +52,7 @@ class NpcAttributes {
         endurance: endurance,
         charisma: charisma,
         mentalStability: mentalStability,
+        luck: luck,
       );
 }
 
@@ -125,42 +130,42 @@ extension NpcOriginExt on NpcOrigin {
   NpcAttributes get baseAttributes {
     switch (this) {
       case NpcOrigin.student:
-        return NpcAttributes(strength: 3, agility: 4, intelligence: 8, endurance: 3, charisma: 5, mentalStability: 60);
+        return NpcAttributes(strength: 3, agility: 4, intelligence: 8, endurance: 3, charisma: 5, mentalStability: 60, luck: 6);
       case NpcOrigin.chef:
-        return NpcAttributes(strength: 4, agility: 6, intelligence: 6, endurance: 5, charisma: 7, mentalStability: 65);
+        return NpcAttributes(strength: 4, agility: 6, intelligence: 6, endurance: 5, charisma: 7, mentalStability: 65, luck: 5);
       case NpcOrigin.soldier:
-        return NpcAttributes(strength: 9, agility: 7, intelligence: 5, endurance: 9, charisma: 4, mentalStability: 75);
+        return NpcAttributes(strength: 9, agility: 7, intelligence: 5, endurance: 9, charisma: 4, mentalStability: 75, luck: 4);
       case NpcOrigin.programmer:
-        return NpcAttributes(strength: 2, agility: 3, intelligence: 9, endurance: 3, charisma: 4, mentalStability: 55);
+        return NpcAttributes(strength: 2, agility: 3, intelligence: 9, endurance: 3, charisma: 4, mentalStability: 55, luck: 5);
       case NpcOrigin.athlete:
-        return NpcAttributes(strength: 8, agility: 9, intelligence: 4, endurance: 8, charisma: 6, mentalStability: 70);
+        return NpcAttributes(strength: 8, agility: 9, intelligence: 4, endurance: 8, charisma: 6, mentalStability: 70, luck: 5);
       case NpcOrigin.businessOwner:
-        return NpcAttributes(strength: 4, agility: 4, intelligence: 7, endurance: 5, charisma: 9, mentalStability: 68);
+        return NpcAttributes(strength: 4, agility: 4, intelligence: 7, endurance: 5, charisma: 9, mentalStability: 68, luck: 7);
       case NpcOrigin.doctor:
-        return NpcAttributes(strength: 3, agility: 5, intelligence: 9, endurance: 5, charisma: 6, mentalStability: 72);
+        return NpcAttributes(strength: 3, agility: 5, intelligence: 9, endurance: 5, charisma: 6, mentalStability: 72, luck: 5);
       case NpcOrigin.teacher:
-        return NpcAttributes(strength: 3, agility: 4, intelligence: 8, endurance: 4, charisma: 8, mentalStability: 70);
+        return NpcAttributes(strength: 3, agility: 4, intelligence: 8, endurance: 4, charisma: 8, mentalStability: 70, luck: 5);
       case NpcOrigin.artist:
-        return NpcAttributes(strength: 3, agility: 5, intelligence: 7, endurance: 3, charisma: 8, mentalStability: 50);
+        return NpcAttributes(strength: 3, agility: 5, intelligence: 7, endurance: 3, charisma: 8, mentalStability: 50, luck: 7);
       case NpcOrigin.mechanic:
-        return NpcAttributes(strength: 7, agility: 6, intelligence: 6, endurance: 7, charisma: 4, mentalStability: 65);
+        return NpcAttributes(strength: 7, agility: 6, intelligence: 6, endurance: 7, charisma: 4, mentalStability: 65, luck: 4);
       case NpcOrigin.farmer:
-        return NpcAttributes(strength: 7, agility: 5, intelligence: 4, endurance: 8, charisma: 5, mentalStability: 75);
+        return NpcAttributes(strength: 7, agility: 5, intelligence: 4, endurance: 8, charisma: 5, mentalStability: 75, luck: 5);
       case NpcOrigin.musician:
-        return NpcAttributes(strength: 3, agility: 5, intelligence: 6, endurance: 3, charisma: 9, mentalStability: 55);
+        return NpcAttributes(strength: 3, agility: 5, intelligence: 6, endurance: 3, charisma: 9, mentalStability: 55, luck: 6);
       case NpcOrigin.scientist:
-        return NpcAttributes(strength: 2, agility: 3, intelligence: 10, endurance: 4, charisma: 4, mentalStability: 60);
+        return NpcAttributes(strength: 2, agility: 3, intelligence: 10, endurance: 4, charisma: 4, mentalStability: 60, luck: 4);
       case NpcOrigin.firefighter:
-        return NpcAttributes(strength: 8, agility: 7, intelligence: 5, endurance: 9, charisma: 6, mentalStability: 78);
+        return NpcAttributes(strength: 8, agility: 7, intelligence: 5, endurance: 9, charisma: 6, mentalStability: 78, luck: 5);
       case NpcOrigin.nurse:
-        return NpcAttributes(strength: 4, agility: 5, intelligence: 7, endurance: 6, charisma: 7, mentalStability: 70);
+        return NpcAttributes(strength: 4, agility: 5, intelligence: 7, endurance: 6, charisma: 7, mentalStability: 70, luck: 5);
       // Origens obscuras - boas em certas areas mas perigosas
       case NpcOrigin.thief:
-        return NpcAttributes(strength: 4, agility: 9, intelligence: 7, endurance: 5, charisma: 6, mentalStability: 55);
+        return NpcAttributes(strength: 4, agility: 9, intelligence: 7, endurance: 5, charisma: 6, mentalStability: 55, luck: 8);
       case NpcOrigin.assassin:
-        return NpcAttributes(strength: 8, agility: 10, intelligence: 6, endurance: 7, charisma: 3, mentalStability: 45);
+        return NpcAttributes(strength: 8, agility: 10, intelligence: 6, endurance: 7, charisma: 3, mentalStability: 45, luck: 5);
       case NpcOrigin.fraudster:
-        return NpcAttributes(strength: 3, agility: 5, intelligence: 9, endurance: 3, charisma: 10, mentalStability: 50);
+        return NpcAttributes(strength: 3, agility: 5, intelligence: 9, endurance: 3, charisma: 10, mentalStability: 50, luck: 9);
     }
   }
 }
@@ -236,6 +241,11 @@ enum PersonalityTrait {
   aggressive,
   creative,
   pragmatic,
+  // Novos traits v5.0 — Sistema de Expedicao Hardcore
+  cautious,      // Cauteloso: menor falha, menor teto de recompensa
+  ambitious,     // Ambicioso: maior chance de alta recompensa, mais risco
+  lazy,          // Preguicoso: reduz eficiencia geral
+  individualist, // Individualista: reduz bonus de sinergia do grupo
 }
 
 extension PersonalityTraitExt on PersonalityTrait {
@@ -257,6 +267,10 @@ extension PersonalityTraitExt on PersonalityTrait {
       case PersonalityTrait.aggressive: return 'Agressivo';
       case PersonalityTrait.creative: return 'Criativo';
       case PersonalityTrait.pragmatic: return 'Pragmatico';
+      case PersonalityTrait.cautious: return 'Cauteloso';
+      case PersonalityTrait.ambitious: return 'Ambicioso';
+      case PersonalityTrait.lazy: return 'Preguicoso';
+      case PersonalityTrait.individualist: return 'Individualista';
     }
   }
 }
@@ -650,6 +664,7 @@ class Npc {
       endurance: (base.endurance + (rng.nextDouble() * 4 - 2)).clamp(1, 15),
       charisma: (base.charisma + (rng.nextDouble() * 4 - 2)).clamp(1, 15),
       mentalStability: (base.mentalStability + (rng.nextDouble() * 20 - 10)).clamp(20, 100),
+      luck: (base.luck + (rng.nextDouble() * 4 - 2)).clamp(1, 15),
     );
 
     final allTraits = PersonalityTrait.values.toList()..shuffle(rng);
@@ -709,6 +724,7 @@ class Npc {
       endurance: inherit(a.endurance, b.endurance),
       charisma: inherit(a.charisma, b.charisma),
       mentalStability: inherit(a.mentalStability, b.mentalStability),
+      luck: inherit(a.luck, b.luck),
     );
 
     final allTraits = [...parentA.traits, ...parentB.traits];

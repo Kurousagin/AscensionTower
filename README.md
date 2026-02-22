@@ -1,5 +1,5 @@
 # THE TOWER OF THE SECOND HUMANITY
-## Simulacao Textual Cyberpunk com IA Narrativa | Flutter MVP v4.0
+## Simulacao Textual Cyberpunk com IA Narrativa | Flutter MVP v5.0
 
 ---
 
@@ -792,6 +792,140 @@ currentMinute = floor((gameSeconds % 3600) / 60)  // 0-59
 ---
 
 ## CHANGELOG
+
+### v5.0 — Sistema de Expedicao Hardcore + Armazem Reformulado
+
+#### Sistema de Expedicao Hardcore (Redesign Completo)
+
+O sistema de expedicao foi reformulado para ser **punitivo, estrategico e consequente**.
+Decisoes mal calculadas geram **prejuizo real e irreversivel**.
+
+##### Estrutura da Expedicao
+A expedicao e calculada com base em:
+- **Numero de NPCs enviados** (custo fixo por cabeca)
+- **Status individuais** de cada NPC (fadiga, sanidade, lealdade)
+- **Personalidade e Traits** de cada membro
+- **Sinergia entre membros** (grupos coesos rendem mais)
+- **Nivel de risco do andar** (tier determina custo e chance de eventos)
+
+##### Custo da Expedicao (Reformulado)
+- Custo pago **ANTES**, independente do resultado
+- Formula: `custo_total = num_npcs * (3.0 + tier * 1.0)`
+  - Tier 1: 4.0 comida/NPC | Tier 5: 8.0/NPC | Tier 10: 13.0/NPC
+- Re-exploracao: `custo = 2.0 + tier * 0.6` (mais barata, mas sem bonus de conquista)
+- **Nao ha reembolso**. Voce paga e assume o risco.
+
+##### Formula de Recompensa
+```
+recompensa_npc = base_recurso * yield_atributos * multiplicador_personalidade
+recompensa_total = soma_npcs * (1 + sinergia_grupo) * variancia_aleatoria
+```
+
+- `yield_atributos` = forca (+5%), inteligencia (+4%), resistencia (+2.5%), agilidade (+2.5%), sorte (+2.5%) — calculado acima de 5 pontos base
+- `multiplicador_personalidade` = modificador por traits (-20% a +15%)
+- `sinergia_grupo` = -30% a +60% baseado em relacoes e traits de grupo
+- `variancia_aleatoria` = -15% a +15% de randomizacao
+
+**Regra do NPC Solo**: Enviar 1 NPC nunca e totalmente inutil (recompensa minima = 50% do custo).
+**Composicao Ruim**: Grupos com individualistas, preguicosos e sem sinergia podem dar prejuizo. Design intencional.
+
+##### Influencia dos Atributos na Coleta
+| Atributo | Impacto na Expedicao |
+|----------|---------------------|
+| **Forca** | +5% por ponto acima de 5. Dominante em andares de combate |
+| **Inteligencia** | +4% por ponto. Reduce desperdicio. Dominante em andares estrategicos |
+| **Resistencia** | +2.5% por ponto. Reduz penalidade de fadiga e acidentes |
+| **Agilidade** | +2.5% por ponto. Eficiencia geral de coleta |
+| **Sorte** | +2.5% por ponto. Aumenta chance de eventos raros positivos |
+
+##### Personalidades (Impacto Real na Coleta)
+| Trait | Modificador | Efeito Adicional |
+|-------|------------|-----------------|
+| **Ambicioso** | +15% recompensa | +2% risco de acidente |
+| **Analitico** | +6% | Reduz perdas por erro |
+| **Pragmatico** | +4% | Estavel, sem surpresas |
+| **Bravo** | +5% | Aceita missoes de alto risco |
+| **Cauteloso** | -12% (teto menor) | -2% chance de acidente |
+| **Calmo** | -5% | Mais previsivel |
+| **Preguicoso** | -20% eficiencia | Penalidade severa no yield |
+| **Covarde** | -10% | Evita confrontos |
+| **Pessimista** | -5% | |
+| **Individualista** | -5% + reduz sinergia | Penaliza bonus de grupo |
+| **Leal** | +5% sinergia do grupo | |
+| **Lider** | +10% sinergia (se unico lider) | Conflito com outros lideres |
+
+##### Sinergia de Grupo
+```
+sinergia_base = 0.0
++ grupo_coeso (todos mesmo grupo): ate +40% (baseado em coesao)
++ relacoes positivas: +3% por par (max +20%)
++ Leal: +5% por membro
++ Lider (1): +10%  |  Lider (2+): -5% (conflito)
+- Solitario: -8% por membro
+- Individualista: -10% por membro  
+- Lideres demais: -5%
+- relacoes negativas: -5% por par (max -30%)
++ NaturalLeader (talento): +15% bonus
+```
+**Sinergia real**: -30% a +60% no total de recursos coletados.
+
+##### Eventos Aleatorios em Expedicoes
+| Evento | Chance Base | Efeito |
+|--------|-------------|--------|
+| **Acidente** | 12% + tier*1% | -comida extra, -RES, +fadiga |
+| **Doenca** | 6% + tier*0.5% | NPC retorna debilitado |
+| **Conflito Interno** | 8% (+5%/agressivo) | -20 a -40% da recompensa |
+| **Traicao** | 4% (so suspeitos) | -15 a -40% roubado |
+| **Evento Raro** | 5% + luck*0.5% | Recompensa DOBRADA |
+
+**Resistencia reduz acidentes**: Alta RES media do grupo = menor chance e severidade.
+**Cautelosos reduzem risco**: -2% de acidente por membro Cauteloso.
+**Ambiciosos aumentam risco**: +2% de acidente por membro Ambicioso.
+**Sorte aumenta eventos raros**: Grupos com alta Sorte tem mais descobertas excepcionais.
+
+##### Analise de Risco na UI
+O dialog de selecao de expedicao agora exibe:
+- **Sinergia prevista** do grupo selecionado
+- **Modificador de personalidade** medio
+- **Yield de atributos** medio estimado
+- **Chances de eventos** negativos e positivos
+- **Alertas visuais** para NPCs suspeitos, preguicosos, exaustos
+- **Avaliacao de risco** (Vantagem / Equilibrado / Arriscado / Perigoso / Suicida)
+- **Custo fixo** destacado antes da confirmacao
+
+---
+
+#### Sistema de Armazem (Reformulado)
+
+**Regra fundamental**: E **impossivel** armazenar acima da capacidade maxima.
+Se o estoque estiver cheio, o excedente e **perdido permanentemente**. Sem excecoes.
+
+##### Niveis de Armazem
+| Nivel | Capacidade por Recurso | Custo de Upgrade | Tier Torre Requerido |
+|-------|----------------------|-----------------|---------------------|
+| Sem Armazem | **30** | Madeira:15, Pedra:10 | 0 |
+| Armazem Basico | **60** | Madeira:40, Pedra:30, Ferro:10 | 0 |
+| Armazem Expandido | **120** | Madeira:80, Pedra:60, Ferro:30, Conhecimento:15 | 2 |
+| Grande Armazem | **250** | Ferro:80, Pedra:100, Conhecimento:60, Madeira:60 | 5 |
+| **Armazem Espacial** | **INFINITO** | Ferro:80, Pedra:80, Conhecimento:60 | 9 |
+
+**Armazem Espacial**: Marco de progressao final. Extremamente dificil de alcancar (Tier 9 da Torre necessario). Representa a vitoria economica completa.
+
+##### Comportamento de Overflow
+1. Recursos sao produzidos ou coletados normalmente
+2. Ao final de cada ciclo de processamento: `clampToCapacity()` e chamado
+3. Qualquer quantidade **acima da capacidade e cortada e registrada como perdida**
+4. Um evento `ARMAZEM CHEIO!` e gerado com detalhes do que foi perdido
+5. **Nao ha como recuperar recursos perdidos por overflow**
+
+##### UI do Armazem (Cidadela)
+- **Barra de uso geral**: Indicador visual de quanto do armazem esta ocupado
+- **Por recurso**: `valor/capacidade [%]` com indicador `[MAX]` quando cheio
+- **Codigo de cores**: Verde (OK) → Amarelo (>60%) → Laranja (>80%) → Vermelho (cheio)
+- **Alerta urgente**: Quando cheio, banner vermelho prominente "ARMAZEM CHEIO! Recursos PERDIDOS"
+- **Progressao visual**: Todos os niveis mostrados em linha com o nivel atual destacado
+
+---
 
 ### v4.0 — Sistema de Fadiga + Consequencias Fisicas
 - **Sistema de Fadiga (0-100)**: NPCs acumulam fadiga em expedicoes, re-exploracoes e treinos
