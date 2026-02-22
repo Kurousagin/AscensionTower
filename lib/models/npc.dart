@@ -67,6 +67,10 @@ enum NpcOrigin {
   scientist,
   firefighter,
   nurse,
+  // Origens obscuras - risco de traicao
+  thief,
+  assassin,
+  fraudster,
 }
 
 extension NpcOriginExt on NpcOrigin {
@@ -87,28 +91,36 @@ extension NpcOriginExt on NpcOrigin {
       case NpcOrigin.scientist: return 'Cientista';
       case NpcOrigin.firefighter: return 'Bombeiro';
       case NpcOrigin.nurse: return 'Enfermeiro(a)';
+      case NpcOrigin.thief: return 'Ladrao';
+      case NpcOrigin.assassin: return 'Assassino';
+      case NpcOrigin.fraudster: return 'Estelionatario';
     }
   }
 
   String get icon {
     switch (this) {
-      case NpcOrigin.student: return '[STU]';
-      case NpcOrigin.chef: return '[CHF]';
-      case NpcOrigin.soldier: return '[SOL]';
-      case NpcOrigin.programmer: return '[PRG]';
-      case NpcOrigin.athlete: return '[ATL]';
-      case NpcOrigin.businessOwner: return '[BIZ]';
-      case NpcOrigin.doctor: return '[DOC]';
-      case NpcOrigin.teacher: return '[TCH]';
-      case NpcOrigin.artist: return '[ART]';
-      case NpcOrigin.mechanic: return '[MEC]';
-      case NpcOrigin.farmer: return '[FRM]';
-      case NpcOrigin.musician: return '[MUS]';
-      case NpcOrigin.scientist: return '[SCI]';
-      case NpcOrigin.firefighter: return '[FIR]';
-      case NpcOrigin.nurse: return '[NRS]';
+      case NpcOrigin.student: return 'Estudante';
+      case NpcOrigin.chef: return 'Chef';
+      case NpcOrigin.soldier: return 'Soldado';
+      case NpcOrigin.programmer: return 'Programador';
+      case NpcOrigin.athlete: return 'Atleta';
+      case NpcOrigin.businessOwner: return 'Empresario';
+      case NpcOrigin.doctor: return 'Medico';
+      case NpcOrigin.teacher: return 'Professor';
+      case NpcOrigin.artist: return 'Artista';
+      case NpcOrigin.mechanic: return 'Mecanico';
+      case NpcOrigin.farmer: return 'Fazendeiro';
+      case NpcOrigin.musician: return 'Musico';
+      case NpcOrigin.scientist: return 'Cientista';
+      case NpcOrigin.firefighter: return 'Bombeiro';
+      case NpcOrigin.nurse: return 'Enfermeiro';
+      case NpcOrigin.thief: return 'Ladrao';
+      case NpcOrigin.assassin: return 'Assassino';
+      case NpcOrigin.fraudster: return 'Estelionatario';
     }
   }
+
+  bool get isDarkOrigin => this == NpcOrigin.thief || this == NpcOrigin.assassin || this == NpcOrigin.fraudster;
 
   NpcAttributes get baseAttributes {
     switch (this) {
@@ -142,6 +154,13 @@ extension NpcOriginExt on NpcOrigin {
         return NpcAttributes(strength: 8, agility: 7, intelligence: 5, endurance: 9, charisma: 6, mentalStability: 78);
       case NpcOrigin.nurse:
         return NpcAttributes(strength: 4, agility: 5, intelligence: 7, endurance: 6, charisma: 7, mentalStability: 70);
+      // Origens obscuras - boas em certas areas mas perigosas
+      case NpcOrigin.thief:
+        return NpcAttributes(strength: 4, agility: 9, intelligence: 7, endurance: 5, charisma: 6, mentalStability: 55);
+      case NpcOrigin.assassin:
+        return NpcAttributes(strength: 8, agility: 10, intelligence: 6, endurance: 7, charisma: 3, mentalStability: 45);
+      case NpcOrigin.fraudster:
+        return NpcAttributes(strength: 3, agility: 5, intelligence: 9, endurance: 3, charisma: 10, mentalStability: 50);
     }
   }
 }
@@ -159,6 +178,7 @@ enum Profession {
   farmer,
   builder,
   scout,
+  trainer,
 }
 
 extension ProfessionExt on Profession {
@@ -176,23 +196,25 @@ extension ProfessionExt on Profession {
       case Profession.farmer: return 'Fazendeiro';
       case Profession.builder: return 'Construtor';
       case Profession.scout: return 'Batedor';
+      case Profession.trainer: return 'Instrutor';
     }
   }
 
   String get tag {
     switch (this) {
-      case Profession.idle: return 'IDLE';
-      case Profession.explorer: return 'EXPL';
-      case Profession.guard: return 'GUAR';
-      case Profession.chef: return 'CHEF';
-      case Profession.doctor: return 'DOCT';
-      case Profession.teacher: return 'TEAC';
-      case Profession.blacksmith: return 'SMTH';
-      case Profession.merchant: return 'MRCH';
-      case Profession.scribe: return 'SCRB';
-      case Profession.farmer: return 'FARM';
-      case Profession.builder: return 'BULD';
-      case Profession.scout: return 'SCOT';
+      case Profession.idle: return 'Ocioso';
+      case Profession.explorer: return 'Explorador';
+      case Profession.guard: return 'Guarda';
+      case Profession.chef: return 'Cozinheiro';
+      case Profession.doctor: return 'Medico';
+      case Profession.teacher: return 'Professor';
+      case Profession.blacksmith: return 'Ferreiro';
+      case Profession.merchant: return 'Mercador';
+      case Profession.scribe: return 'Escriba';
+      case Profession.farmer: return 'Fazendeiro';
+      case Profession.builder: return 'Construtor';
+      case Profession.scout: return 'Batedor';
+      case Profession.trainer: return 'Instrutor';
     }
   }
 }
@@ -361,7 +383,7 @@ class Npc {
   Profession profession;
   List<Relationship> relationships;
   List<String> traumas;
-  double fame;
+  double fame; // positiva = heroi, negativa = vilao
   List<String> history;
   MentalCondition mentalCondition;
   String? partnerId;
@@ -371,6 +393,13 @@ class Npc {
   int daysSurvived;
   int floorsCleared;
   int killCount;
+  // Novos campos - Sistema social/politico
+  double loyalty; // 0-100: lealdade ao jogador/lider
+  double betrayalRisk; // 0-100: chance de trair
+  String? groupId; // id do grupo/esquadrao
+  int trainingSuggestionsReceived; // quantas sugestoes recebeu
+  int trainingSuggestionsAccepted; // quantas aceitou
+  bool isSuspicious; // marcado como suspeito pelo sistema
 
   Npc({
     required this.id,
@@ -396,6 +425,12 @@ class Npc {
     this.daysSurvived = 0,
     this.floorsCleared = 0,
     this.killCount = 0,
+    this.loyalty = 50.0,
+    this.betrayalRisk = 0.0,
+    this.groupId,
+    this.trainingSuggestionsReceived = 0,
+    this.trainingSuggestionsAccepted = 0,
+    this.isSuspicious = false,
   })  : attributes = attributes ?? origin.baseAttributes,
         traits = traits ?? [],
         relationships = relationships ?? [],
@@ -414,6 +449,39 @@ class Npc {
     return MentalCondition.broken;
   }
 
+  /// Calcula risco de traicao baseado em fatores multiplos
+  double get calculatedBetrayalRisk {
+    double risk = 0;
+    // Origens obscuras tem risco base
+    if (origin.isDarkOrigin) risk += 25;
+    // Personalidade traicoeira
+    if (traits.contains(PersonalityTrait.treacherous)) risk += 20;
+    if (traits.contains(PersonalityTrait.ruthless)) risk += 10;
+    if (traits.contains(PersonalityTrait.loyal)) risk -= 25;
+    if (traits.contains(PersonalityTrait.compassionate)) risk -= 10;
+    // Baixa lealdade aumenta risco
+    risk += ((50 - loyalty) * 0.3).clamp(0, 30);
+    // Baixa sanidade aumenta risco
+    if (attributes.mentalStability < 30) risk += 15;
+    if (attributes.mentalStability < 15) risk += 15;
+    // Traumas empilhados
+    risk += (traumas.length * 2).clamp(0, 15);
+    return risk.clamp(0, 100);
+  }
+
+  /// Fama formatada: positiva = heroi, negativa = infame
+  String get fameLabel {
+    if (fame.abs() < 5) return 'Desconhecido';
+    if (fame >= 50) return 'Lenda';
+    if (fame >= 30) return 'Heroi';
+    if (fame >= 15) return 'Reconhecido';
+    if (fame >= 5) return 'Conhecido';
+    if (fame <= -30) return 'Infame';
+    if (fame <= -15) return 'Temido';
+    if (fame <= -5) return 'Suspeito';
+    return 'Desconhecido';
+  }
+
   String get statusTag => alive ? '[VIVO]' : '[MORTO]';
   String get shortInfo => '${origin.icon} $name | G$generation | ${profession.tag} | ${calculatedMentalCondition.label}';
 
@@ -423,6 +491,32 @@ class Npc {
           attributes.agility * 0.2 +
           attributes.intelligence * 0.15 +
           attributes.mentalStability * 0.15 / 10);
+
+  /// Chance de aceitar sugestao de treino (0.0 a 1.0)
+  double calculateTrainingAcceptance({required double fatigue, required bool hasTrainingField}) {
+    double chance = 0.5;
+    // Lealdade alta = aceita mais
+    chance += (loyalty - 50) * 0.005;
+    // Brave aceita mais, coward menos
+    if (traits.contains(PersonalityTrait.brave)) chance += 0.15;
+    if (traits.contains(PersonalityTrait.coward)) chance -= 0.15;
+    if (traits.contains(PersonalityTrait.pragmatic)) chance += 0.10;
+    if (traits.contains(PersonalityTrait.impulsive)) chance += 0.05;
+    if (traits.contains(PersonalityTrait.loner)) chance -= 0.10;
+    // Training field reduz risco, entao aceita mais
+    if (hasTrainingField) chance += 0.15;
+    // Fadiga reduz aceitacao
+    chance -= fatigue * 0.003;
+    // Sanidade baixa = recusa
+    if (attributes.mentalStability < 40) chance -= 0.20;
+    if (attributes.mentalStability < 20) chance -= 0.20;
+    // Experiencia anterior
+    if (trainingSuggestionsReceived > 0) {
+      final acceptRate = trainingSuggestionsAccepted / trainingSuggestionsReceived;
+      chance = chance * 0.7 + acceptRate * 0.3;
+    }
+    return chance.clamp(0.05, 0.95);
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -448,12 +542,18 @@ class Npc {
         'daysSurvived': daysSurvived,
         'floorsCleared': floorsCleared,
         'killCount': killCount,
+        'loyalty': loyalty,
+        'betrayalRisk': betrayalRisk,
+        'groupId': groupId,
+        'trainingSuggestionsReceived': trainingSuggestionsReceived,
+        'trainingSuggestionsAccepted': trainingSuggestionsAccepted,
+        'isSuspicious': isSuspicious,
       };
 
   factory Npc.fromJson(Map<String, dynamic> json) => Npc(
         id: json['id'] as String? ?? 'unknown',
         name: json['name'] as String? ?? 'Desconhecido',
-        origin: NpcOrigin.values[json['origin'] as int? ?? 0],
+        origin: NpcOrigin.values[(json['origin'] as int? ?? 0).clamp(0, NpcOrigin.values.length - 1)],
         generation: json['generation'] as int? ?? 1,
         age: json['age'] as int? ?? 25,
         alive: json['alive'] as bool? ?? true,
@@ -461,12 +561,12 @@ class Npc {
             ? NpcAttributes.fromJson(json['attributes'] as Map<String, dynamic>)
             : null,
         traits: (json['traits'] as List<dynamic>?)
-                ?.map((t) => PersonalityTrait.values[t as int])
+                ?.map((t) => PersonalityTrait.values[(t as int).clamp(0, PersonalityTrait.values.length - 1)])
                 .toList() ??
             [],
-        hiddenTalent: HiddenTalent.values[json['hiddenTalent'] as int? ?? 0],
+        hiddenTalent: HiddenTalent.values[(json['hiddenTalent'] as int? ?? 0).clamp(0, HiddenTalent.values.length - 1)],
         talentDiscovered: json['talentDiscovered'] as bool? ?? false,
-        profession: Profession.values[json['profession'] as int? ?? 0],
+        profession: Profession.values[(json['profession'] as int? ?? 0).clamp(0, Profession.values.length - 1)],
         relationships: (json['relationships'] as List<dynamic>?)
                 ?.map((r) => Relationship.fromJson(r as Map<String, dynamic>))
                 .toList() ??
@@ -481,7 +581,7 @@ class Npc {
                 .toList() ??
             [],
         mentalCondition:
-            MentalCondition.values[json['mentalCondition'] as int? ?? 0],
+            MentalCondition.values[(json['mentalCondition'] as int? ?? 0).clamp(0, MentalCondition.values.length - 1)],
         partnerId: json['partnerId'] as String?,
         childrenIds: (json['childrenIds'] as List<dynamic>?)
                 ?.map((c) => c.toString())
@@ -492,10 +592,22 @@ class Npc {
         daysSurvived: json['daysSurvived'] as int? ?? 0,
         floorsCleared: json['floorsCleared'] as int? ?? 0,
         killCount: json['killCount'] as int? ?? 0,
+        loyalty: (json['loyalty'] as num?)?.toDouble() ?? 50.0,
+        betrayalRisk: (json['betrayalRisk'] as num?)?.toDouble() ?? 0.0,
+        groupId: json['groupId'] as String?,
+        trainingSuggestionsReceived: json['trainingSuggestionsReceived'] as int? ?? 0,
+        trainingSuggestionsAccepted: json['trainingSuggestionsAccepted'] as int? ?? 0,
+        isSuspicious: json['isSuspicious'] as bool? ?? false,
       );
 
-  static Npc generateRandom(String id, int generation, Random rng) {
-    final origins = NpcOrigin.values;
+  static Npc generateRandom(String id, int generation, Random rng, {bool allowDarkOrigins = true}) {
+    List<NpcOrigin> origins;
+    if (allowDarkOrigins && rng.nextDouble() < 0.12) {
+      // 12% chance de origem obscura
+      origins = [NpcOrigin.thief, NpcOrigin.assassin, NpcOrigin.fraudster];
+    } else {
+      origins = NpcOrigin.values.where((o) => !o.isDarkOrigin).toList();
+    }
     final origin = origins[rng.nextInt(origins.length)];
     final base = origin.baseAttributes;
 
@@ -512,11 +624,23 @@ class Npc {
     final numTraits = 2 + rng.nextInt(2);
     final traits = allTraits.take(numTraits).toList();
 
+    // Origens obscuras tem mais chance de traits traicoeiros
+    if (origin.isDarkOrigin && !traits.contains(PersonalityTrait.treacherous) && rng.nextDouble() < 0.4) {
+      traits[rng.nextInt(traits.length)] = PersonalityTrait.treacherous;
+    }
+
     HiddenTalent talent = HiddenTalent.none;
     if (rng.nextDouble() < 0.15) {
       final talents = HiddenTalent.values.where((t) => t != HiddenTalent.none).toList();
       talent = talents[rng.nextInt(talents.length)];
     }
+
+    // Lealdade inicial baseada na origem
+    double initialLoyalty = 50.0 + (rng.nextDouble() * 20 - 10);
+    if (origin.isDarkOrigin) initialLoyalty -= 15;
+    if (traits.contains(PersonalityTrait.loyal)) initialLoyalty += 15;
+    if (traits.contains(PersonalityTrait.treacherous)) initialLoyalty -= 15;
+    initialLoyalty = initialLoyalty.clamp(10, 90);
 
     return Npc(
       id: id,
@@ -527,6 +651,8 @@ class Npc {
       attributes: attributes,
       traits: traits,
       hiddenTalent: talent,
+      loyalty: initialLoyalty,
+      betrayalRisk: origin.isDarkOrigin ? 20 + rng.nextDouble() * 20 : rng.nextDouble() * 10,
       history: ['Invocado para a Torre no Dia 1'],
     );
   }
@@ -566,6 +692,9 @@ class Npc {
       if (parentB.hiddenTalent != HiddenTalent.none && rng.nextBool()) talent = parentB.hiddenTalent;
     }
 
+    // Lealdade do filho influenciada pelos pais
+    double childLoyalty = ((parentA.loyalty + parentB.loyalty) / 2) + (rng.nextDouble() * 20 - 10);
+
     return Npc(
       id: id,
       name: _generateName(rng),
@@ -577,6 +706,7 @@ class Npc {
       hiddenTalent: talent,
       parentAId: parentA.id,
       parentBId: parentB.id,
+      loyalty: childLoyalty.clamp(20, 80),
       history: ['Nasceu na Torre - Filho(a) de ${parentA.name} e ${parentB.name}'],
     );
   }

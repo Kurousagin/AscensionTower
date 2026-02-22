@@ -7,6 +7,8 @@ import 'screens/npc_list_screen.dart';
 import 'screens/citadel_screen.dart';
 import 'screens/tower_screen.dart';
 import 'screens/event_log_screen.dart';
+import 'screens/codex_screen.dart';
+import 'screens/groups_screen.dart';
 import 'widgets/theme.dart';
 
 void main() async {
@@ -47,15 +49,19 @@ class _AppShellState extends State<AppShell> {
     TowerScreen(),
     CitadelScreen(),
     NpcListScreen(),
+    GroupsScreen(),
     EventLogScreen(),
+    CodexScreen(),
   ];
 
   final List<String> _titles = [
-    'DASHBOARD',
+    'OBSERVATORIO',
     'A TORRE',
     'CIDADELA',
-    'POPULACAO',
-    'LOG',
+    'HABITANTES',
+    'ESQUADROES',
+    'REGISTROS',
+    'CODEX',
   ];
 
   @override
@@ -91,7 +97,10 @@ class _AppShellState extends State<AppShell> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, size: 18),
-          onPressed: () => setState(() => _inGame = false),
+          onPressed: () {
+            gp.stopSimulation();
+            setState(() => _inGame = false);
+          },
         ),
         title: Row(
           children: [
@@ -104,8 +113,8 @@ class _AppShellState extends State<AppShell> {
                 borderRadius: BorderRadius.circular(2),
               ),
               child: Text(
-                'D${gp.state.currentDay} | F${gp.state.highestFloorCleared} | P${gp.population}',
-                style: const TextStyle(fontFamily: 'FiraCode', fontSize: 9, color: AppTheme.textSecondary),
+                '${gp.timeDisplay} | Andar ${gp.state.highestFloorCleared} | ${gp.population} hab.',
+                style: const TextStyle(fontFamily: 'FiraCode', fontSize: 8, color: AppTheme.textSecondary),
               ),
             ),
           ],
@@ -120,11 +129,13 @@ class _AppShellState extends State<AppShell> {
           currentIndex: _currentTab,
           onTap: (i) => setState(() => _currentTab = i),
           items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined, size: 20), label: 'DASH'),
-            BottomNavigationBarItem(icon: Icon(Icons.cell_tower, size: 20), label: 'TORRE'),
-            BottomNavigationBarItem(icon: Icon(Icons.castle_outlined, size: 20), label: 'CIDADE'),
-            BottomNavigationBarItem(icon: Icon(Icons.people_outline, size: 20), label: 'NPCs'),
-            BottomNavigationBarItem(icon: Icon(Icons.article_outlined, size: 20), label: 'LOG'),
+            BottomNavigationBarItem(icon: Icon(Icons.remove_red_eye_outlined, size: 18), label: 'Observar'),
+            BottomNavigationBarItem(icon: Icon(Icons.cell_tower, size: 18), label: 'Torre'),
+            BottomNavigationBarItem(icon: Icon(Icons.castle_outlined, size: 18), label: 'Cidadela'),
+            BottomNavigationBarItem(icon: Icon(Icons.people_outline, size: 18), label: 'Habitantes'),
+            BottomNavigationBarItem(icon: Icon(Icons.groups_outlined, size: 18), label: 'Grupos'),
+            BottomNavigationBarItem(icon: Icon(Icons.article_outlined, size: 18), label: 'Registros'),
+            BottomNavigationBarItem(icon: Icon(Icons.menu_book_outlined, size: 18), label: 'Codex'),
           ],
         ),
       ),

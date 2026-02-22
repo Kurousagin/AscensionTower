@@ -3,6 +3,7 @@ import '../models/npc.dart';
 import '../models/citadel.dart';
 import '../models/tower.dart';
 import '../models/game_event.dart';
+import '../models/group_model.dart';
 
 class GameEngine {
   final Random _rng;
@@ -12,6 +13,11 @@ class GameEngine {
   List<TowerFloor> floors;
   List<GameEvent> events;
   List<GameEvent> _dayEvents = [];
+  // Novos sistemas
+  List<NpcGroup> groups;
+  List<TrainingSuggestion> trainingSuggestions;
+  int _groupIdCounter = 0;
+  int _suggestionIdCounter = 0;
 
   GameEngine({int? seed})
       : _rng = Random(seed),
@@ -19,7 +25,9 @@ class GameEngine {
         npcs = [],
         citadel = Citadel(),
         floors = TowerFloor.generateMvpFloors(),
-        events = [];
+        events = [],
+        groups = [],
+        trainingSuggestions = [];
 
   List<Npc> get aliveNpcs => npcs.where((n) => n.alive).toList();
   List<Npc> get deadNpcs => npcs.where((n) => !n.alive).toList();
@@ -29,6 +37,18 @@ class GameEngine {
     final idx = state.highestFloorCleared;
     if (idx >= floors.length) return null;
     return floors[idx];
+  }
+  List<TowerFloor> get clearedFloors => floors.where((f) => f.cleared).toList();
+  bool get hasTrainingField => citadel.hasBuilding(BuildingType.trainingField);
+
+  String _generateGroupId() {
+    _groupIdCounter++;
+    return 'grp_$_groupIdCounter';
+  }
+
+  String _generateSuggestionId() {
+    _suggestionIdCounter++;
+    return 'sug_$_suggestionIdCounter';
   }
 
   void initNewGame() {
@@ -40,6 +60,10 @@ class GameEngine {
     floors = TowerFloor.generateMvpFloors();
     events = [];
     npcs = [];
+    groups = [];
+    trainingSuggestions = [];
+    _groupIdCounter = 0;
+    _suggestionIdCounter = 0;
 
     for (int i = 0; i < 15; i++) {
       final id = state.generateNpcId();
@@ -49,8 +73,20 @@ class GameEngine {
     _assignInitialProfessions();
 
     _addEvent(GameEventType.system, 'A Invocacao',
-        '15 humanos comuns foram arrancados de suas vidas e jogados na base de uma torre impossivel. Ninguem sabe por que estao aqui. Mas a Torre observa.',
+        '15 humanos comuns foram arrancados de suas vidas e jogados na base de uma torre impossivel. '
+        'Ninguem sabe por que estao aqui. Mas a Torre observa. '
+        'ATENCAO: Alguns invocados podem ter passados obscuros...',
         isMajor: true);
+
+    // Alertar sobre NPCs suspeitos
+    for (final npc in npcs) {
+      if (npc.origin.isDarkOrigin) {
+        npc.isSuspicious = true;
+        _addEvent(GameEventType.system, 'Invocado Suspeito',
+            '${npc.name} (${npc.origin.label}) demonstra comportamento inquietante. Observar com atencao.',
+            involvedIds: [npc.id]);
+      }
+    }
   }
 
   void _assignInitialProfessions() {
@@ -97,20 +133,31 @@ class GameEngine {
     _processResourceConsumption();
     _processRelationships();
     _processMentalHealth();
+    _processLoyalty();
     _processRandomEvents();
+    _processBetrayalAttempts();
     _processPregnancies();
     _processAging();
     _processTraining();
+    _processAutonomousTraining();
+    _processAutoReexploration();
+    // Auto-build e auto-upgrade REMOVIDOS: agora o jogador ORDENA construcoes
+    _processArenaEvents();
+    _processTavernEvents();
+    _processEmergencySummon();
 
     citadel.resources.clampAll();
 
     for (final npc in aliveNpcs) {
       npc.daysSurvived++;
       npc.mentalCondition = npc.calculatedMentalCondition;
+      npc.betrayalRisk = npc.calculatedBetrayalRisk;
     }
 
     return _dayEvents;
   }
+
+  // ==================== PRODUCAO/CONSUMO ====================
 
   void _processResourceProduction() {
     final res = citadel.resources;
@@ -153,12 +200,15 @@ class GameEngine {
       for (final npc in aliveNpcs) {
         npc.attributes.mentalStability -= 3;
         npc.attributes.endurance -= 0.2;
+        npc.loyalty -= 2; // Fome reduz lealdade
         if (_rng.nextDouble() < 0.05) {
           _killNpc(npc, 'Morreu de fome');
         }
       }
     }
   }
+
+  // ==================== RELACIONAMENTOS ====================
 
   void _processRelationships() {
     final alive = aliveNpcs;
@@ -176,6 +226,11 @@ class GameEngine {
         final affinity = (a.attributes.charisma + b.attributes.charisma) / 20.0 * _rng.nextDouble();
         a.relationships.add(Relationship(targetId: b.id, type: 'amigo', affinity: affinity));
         b.relationships.add(Relationship(targetId: a.id, type: 'amigo', affinity: affinity));
+        // Membros do mesmo grupo se aproximam mais rapido
+        if (a.groupId != null && a.groupId == b.groupId) {
+          a.relationships.last.affinity += 0.1;
+          b.relationships.last.affinity += 0.1;
+        }
       } else {
         final rel = existingRel.first;
         rel.affinity += (_rng.nextDouble() * 0.3 - 0.05);
@@ -196,6 +251,8 @@ class GameEngine {
     }
   }
 
+  // ==================== SAUDE MENTAL ====================
+
   void _processMentalHealth() {
     for (final npc in aliveNpcs) {
       double modifier = 0;
@@ -205,6 +262,8 @@ class GameEngine {
       if (npc.partnerId != null) modifier += 0.3;
       if (npc.traits.contains(PersonalityTrait.optimist)) modifier += 0.5;
       if (npc.traits.contains(PersonalityTrait.pessimist)) modifier -= 0.5;
+      // Grupo ajuda na sanidade
+      if (npc.groupId != null) modifier += 0.2;
 
       npc.attributes.mentalStability = (npc.attributes.mentalStability + modifier).clamp(0, 100);
 
@@ -231,6 +290,8 @@ class GameEngine {
         citadel.resources.food -= 10;
         citadel.resources.morale -= 5;
         npc.traumas.add('Rebeliao no dia ${state.currentDay}');
+        npc.loyalty -= 10;
+        npc.fame -= 5;
         break;
       case 2:
         if (_rng.nextDouble() < 0.3) {
@@ -260,12 +321,476 @@ class GameEngine {
             involvedIds: [npc.id]);
         citadel.resources.morale -= 3;
         npc.traumas.add('Surto violento no dia ${state.currentDay}');
+        npc.fame -= 3;
     }
   }
 
+  // ==================== LEALDADE ====================
+
+  void _processLoyalty() {
+    for (final npc in aliveNpcs) {
+      double mod = 0;
+      // Moral alta = mais lealdade
+      if (citadel.resources.morale > 70) mod += 0.1;
+      if (citadel.resources.morale < 30) mod -= 0.3;
+      // Comida OK
+      if (citadel.resources.food > population * 3) mod += 0.05;
+      // Leal/traicoeiro
+      if (npc.traits.contains(PersonalityTrait.loyal)) mod += 0.1;
+      if (npc.traits.contains(PersonalityTrait.treacherous)) mod -= 0.1;
+      // Origens obscuras
+      if (npc.origin.isDarkOrigin) mod -= 0.05;
+      // Grupo aumenta lealdade
+      if (npc.groupId != null) mod += 0.05;
+
+      npc.loyalty = (npc.loyalty + mod).clamp(0, 100);
+    }
+  }
+
+  // ==================== TRAICAO ====================
+
+  void _processBetrayalAttempts() {
+    if (state.currentDay % 7 != 0) return; // Checar semanalmente
+
+    for (final npc in aliveNpcs) {
+      if (npc.calculatedBetrayalRisk < 30) continue;
+      if (_rng.nextDouble() * 100 > npc.calculatedBetrayalRisk) continue;
+
+      // Chance de traicao ativada
+      final betrayalType = _rng.nextInt(4);
+      switch (betrayalType) {
+        case 0: // Roubo de recursos
+          final stolen = 5.0 + _rng.nextDouble() * 15;
+          citadel.resources.food -= stolen;
+          citadel.resources.food = citadel.resources.food.clamp(0, 9999);
+          npc.fame -= 10;
+          npc.loyalty -= 5;
+          _addEvent(GameEventType.betrayalAttempt, 'Roubo de Suprimentos!',
+              '${npc.name} (${npc.origin.label}) roubou ${stolen.toStringAsFixed(0)} de comida dos estoques! '
+              'Risco de traicao: ${npc.calculatedBetrayalRisk.toStringAsFixed(0)}%',
+              involvedIds: [npc.id], isMajor: true);
+          break;
+        case 1: // Sabotagem
+          if (citadel.resources.morale > 20) {
+            citadel.resources.morale -= 8;
+            npc.fame -= 8;
+            _addEvent(GameEventType.betrayalAttempt, 'Sabotagem!',
+                '${npc.name} sabotou equipamentos durante a noite. -8 moral. '
+                'Comportamento suspeito confirmado.',
+                involvedIds: [npc.id], isMajor: true);
+          }
+          break;
+        case 2: // Manipulacao
+          final targets = aliveNpcs.where((n) => n.id != npc.id && n.loyalty < 60).toList();
+          if (targets.isNotEmpty) {
+            final target = targets[_rng.nextInt(targets.length)];
+            target.loyalty -= 5;
+            npc.fame -= 5;
+            _addEvent(GameEventType.politicalEvent, 'Manipulacao',
+                '${npc.name} foi visto espalhando rumores contra a lideranca para ${target.name}. '
+                'Lealdade de ${target.name} caiu.',
+                involvedIds: [npc.id, target.id]);
+          }
+          break;
+        case 3: // Tentativa de assassinato (rara)
+          if (npc.origin == NpcOrigin.assassin && _rng.nextDouble() < 0.3) {
+            final targets = aliveNpcs.where((n) => n.id != npc.id && n.fame > 15).toList();
+            if (targets.isNotEmpty) {
+              final target = targets[_rng.nextInt(targets.length)];
+              if (_rng.nextDouble() < 0.4) {
+                _killNpc(target, 'Assassinado por ${npc.name} durante a noite');
+                npc.killCount++;
+                npc.fame -= 30;
+                _addEvent(GameEventType.betrayalAttempt, 'ASSASSINATO!',
+                    '${npc.name} assassinou ${target.name} durante a noite! '
+                    'Um crime horrivel que abalou toda a comunidade.',
+                    involvedIds: [npc.id, target.id], isMajor: true);
+              } else {
+                npc.fame -= 15;
+                npc.isSuspicious = true;
+                _addEvent(GameEventType.betrayalAttempt, 'Tentativa de Assassinato Frustrada',
+                    '${npc.name} tentou assassinar ${target.name}, mas foi impedido! '
+                    'A comunidade esta em choque.',
+                    involvedIds: [npc.id, target.id], isMajor: true);
+              }
+            }
+          }
+          break;
+      }
+    }
+  }
+
+  // ==================== TREINO AUTONOMO ====================
+
+  void _processAutonomousTraining() {
+    if (state.currentDay % 5 != 0) return;
+    if (clearedFloors.isEmpty) return;
+
+    // NPCs decidem por conta propria se querem treinar
+    final candidates = aliveNpcs.where((n) =>
+        n.profession == Profession.guard ||
+        n.profession == Profession.explorer ||
+        n.profession == Profession.scout ||
+        n.profession == Profession.trainer).toList();
+
+    for (final npc in candidates) {
+      if (_rng.nextDouble() > 0.15) continue; // 15% chance por ciclo
+      if (npc.attributes.mentalStability < 30) continue;
+
+      // Escolhe um andar cleared para treinar
+      final availableFloors = clearedFloors;
+      if (availableFloors.isEmpty) continue;
+      final floor = availableFloors[_rng.nextInt(availableFloors.length)];
+
+      // Treina sozinho com risco baixo
+      final statGain = 0.05 + (_rng.nextDouble() * 0.15);
+      switch (floor.type) {
+        case FloorType.combat:
+          npc.attributes.strength += statGain;
+          npc.attributes.endurance += statGain * 0.5;
+          break;
+        case FloorType.strategic:
+          npc.attributes.intelligence += statGain;
+          break;
+        case FloorType.survival:
+          npc.attributes.endurance += statGain;
+          npc.attributes.agility += statGain * 0.5;
+          break;
+        case FloorType.moral:
+          npc.attributes.mentalStability += statGain * 3;
+          npc.attributes.charisma += statGain * 0.5;
+          break;
+        default:
+          npc.attributes.intelligence += statGain * 0.5;
+          npc.attributes.agility += statGain * 0.5;
+      }
+
+      // Risco de acidente (baixo para treino autonomo)
+      if (_rng.nextDouble() < 0.02) {
+        npc.attributes.endurance -= 0.3;
+        npc.traumas.add('Acidente de treino no andar ${floor.number}, dia ${state.currentDay}');
+        _addEvent(GameEventType.training, 'Acidente de Treino',
+            '${npc.name} sofreu um acidente treinando sozinho no Andar ${floor.number}.',
+            involvedIds: [npc.id]);
+      }
+
+      // Chance de reativar ameaca oculta
+      if (_rng.nextDouble() < 0.03) {
+        floor.timesReexplored++;
+        _addEvent(GameEventType.exploration, 'Ameaca Reativada!',
+            '${npc.name} encontrou novas criaturas no Andar ${floor.number} durante treino. '
+            'O andar nao e tao seguro quanto parecia.',
+            involvedIds: [npc.id]);
+      }
+    }
+  }
+
+  // ==================== RE-EXPLORACAO AUTOMATICA ====================
+
+  void _processAutoReexploration() {
+    if (state.currentDay % 14 != 0) return;
+    if (clearedFloors.isEmpty) return;
+
+    // A cada 14 dias, chance de re-explorar para coletar recursos
+    if (_rng.nextDouble() > 0.4) return;
+
+    final explorers = aliveNpcs.where((n) =>
+        (n.profession == Profession.explorer || n.profession == Profession.scout) &&
+        n.attributes.mentalStability > 35).toList();
+
+    if (explorers.isEmpty) return;
+
+    // Escolhe andar
+    final floor = clearedFloors[_rng.nextInt(clearedFloors.length)];
+    final party = explorers.take(min(3, explorers.length)).toList();
+    final partyIds = party.map((n) => n.id).toList();
+
+    reexploreFloor(floor.number, partyIds);
+  }
+
+  /// Re-explorar um andar conquistado para coletar recursos
+  FloorExplorationResult reexploreFloor(int floorNumber, List<String> partyIds) {
+    final floor = floors.firstWhere((f) => f.number == floorNumber);
+    final party = partyIds.map((id) => npcs.firstWhere((n) => n.id == id)).toList();
+
+    final result = FloorExplorationResult(
+      floorNumber: floorNumber,
+      day: state.currentDay,
+      partyIds: partyIds,
+    );
+
+    floor.timesReexplored++;
+
+    // Coletar recursos baseados no bioma do andar
+    final resources = floor.farmableResources;
+    final efficiency = 0.5 + (_rng.nextDouble() * 0.5);
+
+    for (final entry in resources.entries) {
+      final amount = entry.value * efficiency;
+      result.resourcesGained[entry.key] = amount;
+      switch (entry.key) {
+        case 'food': citadel.resources.food += amount; break;
+        case 'wood': citadel.resources.wood += amount; break;
+        case 'stone': citadel.resources.stone += amount; break;
+        case 'iron': citadel.resources.iron += amount; break;
+        case 'knowledge': citadel.resources.knowledge += amount; break;
+      }
+    }
+
+    // Risco de ameaca oculta reaparecendo
+    final threatChance = 0.05 + (floor.timesReexplored * 0.02);
+    if (_rng.nextDouble() < threatChance) {
+      // Ameaca ativada!
+      for (final npc in party) {
+        if (_rng.nextDouble() < floor.scaledMortality * 0.3) {
+          _killNpc(npc, 'Morreu em ameaca reativada no Andar ${floor.number}');
+          result.casualties.add(npc.id);
+        } else {
+          npc.attributes.mentalStability -= 5;
+          npc.attributes.endurance -= 0.2;
+        }
+      }
+
+      final narrativeText = 'AMEACA REATIVADA! Novas criaturas surgiram no Andar ${floor.number}! '
+          '${result.casualties.length} baixas. Os sobreviventes voltaram com recursos mas abalados.';
+
+      _addEvent(GameEventType.floorReexplore, 'Re-Exploracao Perigosa - Andar $floorNumber',
+          narrativeText,
+          involvedIds: partyIds, isMajor: result.casualties.isNotEmpty);
+    } else {
+      // Sucesso tranquilo + chance de descoberta rara
+      if (_rng.nextDouble() < 0.1) {
+        result.discoveries.add('Recurso raro encontrado no Andar $floorNumber');
+        citadel.resources.knowledge += 5;
+      }
+
+      final resStr = result.resourcesGained.entries
+          .map((e) => '${e.key}: +${e.value.toStringAsFixed(0)}')
+          .join(', ');
+
+      _addEvent(GameEventType.floorReexplore, 'Re-Exploracao - Andar $floorNumber',
+          'Grupo re-explorou o Andar $floorNumber. Recursos: $resStr. '
+          'Fauna: ${floor.biome}',
+          involvedIds: partyIds);
+    }
+
+    // Custo em comida
+    citadel.resources.food -= party.length * 2;
+
+    // Fama para participantes
+    for (final npc in party.where((n) => n.alive)) {
+      npc.fame += 1;
+    }
+
+    return result;
+  }
+
+  // ==================== SUGESTAO DE TREINO (JOGADOR -> NPC) ====================
+
+  /// Jogador sugere treino para um NPC ou grupo
+  TrainingSuggestion suggestTraining(String targetId, String targetType, int floorNumber) {
+    final suggestion = TrainingSuggestion(
+      id: _generateSuggestionId(),
+      day: state.currentDay,
+      targetType: targetType,
+      targetId: targetId,
+      floorNumber: floorNumber,
+    );
+
+    if (targetType == 'npc') {
+      _processNpcTrainingSuggestion(suggestion);
+    } else {
+      _processGroupTrainingSuggestion(suggestion);
+    }
+
+    trainingSuggestions.add(suggestion);
+    return suggestion;
+  }
+
+  void _processNpcTrainingSuggestion(TrainingSuggestion suggestion) {
+    final npc = npcs.firstWhere((n) => n.id == suggestion.targetId);
+    npc.trainingSuggestionsReceived++;
+
+    final fatigue = (100 - npc.attributes.endurance * 10).clamp(0, 100).toDouble();
+    final acceptance = npc.calculateTrainingAcceptance(
+      fatigue: fatigue,
+      hasTrainingField: hasTrainingField && suggestion.floorNumber == -1,
+    );
+
+    final roll = _rng.nextDouble();
+
+    if (roll < acceptance) {
+      suggestion.response = TrainingResponse.accepted;
+      npc.trainingSuggestionsAccepted++;
+      npc.loyalty += 2;
+
+      // Executar treino
+      if (suggestion.floorNumber == -1 && hasTrainingField) {
+        _trainInTrainingField([npc]);
+        suggestion.responseDetail = '${npc.name} aceitou treinar no Campo de Treino.';
+      } else if (suggestion.floorNumber > 0) {
+        trainOnFloor(suggestion.floorNumber, [npc.id]);
+        suggestion.responseDetail = '${npc.name} aceitou treinar no Andar ${suggestion.floorNumber}.';
+      }
+
+      _addEvent(GameEventType.trainingSuggestion, 'Sugestao Aceita',
+          suggestion.responseDetail,
+          involvedIds: [npc.id]);
+    } else if (roll < acceptance + 0.15) {
+      suggestion.response = TrainingResponse.negotiated;
+      suggestion.responseDetail = '${npc.name} negociou: "Aceito, mas quero descanso depois."';
+      npc.loyalty += 1;
+      _addEvent(GameEventType.trainingSuggestion, 'Negociacao',
+          suggestion.responseDetail,
+          involvedIds: [npc.id]);
+    } else if (roll < acceptance + 0.25) {
+      suggestion.response = TrainingResponse.ignored;
+      suggestion.responseDetail = '${npc.name} simplesmente ignorou a sugestao.';
+      _addEvent(GameEventType.trainingSuggestion, 'Sugestao Ignorada',
+          suggestion.responseDetail,
+          involvedIds: [npc.id]);
+    } else {
+      suggestion.response = TrainingResponse.refused;
+      npc.loyalty -= 1;
+
+      // Razao da recusa baseada em personalidade
+      String reason;
+      if (npc.traits.contains(PersonalityTrait.coward)) {
+        reason = '"E perigoso demais. Nao vou arriscar minha vida por um treino."';
+      } else if (npc.attributes.mentalStability < 40) {
+        reason = '"Nao estou em condicoes de treinar. Preciso de descanso."';
+      } else if (npc.traits.contains(PersonalityTrait.loner)) {
+        reason = '"Prefiro treinar no meu proprio tempo, do meu jeito."';
+      } else {
+        reason = '"Nao me parece necessario agora."';
+      }
+      suggestion.responseDetail = '${npc.name} recusou: $reason';
+      _addEvent(GameEventType.trainingSuggestion, 'Sugestao Recusada',
+          suggestion.responseDetail,
+          involvedIds: [npc.id]);
+    }
+
+    // Impacto politico: sugerir treino demais irrita
+    if (npc.trainingSuggestionsReceived > 5 && npc.trainingSuggestionsAccepted < npc.trainingSuggestionsReceived * 0.3) {
+      npc.loyalty -= 3;
+      _addEvent(GameEventType.politicalEvent, 'Resistencia ao Favoritismo',
+          '${npc.name} esta irritado com as constantes sugestoes de treino. "Nao sou seu soldado particular."',
+          involvedIds: [npc.id]);
+    }
+  }
+
+  void _processGroupTrainingSuggestion(TrainingSuggestion suggestion) {
+    final group = groups.firstWhere((g) => g.id == suggestion.targetId,
+        orElse: () => NpcGroup(id: '', name: ''));
+    if (group.id.isEmpty) return;
+
+    final members = group.memberIds
+        .map((id) => npcs.where((n) => n.id == id && n.alive).firstOrNull)
+        .whereType<Npc>()
+        .toList();
+
+    if (members.isEmpty) return;
+
+    int accepted = 0;
+    int refused = 0;
+    final acceptedIds = <String>[];
+
+    for (final npc in members) {
+      npc.trainingSuggestionsReceived++;
+      final fatigue = (100 - npc.attributes.endurance * 10).clamp(0, 100).toDouble();
+      final acceptance = npc.calculateTrainingAcceptance(
+        fatigue: fatigue,
+        hasTrainingField: hasTrainingField && suggestion.floorNumber == -1,
+      );
+
+      if (_rng.nextDouble() < acceptance) {
+        accepted++;
+        npc.trainingSuggestionsAccepted++;
+        acceptedIds.add(npc.id);
+      } else {
+        refused++;
+      }
+    }
+
+    if (accepted > refused) {
+      suggestion.response = TrainingResponse.accepted;
+      suggestion.responseDetail = 'Grupo ${group.name}: $accepted aceitaram, $refused recusaram.';
+
+      if (suggestion.floorNumber == -1 && hasTrainingField) {
+        _trainInTrainingField(acceptedIds.map((id) => npcs.firstWhere((n) => n.id == id)).toList());
+      } else if (suggestion.floorNumber > 0) {
+        trainOnFloor(suggestion.floorNumber, acceptedIds);
+      }
+    } else {
+      suggestion.response = TrainingResponse.refused;
+      suggestion.responseDetail = 'Grupo ${group.name} recusou: maioria votou contra ($refused contra $accepted).';
+    }
+
+    _addEvent(GameEventType.trainingSuggestion, 'Sugestao ao Grupo ${group.name}',
+        suggestion.responseDetail,
+        involvedIds: acceptedIds);
+  }
+
+  void _trainInTrainingField(List<Npc> participants) {
+    for (final npc in participants) {
+      // Campo de treino: mais seguro, ganhos menores
+      final statGain = 0.08 + (_rng.nextDouble() * 0.12);
+      npc.attributes.strength += statGain;
+      npc.attributes.endurance += statGain * 0.8;
+      npc.attributes.agility += statGain * 0.5;
+      npc.history.add('Treinou no Campo de Treino (Dia ${state.currentDay})');
+
+      // Risco quase zero no training field
+      if (_rng.nextDouble() < 0.005) {
+        npc.attributes.endurance -= 0.2;
+        npc.traumas.add('Ferimento leve no Campo de Treino, dia ${state.currentDay}');
+      }
+    }
+
+    citadel.resources.food -= participants.length * 1.5;
+    _addEvent(GameEventType.training, 'Treino no Campo',
+        '${participants.length} membros treinaram no Campo de Treino. Evolucao lenta mas segura.',
+        involvedIds: participants.map((n) => n.id).toList());
+  }
+
+  // ==================== INVOCACAO EMERGENCIAL ====================
+
+  void _processEmergencySummon() {
+    final alive = aliveNpcs;
+    if (alive.length > 5) return;
+    if (state.currentDay % 14 != 0) return;
+
+    // Populacao criticamente baixa - invocar emergencialmente
+    final numToSummon = min(3, 6 - alive.length);
+    if (numToSummon <= 0) return;
+
+    for (int i = 0; i < numToSummon; i++) {
+      final id = state.generateNpcId();
+      npcs.add(Npc.generateRandom(id, 1, _rng));
+    }
+
+    _addEvent(GameEventType.emergencySummon, 'INVOCACAO EMERGENCIAL!',
+        'A Torre detectou que a populacao esta criticamente baixa (${ alive.length} restantes). '
+        '$numToSummon novos humanos foram arrancados de suas vidas e jogados na Torre. '
+        'Mas quem sao eles realmente? Vigiar com atencao.',
+        isMajor: true);
+
+    // NPCs novos podem ter origens obscuras
+    for (final npc in npcs.reversed.take(numToSummon)) {
+      if (npc.origin.isDarkOrigin) {
+        npc.isSuspicious = true;
+        _addEvent(GameEventType.system, 'Alerta: Invocado Suspeito',
+            '${npc.name} (${npc.origin.label}) parece ter um passado sombrio.',
+            involvedIds: [npc.id]);
+      }
+    }
+  }
+
+  // ==================== EVENTOS ALEATORIOS ====================
+
   void _processRandomEvents() {
     if (_rng.nextDouble() < 0.08) {
-      final eventRoll = _rng.nextInt(6);
+      final eventRoll = _rng.nextInt(8); // Mais variedade
       switch (eventRoll) {
         case 0:
           final amount = 5 + _rng.nextInt(15);
@@ -289,6 +814,8 @@ class GameEngine {
           citadel.resources.morale += 5;
           _addEvent(GameEventType.celebration, 'Celebracao',
               'Os moradores organizaram uma pequena festa ao redor da fogueira. Moral restaurada.');
+          // Festas aumentam lealdade
+          for (final npc in aliveNpcs) { npc.loyalty += 1; }
           break;
         case 3:
           citadel.resources.wood -= 10;
@@ -306,6 +833,9 @@ class GameEngine {
                 '${a.name} e ${b.name} entraram em uma disputa acalorada. A tensao cresce na Cidadela.',
                 involvedIds: [a.id, b.id]);
             citadel.resources.morale -= 3;
+            // Conflito afeta lealdade
+            a.loyalty -= 2;
+            b.loyalty -= 2;
           }
           break;
         case 5:
@@ -314,9 +844,39 @@ class GameEngine {
           _addEvent(GameEventType.discovery, 'Inscricoes',
               'Simbolos antigos foram descobertos nas paredes da Torre. +$amount conhecimento.');
           break;
+        case 6:
+          // Evento de fama: NPC famoso inspira ou aterroriza
+          final famous = aliveNpcs.where((n) => n.fame.abs() > 10).toList();
+          if (famous.isNotEmpty) {
+            final npc = famous[_rng.nextInt(famous.length)];
+            if (npc.fame > 0) {
+              citadel.resources.morale += 3;
+              _addEvent(GameEventType.politicalEvent, 'Lideranca Natural',
+                  '${npc.name} (Fama: ${npc.fame.toStringAsFixed(0)}) inspirou os moradores com uma palestra. +3 moral.',
+                  involvedIds: [npc.id]);
+            } else {
+              citadel.resources.morale -= 2;
+              _addEvent(GameEventType.politicalEvent, 'Medo na Cidadela',
+                  '${npc.name} (Fama: ${npc.fame.toStringAsFixed(0)}) causa desconforto entre os moradores. -2 moral.',
+                  involvedIds: [npc.id]);
+            }
+          }
+          break;
+        case 7:
+          // Evento de grupo
+          if (groups.isNotEmpty) {
+            final group = groups[_rng.nextInt(groups.length)];
+            group.cohesion += 5;
+            group.cohesion = group.cohesion.clamp(0, 100);
+            _addEvent(GameEventType.groupFormed, 'Coesao de Grupo',
+                'Os membros de "${group.name}" fortaleceram seus lacos. Coesao: ${group.cohesion.toStringAsFixed(0)}%.');
+          }
+          break;
       }
     }
   }
+
+  // ==================== GRAVIDEZ ====================
 
   void _processPregnancies() {
     final alive = aliveNpcs;
@@ -346,9 +906,13 @@ class GameEngine {
             involvedIds: [npc.id, partner.id, childId], isMajor: true);
 
         citadel.resources.morale += 5;
+        // Nascimentos aumentam lealdade geral
+        for (final n in aliveNpcs) { n.loyalty += 0.5; }
       }
     }
   }
+
+  // ==================== ENVELHECIMENTO ====================
 
   void _processAging() {
     for (final npc in aliveNpcs) {
@@ -372,6 +936,8 @@ class GameEngine {
     }
   }
 
+  // ==================== TREINO PROFISSIONAL ====================
+
   void _processTraining() {
     for (final npc in aliveNpcs) {
       if (npc.profession == Profession.guard || npc.profession == Profession.explorer) {
@@ -390,8 +956,231 @@ class GameEngine {
           npc.attributes.agility += 0.1;
         }
       }
+      if (npc.profession == Profession.trainer) {
+        if (_rng.nextDouble() < 0.1) {
+          npc.attributes.strength += 0.05;
+          npc.attributes.endurance += 0.05;
+          npc.attributes.intelligence += 0.05;
+        }
+      }
     }
   }
+
+  // ==================== CONSTRUCAO MANUAL (JOGADOR DECIDE) ====================
+
+  // Auto-build REMOVIDO. O jogador agora ORDENA construcoes.
+  // NPCs reagem com eventos narrativos.
+
+  /// Edificios disponiveis para construir (desbloqueados pelo tier da torre)
+  List<BuildingType> get availableBuildings {
+    final currentTier = ((state.highestFloorCleared) ~/ 10) + (state.highestFloorCleared % 10 > 0 ? 1 : 0);
+    return BuildingType.values.where((type) {
+      if (citadel.hasBuilding(type)) return false;
+      if (citadel.buildings.length >= citadel.level.maxBuildings) return false;
+      final b = Building(type: type);
+      return b.requiredTier <= currentTier;
+    }).toList();
+  }
+
+  /// Verifica se edificio pode ser construido
+  bool canBuild(BuildingType type) {
+    if (citadel.hasBuilding(type)) return false;
+    if (citadel.buildings.length >= citadel.level.maxBuildings) return false;
+    final b = Building(type: type);
+    final currentTier = ((state.highestFloorCleared) ~/ 10) + (state.highestFloorCleared % 10 > 0 ? 1 : 0);
+    if (b.requiredTier > currentTier) return false;
+    return citadel.resources.canAfford(b.cost);
+  }
+
+  /// Verificar se pode fazer upgrade de edificio
+  bool canUpgradeBuilding(BuildingType type) {
+    final b = citadel.getBuilding(type);
+    if (b == null) return false;
+    if (b.level >= b.maxLevel) return false;
+    return citadel.resources.canAfford(b.upgradeCost);
+  }
+
+  /// Fazer upgrade de edificio
+  bool upgradeBuilding(BuildingType type) {
+    final b = citadel.getBuilding(type);
+    if (b == null || b.level >= b.maxLevel) return false;
+    if (!citadel.resources.canAfford(b.upgradeCost)) return false;
+
+    citadel.resources.spend(b.upgradeCost);
+    b.level++;
+
+    _addEvent(GameEventType.upgrade, '${b.name} Melhorado!',
+        '${b.name} evoluiu para nivel ${b.level}. Eficiencia aumentada!',
+        isMajor: true);
+
+    // Reacao NPC ao upgrade
+    _processNpcBuildReaction(type, isUpgrade: true);
+
+    return true;
+  }
+
+  /// Reacoes dos NPCs quando o jogador constroi algo
+  void _processNpcBuildReaction(BuildingType type, {bool isUpgrade = false}) {
+    final action = isUpgrade ? 'melhoria' : 'construcao';
+
+    switch (type) {
+      case BuildingType.barracks:
+      case BuildingType.trainingField:
+        // Guardas/exploradores gostam
+        for (final npc in aliveNpcs.where((n) =>
+            n.profession == Profession.guard || n.profession == Profession.explorer)) {
+          npc.loyalty += 2;
+        }
+        // Medrosos nao gostam
+        for (final npc in aliveNpcs.where((n) => n.traits.contains(PersonalityTrait.coward))) {
+          npc.loyalty -= 1;
+        }
+        _addEvent(GameEventType.politicalEvent, 'Reacao: $action Militar',
+            'Guardas e exploradores aprovam a $action. Os mais timidos ficam desconfortaveis.');
+        break;
+      case BuildingType.temple:
+        citadel.resources.morale += 5;
+        for (final npc in aliveNpcs) { npc.loyalty += 1; }
+        _addEvent(GameEventType.celebration, 'Fe Renovada',
+            'A $action do Templo trouxe esperanca. Todos se sentem mais seguros.');
+        break;
+      case BuildingType.tavern:
+        citadel.resources.morale += 3;
+        // Revela info sobre suspeitos
+        for (final npc in aliveNpcs.where((n) => n.origin.isDarkOrigin && !n.isSuspicious)) {
+          if (_rng.nextDouble() < 0.3) {
+            npc.isSuspicious = true;
+            _addEvent(GameEventType.system, 'Fofoca na Taverna',
+                'Rumores na Taverna indicam que ${npc.name} pode ter um passado sombrio...',
+                involvedIds: [npc.id]);
+          }
+        }
+        _addEvent(GameEventType.politicalEvent, 'Taverna Aberta',
+            'A Taverna se tornou o ponto de encontro. Fofocas e informacoes fluem livremente.');
+        break;
+      case BuildingType.arena:
+        for (final npc in aliveNpcs.where((n) => n.traits.contains(PersonalityTrait.brave))) {
+          npc.loyalty += 3;
+          npc.fame += 1;
+        }
+        _addEvent(GameEventType.politicalEvent, 'Arena Inaugurada!',
+            'Os mais bravos mal podem esperar para provar seu valor. Os medrosos evitam o local.');
+        break;
+      case BuildingType.councilHall:
+        for (final npc in aliveNpcs) { npc.loyalty += 1; }
+        _addEvent(GameEventType.politicalEvent, 'Democracia Emergente',
+            'A Sala do Conselho da voz ao povo. Todos sentem que suas opinioes importam agora.');
+        break;
+      case BuildingType.promotionHall:
+        for (final npc in aliveNpcs.where((n) => n.traits.contains(PersonalityTrait.leader))) {
+          npc.loyalty += 3;
+        }
+        _addEvent(GameEventType.politicalEvent, 'Caminho para Grandeza',
+            'A Sala de Promocao abre novas possibilidades. Os ambiciosos planejam sua ascensao.');
+        break;
+      case BuildingType.farm:
+      case BuildingType.kitchen:
+        if (citadel.resources.food < population * 5) {
+          for (final npc in aliveNpcs) { npc.loyalty += 1; }
+          _addEvent(GameEventType.celebration, 'Comida Garantida',
+              'Com fome rondando, a $action traz alivio. O lider pensa no povo.');
+        }
+        break;
+      case BuildingType.monument:
+        citadel.resources.morale += 10;
+        for (final npc in aliveNpcs) {
+          npc.loyalty += 3;
+          npc.fame += 1;
+        }
+        _addEvent(GameEventType.celebration, 'MONUMENTO ERGUIDO!',
+            'O Monumento se ergue. Um simbolo eterno de tudo que a humanidade conquistou na Torre. '
+            'As geracoes futuras lembrarao deste dia.',
+            isMajor: true);
+        break;
+      case BuildingType.nexus:
+        _addEvent(GameEventType.discovery, 'NEXUS ATIVADO!',
+            'O Nexus da Torre pulsa com energia. A conexao entre a Cidadela e a Torre se fortalece. '
+            'Segredos antigos comecam a se revelar...',
+            isMajor: true);
+        break;
+      default:
+        // Reacao generica
+        if (_rng.nextDouble() < 0.4) {
+          _addEvent(GameEventType.construction, 'Progresso',
+              'A $action traz satisfacao. A Cidadela cresce.');
+        }
+    }
+  }
+
+  /// Arena: processar duelos periodicos
+  void _processArenaEvents() {
+    if (!citadel.hasBuilding(BuildingType.arena)) return;
+    if (state.currentDay % 7 != 0) return;
+    if (aliveNpcs.length < 2) return;
+
+    // Duelo voluntario
+    if (_rng.nextDouble() < 0.3) {
+      final fighters = aliveNpcs.where((n) =>
+          n.attributes.mentalStability > 30 &&
+          n.attributes.combatPower > 3.0).toList();
+      if (fighters.length < 2) return;
+
+      fighters.shuffle(_rng);
+      final a = fighters[0];
+      final b = fighters[1];
+      final aWins = a.attributes.combatPower + _rng.nextDouble() * 3 >
+          b.attributes.combatPower + _rng.nextDouble() * 3;
+
+      if (aWins) {
+        a.fame += 2;
+        a.attributes.strength += 0.2;
+        b.attributes.endurance += 0.1;
+        _addEvent(GameEventType.combat, 'Duelo na Arena',
+            '${a.name} venceu ${b.name} em duelo na Arena! +Fama, +Stats.',
+            involvedIds: [a.id, b.id]);
+      } else {
+        b.fame += 2;
+        b.attributes.strength += 0.2;
+        a.attributes.endurance += 0.1;
+        _addEvent(GameEventType.combat, 'Duelo na Arena',
+            '${b.name} venceu ${a.name} em duelo na Arena! +Fama, +Stats.',
+            involvedIds: [a.id, b.id]);
+      }
+    }
+  }
+
+  /// Taverna: processar eventos sociais
+  void _processTavernEvents() {
+    if (!citadel.hasBuilding(BuildingType.tavern)) return;
+    if (state.currentDay % 5 != 0) return;
+
+    // Chance de revelar traidor
+    if (_rng.nextDouble() < 0.1) {
+      final hidden = aliveNpcs.where((n) => n.origin.isDarkOrigin && !n.isSuspicious).toList();
+      if (hidden.isNotEmpty) {
+        final npc = hidden[_rng.nextInt(hidden.length)];
+        npc.isSuspicious = true;
+        _addEvent(GameEventType.system, 'Boato na Taverna',
+            'Depois de muitas bebidas, alguem mencionou que ${npc.name} tem um passado questionavel...',
+            involvedIds: [npc.id]);
+      }
+    }
+
+    // Bonus de relacao
+    if (_rng.nextDouble() < 0.2 && aliveNpcs.length >= 2) {
+      final a = aliveNpcs[_rng.nextInt(aliveNpcs.length)];
+      Npc b;
+      do { b = aliveNpcs[_rng.nextInt(aliveNpcs.length)]; } while (b.id == a.id);
+      final rel = a.relationships.where((r) => r.targetId == b.id);
+      if (rel.isNotEmpty) {
+        rel.first.affinity += 0.1;
+      }
+    }
+  }
+
+  // Auto-build/auto-upgrade REMOVIDOS: jogador ordena construcoes
+
+  // ==================== COMBATE NA TORRE ====================
 
   TowerChallenge attemptFloor(List<String> partyIds) {
     final floor = nextFloor;
@@ -452,11 +1241,12 @@ class GameEngine {
         } else {
           npc.floorsCleared++;
           npc.fame += 5 + floor.number;
+          npc.loyalty += 3;
           npc.attributes.strength += 0.2;
           npc.attributes.endurance += 0.2;
           npc.attributes.mentalStability -= 2;
           npc.history.add('Sobreviveu ao Andar ${floor.number} no Dia ${state.currentDay}');
-          challenge.log.add('  [O] ${npc.name} sobreviveu. (+Fama, +Stats)');
+          challenge.log.add('  [O] ${npc.name} sobreviveu. (+Fama, +Stats, +Lealdade)');
         }
       }
 
@@ -486,6 +1276,7 @@ class GameEngine {
           npc.attributes.mentalStability -= 5;
           npc.attributes.endurance -= 0.3;
           npc.traumas.add('Derrota no Andar ${floor.number}');
+          npc.loyalty -= 2;
           challenge.log.add('  [!] ${npc.name} escapou com ferimentos.');
         }
       }
@@ -552,11 +1343,35 @@ class GameEngine {
       npc.history.add('Treinou no Andar ${floor.number} no Dia ${state.currentDay}');
     }
 
+    // Risco de acidente durante treino em andar
     if (_rng.nextDouble() < 0.03) {
       final unlucky = party[_rng.nextInt(party.length)];
       unlucky.attributes.endurance -= 0.5;
       challenge.log.add('');
       challenge.log.add('  [!] ${unlucky.name} sofreu um ferimento leve durante o treino.');
+    }
+
+    // Chance de reativar ameaca oculta durante treino
+    if (_rng.nextDouble() < 0.04 + (floor.timesReexplored * 0.01)) {
+      challenge.log.add('');
+      challenge.log.add('  [!!] Ameaca oculta detectada! Novas criaturas apareceram!');
+      final unlucky = party[_rng.nextInt(party.length)];
+      if (_rng.nextDouble() < 0.15) {
+        _killNpc(unlucky, 'Morreu em ameaca reativada durante treino no Andar ${floor.number}');
+        challenge.casualties.add(unlucky.id);
+        challenge.log.add('  [X] ${unlucky.name} nao sobreviveu a ameaca!');
+      } else {
+        unlucky.attributes.endurance -= 1;
+        unlucky.attributes.mentalStability -= 5;
+        challenge.log.add('  [!] ${unlucky.name} foi ferido pela ameaca, mas sobreviveu.');
+      }
+    }
+
+    // Chance de descoberta rara durante treino
+    if (_rng.nextDouble() < 0.05) {
+      challenge.log.add('');
+      challenge.log.add('  [*] Descoberta rara durante o treino!');
+      citadel.resources.knowledge += 5;
     }
 
     challenge.completed = true;
@@ -570,63 +1385,216 @@ class GameEngine {
     return challenge;
   }
 
+  // ==================== GRUPOS ====================
+
+  NpcGroup createGroup(String name, List<String> memberIds, GroupRole role) {
+    final group = NpcGroup(
+      id: _generateGroupId(),
+      name: name,
+      memberIds: memberIds,
+      role: role,
+    );
+
+    // Definir lider automaticamente (maior poder + carisma)
+    if (memberIds.isNotEmpty) {
+      final members = memberIds
+          .map((id) => npcs.where((n) => n.id == id).firstOrNull)
+          .whereType<Npc>()
+          .toList();
+      if (members.isNotEmpty) {
+        members.sort((a, b) =>
+            (b.attributes.combatPower + b.attributes.charisma)
+                .compareTo(a.attributes.combatPower + a.attributes.charisma));
+        group.leaderId = members.first.id;
+      }
+    }
+
+    for (final id in memberIds) {
+      final npc = npcs.where((n) => n.id == id).firstOrNull;
+      if (npc != null) {
+        npc.groupId = group.id;
+      }
+    }
+
+    groups.add(group);
+
+    _addEvent(GameEventType.groupFormed, 'Grupo "${group.name}" Formado',
+        '${memberIds.length} membros foram organizados no grupo "${group.name}" (${role.label}). '
+        'Lider: ${npcs.firstWhere((n) => n.id == group.leaderId).name}.',
+        involvedIds: memberIds, isMajor: true);
+
+    return group;
+  }
+
+  void disbandGroup(String groupId) {
+    final group = groups.firstWhere((g) => g.id == groupId, orElse: () => NpcGroup(id: '', name: ''));
+    if (group.id.isEmpty) return;
+
+    for (final memberId in group.memberIds) {
+      final npc = npcs.where((n) => n.id == memberId).firstOrNull;
+      if (npc != null) npc.groupId = null;
+    }
+
+    _addEvent(GameEventType.groupFormed, 'Grupo "${group.name}" Dissolvido',
+        'O grupo "${group.name}" foi dissolvido. Membros estao livres.',
+        involvedIds: group.memberIds);
+
+    groups.removeWhere((g) => g.id == groupId);
+  }
+
+  void addToGroup(String groupId, String npcId) {
+    final group = groups.firstWhere((g) => g.id == groupId, orElse: () => NpcGroup(id: '', name: ''));
+    if (group.id.isEmpty) return;
+    final npc = npcs.where((n) => n.id == npcId).firstOrNull;
+    if (npc == null) return;
+
+    // Remover do grupo anterior
+    if (npc.groupId != null) {
+      final oldGroup = groups.where((g) => g.id == npc.groupId).firstOrNull;
+      if (oldGroup != null) oldGroup.memberIds.remove(npcId);
+    }
+
+    group.memberIds.add(npcId);
+    npc.groupId = groupId;
+  }
+
+  void removeFromGroup(String npcId) {
+    final npc = npcs.where((n) => n.id == npcId).firstOrNull;
+    if (npc == null || npc.groupId == null) return;
+
+    final group = groups.where((g) => g.id == npc.groupId).firstOrNull;
+    if (group != null) {
+      group.memberIds.remove(npcId);
+    }
+    npc.groupId = null;
+  }
+
+  // ==================== RECOMPENSAS ====================
+
   void _applyFloorRewards(TowerFloor floor) {
-    switch (floor.number) {
-      case 1:
-        citadel.resources.wood += 15;
-        citadel.resources.stone += 10;
-        break;
-      case 2:
-        citadel.resources.food += 20;
-        citadel.resources.iron += 5;
-        break;
-      case 3:
-        citadel.resources.knowledge += 15;
-        citadel.resources.morale += 10;
-        break;
-      case 4:
-        citadel.resources.iron += 10;
-        citadel.resources.knowledge += 10;
-        break;
-      case 5:
-        citadel.resources.iron += 15;
-        break;
-      case 6:
-        citadel.resources.food += 25;
-        citadel.resources.knowledge += 5;
-        break;
-      case 7:
-        citadel.resources.knowledge += 30;
-        final alive = aliveNpcs;
-        for (final npc in alive) {
-          if (!npc.talentDiscovered && npc.hiddenTalent != HiddenTalent.none && _rng.nextDouble() < 0.3) {
+    final tier = floor.tier;
+    final n = floor.number;
+    final res = citadel.resources;
+
+    // === BOSS FLOORS (cada 10 andares) - Recompensas massivas ===
+    if (n % 10 == 0) {
+      final mult = tier.toDouble();
+      res.food += 30 * mult;
+      res.wood += 30 * mult;
+      res.stone += 30 * mult;
+      res.iron += 25 * mult;
+      res.knowledge += 25 * mult;
+      res.morale += (10 + tier * 2).toDouble();
+      citadel.populationCapacity += 5 + tier;
+
+      // Boss tier 5+: revelar talentos
+      if (tier >= 5) {
+        for (final npc in aliveNpcs) {
+          if (!npc.talentDiscovered && npc.hiddenTalent != HiddenTalent.none && _rng.nextDouble() < 0.4) {
             npc.talentDiscovered = true;
+            _addEvent(GameEventType.discovery, 'Talento Revelado pelo Boss!',
+                '${npc.name} despertou ${npc.hiddenTalent.label} apos a batalha contra o Boss do Tier $tier!',
+                involvedIds: [npc.id], isMajor: true);
+          }
+        }
+      }
+
+      _addEvent(GameEventType.towerCleared, 'BOSS TIER $tier DERROTADO!',
+          'Recompensas massivas! Capacidade +${5 + tier}. A cidadela evolui!',
+          isMajor: true);
+      return;
+    }
+
+    // === ELITE FLOORS (cada 5 andares) - Recompensas boas ===
+    if (n % 5 == 0 && n % 10 != 0) {
+      final mult = tier * 0.7;
+      res.food += 15 * mult;
+      res.wood += 10 * mult;
+      res.stone += 10 * mult;
+      res.iron += 10 * mult;
+      res.knowledge += 15 * mult;
+      res.morale += 5;
+      return;
+    }
+
+    // === ANDARES NORMAIS - Recompensas baseadas no tipo ===
+    final baseMult = 1.0 + (tier - 1) * 0.5;
+    switch (floor.type) {
+      case FloorType.combat:
+      case FloorType.gauntlet:
+        res.iron += 5 * baseMult;
+        res.stone += 3 * baseMult;
+        break;
+      case FloorType.survival:
+      case FloorType.hunt:
+        res.food += 8 * baseMult;
+        res.wood += 5 * baseMult;
+        break;
+      case FloorType.strategic:
+      case FloorType.puzzle:
+        res.knowledge += 6 * baseMult;
+        res.iron += 3 * baseMult;
+        break;
+      case FloorType.moral:
+        res.knowledge += 5 * baseMult;
+        res.morale += 3;
+        break;
+      case FloorType.mystery:
+        res.knowledge += 8 * baseMult;
+        // Chance de revelar talento
+        if (_rng.nextDouble() < 0.15) {
+          final candidates = aliveNpcs.where((n) => !n.talentDiscovered && n.hiddenTalent != HiddenTalent.none).toList();
+          if (candidates.isNotEmpty) {
+            final lucky = candidates[_rng.nextInt(candidates.length)];
+            lucky.talentDiscovered = true;
+            _addEvent(GameEventType.discovery, 'Talento Oculto!',
+                '${lucky.name} descobriu ${lucky.hiddenTalent.label} no Andar Misterio!',
+                involvedIds: [lucky.id], isMajor: true);
           }
         }
         break;
-      case 8:
-        citadel.resources.morale += 10;
+      case FloorType.elite:
+        res.food += 4 * baseMult;
+        res.wood += 4 * baseMult;
+        res.stone += 4 * baseMult;
+        res.iron += 4 * baseMult;
+        res.knowledge += 4 * baseMult;
         break;
-      case 9:
-        citadel.resources.iron += 15;
-        citadel.resources.stone += 15;
-        break;
-      case 10:
-        citadel.resources.food += 50;
-        citadel.resources.wood += 50;
-        citadel.resources.stone += 50;
-        citadel.resources.iron += 50;
-        citadel.resources.knowledge += 50;
-        citadel.resources.morale += 20;
-        citadel.populationCapacity += 10;
+      case FloorType.boss:
+        // Ja tratado acima
         break;
     }
+
+    // Bonus de fama para sobreviventes (escala com tier)
+    res.morale += (1 + tier * 0.5);
   }
+
+  // ==================== MORTE ====================
 
   void _killNpc(Npc npc, String cause) {
     npc.alive = false;
     npc.history.add('Morreu: $cause (Dia ${state.currentDay})');
     state.totalDeaths++;
+
+    // Remover do grupo
+    if (npc.groupId != null) {
+      final group = groups.where((g) => g.id == npc.groupId).firstOrNull;
+      if (group != null) {
+        group.memberIds.remove(npc.id);
+        group.casualties++;
+        if (group.leaderId == npc.id && group.memberIds.isNotEmpty) {
+          // Eleger novo lider
+          final members = group.memberIds
+              .map((id) => npcs.where((n) => n.id == id && n.alive).firstOrNull)
+              .whereType<Npc>()
+              .toList();
+          if (members.isNotEmpty) {
+            members.sort((a, b) => b.attributes.combatPower.compareTo(a.attributes.combatPower));
+            group.leaderId = members.first.id;
+          }
+        }
+      }
+    }
 
     if (npc.partnerId != null) {
       final partner = npcs.where((n) => n.id == npc.partnerId).firstOrNull;
@@ -634,6 +1602,7 @@ class GameEngine {
         partner.attributes.mentalStability -= 15;
         partner.traumas.add('Perda de ${npc.name} no dia ${state.currentDay}');
         partner.partnerId = null;
+        partner.loyalty -= 5;
       }
     }
 
@@ -662,6 +1631,8 @@ class GameEngine {
     }
   }
 
+  // ==================== CONSTRUCAO ====================
+
   bool buildStructure(BuildingType type) {
     if (citadel.buildings.length >= citadel.level.maxBuildings) return false;
     final building = Building(type: type);
@@ -672,6 +1643,9 @@ class GameEngine {
 
     _addEvent(GameEventType.construction, 'Nova Construcao: ${building.name}',
         '${building.name} foi construido(a). ${building.description}');
+
+    // NPCs reagem a construcao
+    _processNpcBuildReaction(type);
 
     return true;
   }
@@ -691,6 +1665,9 @@ class GameEngine {
         'Novas possibilidades se abrem. Capacidade maxima de edificios: ${citadel.level.maxBuildings}.',
         isMajor: true);
 
+    // Evolucao aumenta lealdade
+    for (final npc in aliveNpcs) { npc.loyalty += 3; }
+
     return true;
   }
 
@@ -700,6 +1677,8 @@ class GameEngine {
     npc.profession = profession;
     npc.history.add('Profissao mudou: ${old.label} -> ${profession.label} (Dia ${state.currentDay})');
   }
+
+  // ==================== EVENTOS ====================
 
   void _addEvent(GameEventType type, String title, String description,
       {List<String>? involvedIds, bool isMajor = false}) {
@@ -716,12 +1695,18 @@ class GameEngine {
     _dayEvents.add(event);
   }
 
+  // ==================== SERIALIZACAO ====================
+
   Map<String, dynamic> toJson() => {
         'state': state.toJson(),
         'npcs': npcs.map((n) => n.toJson()).toList(),
         'citadel': citadel.toJson(),
         'floors': floors.map((f) => f.toJson()).toList(),
         'events': events.map((e) => e.toJson()).toList(),
+        'groups': groups.map((g) => g.toJson()).toList(),
+        'trainingSuggestions': trainingSuggestions.map((s) => s.toJson()).toList(),
+        'groupIdCounter': _groupIdCounter,
+        'suggestionIdCounter': _suggestionIdCounter,
       };
 
   void loadFromJson(Map<String, dynamic> json) {
@@ -736,5 +1721,13 @@ class GameEngine {
     events = (json['events'] as List<dynamic>)
         .map((e) => GameEvent.fromJson(e as Map<String, dynamic>))
         .toList();
+    groups = (json['groups'] as List<dynamic>?)
+        ?.map((g) => NpcGroup.fromJson(g as Map<String, dynamic>))
+        .toList() ?? [];
+    trainingSuggestions = (json['trainingSuggestions'] as List<dynamic>?)
+        ?.map((s) => TrainingSuggestion.fromJson(s as Map<String, dynamic>))
+        .toList() ?? [];
+    _groupIdCounter = json['groupIdCounter'] as int? ?? 0;
+    _suggestionIdCounter = json['suggestionIdCounter'] as int? ?? 0;
   }
 }

@@ -13,7 +13,7 @@ class EventLogScreen extends StatefulWidget {
 }
 
 class _EventLogScreenState extends State<EventLogScreen> {
-  String _typeFilter = 'all';
+  GameEventType? _typeFilter;
   bool _majorOnly = false;
 
   @override
@@ -21,12 +21,8 @@ class _EventLogScreenState extends State<EventLogScreen> {
     return Consumer<GameProvider>(
       builder: (context, gp, _) {
         var events = gp.events.reversed.toList();
-        if (_typeFilter != 'all') {
-          final filterType = GameEventType.values.firstWhere(
-            (t) => t.tag == _typeFilter,
-            orElse: () => GameEventType.system,
-          );
-          events = events.where((e) => e.type == filterType).toList();
+        if (_typeFilter != null) {
+          events = events.where((e) => e.type == _typeFilter).toList();
         }
         if (_majorOnly) {
           events = events.where((e) => e.isMajor).toList();
@@ -60,13 +56,21 @@ class _EventLogScreenState extends State<EventLogScreen> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            _chip('TODOS', 'all'),
-            _chip('[MORTE]', '[MORTE]'),
-            _chip('[NASC]', '[NASC]'),
-            _chip('[TORRE]', '[TORRE]'),
-            _chip('[CRISE]', '[CRISE]'),
-            _chip('[MENTAL]', '[MENTAL]'),
-            _chip('[AMOR]', '[AMOR]'),
+            _chip('Todos', null),
+            _chip('Morte', GameEventType.death),
+            _chip('Nascimento', GameEventType.birth),
+            _chip('Torre', GameEventType.towerCleared),
+            _chip('Crise', GameEventType.crisis),
+            _chip('Colapso', GameEventType.mentalBreak),
+            _chip('Romance', GameEventType.romance),
+            _chip('Combate', GameEventType.combat),
+            _chip('Construcao', GameEventType.construction),
+            _chip('Traicao', GameEventType.betrayalAttempt),
+            _chip('Grupos', GameEventType.groupFormed),
+            _chip('Sugestao', GameEventType.trainingSuggestion),
+            _chip('Invocacao', GameEventType.emergencySummon),
+            _chip('Re-Explor.', GameEventType.floorReexplore),
+            _chip('Politica', GameEventType.politicalEvent),
             const SizedBox(width: 12),
             GestureDetector(
               onTap: () => setState(() => _majorOnly = !_majorOnly),
@@ -77,7 +81,7 @@ class _EventLogScreenState extends State<EventLogScreen> {
                   borderRadius: BorderRadius.circular(2),
                   color: _majorOnly ? AppTheme.yellow.withValues(alpha: 0.1) : null,
                 ),
-                child: TerminalText('MAJOR', fontSize: 8, color: _majorOnly ? AppTheme.yellow : AppTheme.textDim),
+                child: TerminalText('Importantes', fontSize: 8, color: _majorOnly ? AppTheme.yellow : AppTheme.textDim),
               ),
             ),
           ],
@@ -86,7 +90,7 @@ class _EventLogScreenState extends State<EventLogScreen> {
     );
   }
 
-  Widget _chip(String label, String value) {
+  Widget _chip(String label, GameEventType? value) {
     final active = _typeFilter == value;
     return Padding(
       padding: const EdgeInsets.only(right: 4),
@@ -106,6 +110,22 @@ class _EventLogScreenState extends State<EventLogScreen> {
   }
 
   Widget _buildEventCard(GameEvent event) {
+    final weekNum = (event.day / 7).ceil();
+    String timeLabel;
+    if (weekNum < 4) {
+      timeLabel = 'Semana $weekNum';
+    } else {
+      final months = weekNum ~/ 4;
+      final rw = weekNum % 4;
+      if (months < 12) {
+        timeLabel = rw > 0 ? 'Mes $months, Sem $rw' : 'Mes $months';
+      } else {
+        final years = months ~/ 12;
+        final rm = months % 12;
+        timeLabel = 'Ano $years, Mes $rm';
+      }
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.all(10),
@@ -127,7 +147,9 @@ class _EventLogScreenState extends State<EventLogScreen> {
               child: TerminalText(event.type.tag, fontSize: 8, color: _getEventColor(event.type), fontWeight: FontWeight.bold),
             ),
             const SizedBox(width: 6),
-            TerminalText('DIA ${event.day}', fontSize: 8, color: AppTheme.textDim),
+            TerminalText(timeLabel, fontSize: 8, color: AppTheme.textDim),
+            const SizedBox(width: 4),
+            TerminalText('(Dia ${event.day})', fontSize: 7, color: AppTheme.textDim),
             if (event.isMajor) ...[
               const SizedBox(width: 6),
               TerminalText('*', fontSize: 10, color: AppTheme.yellow, fontWeight: FontWeight.bold),
@@ -161,6 +183,13 @@ class _EventLogScreenState extends State<EventLogScreen> {
       case GameEventType.resourceGain: return AppTheme.green;
       case GameEventType.resourceLoss: return AppTheme.orange;
       case GameEventType.training: return AppTheme.blue;
+      case GameEventType.groupFormed: return AppTheme.blue;
+      case GameEventType.trainingSuggestion: return AppTheme.green;
+      case GameEventType.betrayalAttempt: return AppTheme.red;
+      case GameEventType.emergencySummon: return AppTheme.orange;
+      case GameEventType.floorReexplore: return AppTheme.cyan;
+      case GameEventType.loyaltyChange: return AppTheme.yellow;
+      case GameEventType.politicalEvent: return AppTheme.orange;
       default: return AppTheme.textDim;
     }
   }

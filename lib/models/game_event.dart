@@ -16,28 +16,43 @@ enum GameEventType {
   resourceLoss,
   training,
   system,
+  // Novos tipos
+  groupFormed,
+  trainingSuggestion,
+  betrayalAttempt,
+  emergencySummon,
+  floorReexplore,
+  loyaltyChange,
+  politicalEvent,
 }
 
 extension GameEventTypeExt on GameEventType {
   String get tag {
     switch (this) {
-      case GameEventType.combat: return '[COMBATE]';
-      case GameEventType.death: return '[MORTE]';
-      case GameEventType.birth: return '[NASC]';
-      case GameEventType.discovery: return '[DESC]';
-      case GameEventType.crisis: return '[CRISE]';
-      case GameEventType.celebration: return '[CELEB]';
-      case GameEventType.betrayal: return '[TRAIC]';
-      case GameEventType.romance: return '[AMOR]';
-      case GameEventType.construction: return '[CONST]';
-      case GameEventType.exploration: return '[EXPL]';
-      case GameEventType.mentalBreak: return '[MENTAL]';
-      case GameEventType.towerCleared: return '[TORRE]';
-      case GameEventType.upgrade: return '[UP]';
-      case GameEventType.resourceGain: return '[+REC]';
-      case GameEventType.resourceLoss: return '[-REC]';
-      case GameEventType.training: return '[TREINO]';
-      case GameEventType.system: return '[SYS]';
+      case GameEventType.combat: return 'Combate';
+      case GameEventType.death: return 'Morte';
+      case GameEventType.birth: return 'Nascimento';
+      case GameEventType.discovery: return 'Descoberta';
+      case GameEventType.crisis: return 'Crise';
+      case GameEventType.celebration: return 'Celebracao';
+      case GameEventType.betrayal: return 'Traicao';
+      case GameEventType.romance: return 'Romance';
+      case GameEventType.construction: return 'Construcao';
+      case GameEventType.exploration: return 'Exploracao';
+      case GameEventType.mentalBreak: return 'Colapso Mental';
+      case GameEventType.towerCleared: return 'Torre Conquistada';
+      case GameEventType.upgrade: return 'Evolucao';
+      case GameEventType.resourceGain: return 'Recursos +';
+      case GameEventType.resourceLoss: return 'Recursos -';
+      case GameEventType.training: return 'Treino';
+      case GameEventType.system: return 'Sistema';
+      case GameEventType.groupFormed: return 'Grupo Formado';
+      case GameEventType.trainingSuggestion: return 'Sugestao de Treino';
+      case GameEventType.betrayalAttempt: return 'Tentativa de Traicao';
+      case GameEventType.emergencySummon: return 'Invocacao Emergencial';
+      case GameEventType.floorReexplore: return 'Re-Exploracao';
+      case GameEventType.loyaltyChange: return 'Lealdade';
+      case GameEventType.politicalEvent: return 'Politica Interna';
     }
   }
 
@@ -60,6 +75,13 @@ extension GameEventTypeExt on GameEventType {
       case GameEventType.resourceLoss: return '#CC8844';
       case GameEventType.training: return '#88CCFF';
       case GameEventType.system: return '#888888';
+      case GameEventType.groupFormed: return '#66BBFF';
+      case GameEventType.trainingSuggestion: return '#88DDAA';
+      case GameEventType.betrayalAttempt: return '#FF2244';
+      case GameEventType.emergencySummon: return '#FFAA00';
+      case GameEventType.floorReexplore: return '#44DDBB';
+      case GameEventType.loyaltyChange: return '#AABB88';
+      case GameEventType.politicalEvent: return '#DDAA66';
     }
   }
 }
@@ -125,6 +147,15 @@ class GameState {
   bool gameOver;
   String gameOverReason;
 
+  /// Tempo acumulado na Torre em segundos (tempo in-game total dentro do dia atual).
+  /// Quando >= 86400 (24h in-game), um dia completo e processado.
+  /// Range: 0.0 .. 86399.999...
+  double gameSeconds;
+
+  /// Timestamp real (epoch ms) da ultima vez que o tempo foi processado.
+  /// Usado para calcular deltaRealSeconds ao retomar o jogo (offline progress).
+  int lastRealTimestamp;
+
   GameState({
     this.currentDay = 1,
     this.highestFloorCleared = 0,
@@ -135,7 +166,34 @@ class GameState {
     this.eventIdCounter = 0,
     this.gameOver = false,
     this.gameOverReason = '',
-  });
+    this.gameSeconds = 0.0,
+    int? lastRealTimestamp,
+  }) : lastRealTimestamp = lastRealTimestamp ?? DateTime.now().millisecondsSinceEpoch;
+
+  // ===== DERIVADOS DO TEMPO =====
+
+  /// Hora atual in-game (0-23), derivada de gameSeconds
+  int get currentHour => (gameSeconds / 3600.0).floor().clamp(0, 23);
+
+  /// Minuto atual in-game (0-59)
+  int get currentMinute => ((gameSeconds % 3600) / 60).floor().clamp(0, 59);
+
+  /// Periodo do dia baseado na hora in-game
+  String get dayPeriod {
+    final h = currentHour;
+    if (h >= 6 && h < 12) return 'Manha';
+    if (h >= 12 && h < 18) return 'Tarde';
+    if (h >= 18 && h < 22) return 'Noite';
+    return 'Madrugada';
+  }
+
+  /// Hora formatada HH:MM
+  String get formattedTime {
+    return '${currentHour.toString().padLeft(2, '0')}:${currentMinute.toString().padLeft(2, '0')}';
+  }
+
+  /// Tempo total em dias in-game (fracional)
+  double get totalGameDays => (currentDay - 1) + (gameSeconds / 86400.0);
 
   String generateNpcId() {
     npcIdCounter++;
@@ -157,6 +215,8 @@ class GameState {
         'eventIdCounter': eventIdCounter,
         'gameOver': gameOver,
         'gameOverReason': gameOverReason,
+        'gameSeconds': gameSeconds,
+        'lastRealTimestamp': lastRealTimestamp,
       };
 
   factory GameState.fromJson(Map<String, dynamic> json) => GameState(
@@ -169,5 +229,8 @@ class GameState {
         eventIdCounter: json['eventIdCounter'] as int? ?? 0,
         gameOver: json['gameOver'] as bool? ?? false,
         gameOverReason: json['gameOverReason'] as String? ?? '',
+        gameSeconds: (json['gameSeconds'] as num?)?.toDouble() ??
+            ((json['inGameHoursAccumulated'] as num?)?.toDouble() ?? 0.0) * 3600.0,
+        lastRealTimestamp: json['lastRealTimestamp'] as int?,
       );
 }
