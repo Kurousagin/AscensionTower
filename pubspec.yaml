@@ -1,4 +1,5 @@
 name: tower_ascension
+display_name: Tower Ascension
 description: "The Tower of the Second Humanity - A text-based simulation game"
 publish_to: 'none'
 version: 1.0.0+1

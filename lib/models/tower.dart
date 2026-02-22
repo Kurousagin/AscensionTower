@@ -80,16 +80,18 @@ class TowerFloor {
     final tierMult = 1.0 + (tier - 1) * 0.4;
     // Andares 1-2 faceis
     double easyMod = 1.0;
-    if (number <= 2) easyMod = 0.6;
-    else if (number <= 5) easyMod = 0.8;
+    if (number <= 2) {
+      easyMod = 0.6;
+    } else if (number <= 5) easyMod = 0.8;
     return difficulty * tierMult * easyMod;
   }
 
   double get scaledMortality {
     final tierMult = 1.0 + (tier - 1) * 0.25;
     double easyMod = 1.0;
-    if (number <= 2) easyMod = 0.3;
-    else if (number <= 5) easyMod = 0.6;
+    if (number <= 2) {
+      easyMod = 0.3;
+    } else if (number <= 5) easyMod = 0.6;
     return (baseMortalityRate * tierMult * easyMod).clamp(0.0, 0.85);
   }
 
@@ -364,8 +366,9 @@ class TowerFloor {
       }
 
       // Bosses e elites sao mais dificeis
-      if (isBoss) baseDiff *= 1.8;
-      else if (isElite) baseDiff *= 1.3;
+      if (isBoss) {
+        baseDiff *= 1.8;
+      } else if (isElite) baseDiff *= 1.3;
 
       // Mortalidade escala
       double mortality;
@@ -382,8 +385,9 @@ class TowerFloor {
       } else {
         mortality = 0.25 + (i - 75) * 0.006;
       }
-      if (isBoss) mortality *= 1.5;
-      else if (isElite) mortality *= 1.2;
+      if (isBoss) {
+        mortality *= 1.5;
+      } else if (isElite) mortality *= 1.2;
       mortality = mortality.clamp(0.02, 0.60);
 
       // Descricao

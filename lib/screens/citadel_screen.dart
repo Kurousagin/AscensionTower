@@ -115,8 +115,9 @@ class CitadelScreen extends StatelessWidget {
 
     Color storageBorderColor = AppTheme.border;
     if (!isInfinite) {
-      if (maxUsage >= 1.0) storageBorderColor = AppTheme.red;
-      else if (maxUsage >= 0.8) storageBorderColor = AppTheme.orange;
+      if (maxUsage >= 1.0) {
+        storageBorderColor = AppTheme.red;
+      } else if (maxUsage >= 0.8) storageBorderColor = AppTheme.orange;
       else if (maxUsage >= 0.6) storageBorderColor = AppTheme.yellow;
     }
 
