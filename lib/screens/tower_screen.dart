@@ -66,8 +66,12 @@ class _TowerScreenState extends State<TowerScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const TerminalText('A TORRE DOS 100 ANDARES',
-              fontSize: 14, color: AppTheme.cyan, fontWeight: FontWeight.bold),
+          const TerminalText(
+            'A TORRE DOS 100 ANDARES',
+            fontSize: 14,
+            color: AppTheme.cyan,
+            fontWeight: FontWeight.bold,
+          ),
           const SizedBox(height: 8),
           _buildMiniTowerAscii(cleared),
           const SizedBox(height: 8),
@@ -77,12 +81,21 @@ class _TowerScreenState extends State<TowerScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    TerminalText('Andares: $cleared / 100',
-                        fontSize: 11, color: AppTheme.green),
-                    TerminalText('Tier atual: $currentTier / 10',
-                        fontSize: 10, color: AppTheme.orange),
-                    TerminalText('Progresso no tier: $tierProgress / 10',
-                        fontSize: 10, color: AppTheme.textSecondary),
+                    TerminalText(
+                      'Andares: $cleared / 100',
+                      fontSize: 11,
+                      color: AppTheme.green,
+                    ),
+                    TerminalText(
+                      'Tier atual: $currentTier / 10',
+                      fontSize: 10,
+                      color: AppTheme.orange,
+                    ),
+                    TerminalText(
+                      'Progresso no tier: $tierProgress / 10',
+                      fontSize: 10,
+                      color: AppTheme.textSecondary,
+                    ),
                   ],
                 ),
               ),
@@ -91,8 +104,11 @@ class _TowerScreenState extends State<TowerScreen> {
                 children: [
                   _difficultyBadge(cleared),
                   const SizedBox(height: 4),
-                  TerminalText('Mortes: ${gp.state.totalDeaths}',
-                      fontSize: 9, color: AppTheme.red),
+                  TerminalText(
+                    'Mortes: ${gp.state.totalDeaths}',
+                    fontSize: 9,
+                    color: AppTheme.red,
+                  ),
                 ],
               ),
             ],
@@ -152,7 +168,12 @@ class _TowerScreenState extends State<TowerScreen> {
         border: Border.all(color: color),
         borderRadius: BorderRadius.circular(3),
       ),
-      child: TerminalText(tag, fontSize: 9, color: color, fontWeight: FontWeight.bold),
+      child: TerminalText(
+        tag,
+        fontSize: 9,
+        color: color,
+        fontWeight: FontWeight.bold,
+      ),
     );
   }
 
@@ -181,32 +202,36 @@ class _TowerScreenState extends State<TowerScreen> {
       final bar = isFullyCleared
           ? '=' * width
           : isCurrent
-              ? '${'=' * clearedInTier}${'-' * (10 - clearedInTier)}'
-                  .padRight(width, '-')
-                  .substring(0, width)
-              : '-' * width;
+          ? '${'=' * clearedInTier}${'-' * (10 - clearedInTier)}'
+                .padRight(width, '-')
+                .substring(0, width)
+          : '-' * width;
       final label = isFullyCleared
           ? 'Completo'
           : isCurrent
-              ? 'Atual   '
-              : isLocked
-                  ? 'Bloqueado'
-                  : '        ';
+          ? 'Atual   '
+          : isLocked
+          ? 'Bloqueado'
+          : '        ';
 
-      tiers.add(Padding(
-        padding: const EdgeInsets.symmetric(vertical: 0),
-        child: Row(
-          children: [
-            SizedBox(
+      tiers.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 0),
+          child: Row(
+            children: [
+              SizedBox(
                 width: 70,
-                child: TerminalText(label, fontSize: 7, color: color)),
-            TerminalText(
+                child: TerminalText(label, fontSize: 7, color: color),
+              ),
+              TerminalText(
                 'T${t.toString().padLeft(2, '0')} |$bar| $clearedInTier/10',
                 fontSize: 8,
-                color: color),
-          ],
+                color: color,
+              ),
+            ],
+          ),
         ),
-      ));
+      );
     }
     return Column(children: tiers);
   }
@@ -230,40 +255,55 @@ class _TowerScreenState extends State<TowerScreen> {
 
     return TerminalCard(
       title:
-          '${isBoss ? "BOSS" : isElite ? "ELITE" : "PROXIMO"}: ANDAR ${floor.number}',
+          '${isBoss
+              ? "BOSS"
+              : isElite
+              ? "ELITE"
+              : "PROXIMO"}: ANDAR ${floor.number}',
       borderColor: isBoss
           ? AppTheme.red
           : isElite
-              ? const Color(0xFFFF44FF)
-              : AppTheme.yellow,
+          ? const Color(0xFFFF44FF)
+          : AppTheme.yellow,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            TerminalText('${floor.type.icon} ${floor.type.label}',
+          Row(
+            children: [
+              TerminalText(
+                '${floor.type.icon} ${floor.type.label}',
                 fontSize: 11,
                 color: AppTheme.textPrimary,
-                fontWeight: FontWeight.bold),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                border: Border.all(color: AppTheme.red),
-                borderRadius: BorderRadius.circular(3),
+                fontWeight: FontWeight.bold,
               ),
-              child: TerminalText(
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppTheme.red),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: TerminalText(
                   'Dif: ${floor.scaledDifficulty.toStringAsFixed(1)} | ${floor.difficultyTag}',
                   fontSize: 8,
-                  color: AppTheme.red),
-            ),
-          ]),
+                  color: AppTheme.red,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 6),
-          TerminalText(floor.description,
-              fontSize: 9, color: AppTheme.textSecondary),
+          TerminalText(
+            floor.description,
+            fontSize: 9,
+            color: AppTheme.textSecondary,
+          ),
           if (floor.specialCondition.isNotEmpty) ...[
             const SizedBox(height: 4),
-            TerminalText('Condicao: ${floor.specialCondition}',
-                fontSize: 9, color: AppTheme.orange),
+            TerminalText(
+              'Condicao: ${floor.specialCondition}',
+              fontSize: 9,
+              color: AppTheme.orange,
+            ),
           ],
           const SizedBox(height: 4),
           Wrap(
@@ -271,11 +311,15 @@ class _TowerScreenState extends State<TowerScreen> {
             runSpacing: 2,
             children: [
               TerminalText(
-                  'Mortalidade: ${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
-                  fontSize: 9,
-                  color: AppTheme.red),
-              TerminalText('${floor.tierLabel} | ${floor.difficultyTag}',
-                  fontSize: 9, color: AppTheme.orange),
+                'Mortalidade: ${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
+                fontSize: 9,
+                color: AppTheme.red,
+              ),
+              TerminalText(
+                '${floor.tierLabel} | ${floor.difficultyTag}',
+                fontSize: 9,
+                color: AppTheme.orange,
+              ),
             ],
           ),
           TerminalText(
@@ -284,8 +328,11 @@ class _TowerScreenState extends State<TowerScreen> {
             color: AppTheme.textDim,
           ),
           const SizedBox(height: 6),
-          TerminalText('Recompensa: ${floor.reward}',
-              fontSize: 9, color: AppTheme.green),
+          TerminalText(
+            'Recompensa: ${floor.reward}',
+            fontSize: 9,
+            color: AppTheme.green,
+          ),
           const SizedBox(height: 12),
 
           // BOTAO DE ACAO
@@ -293,18 +340,18 @@ class _TowerScreenState extends State<TowerScreen> {
             label: isBoss
                 ? 'DESAFIAR BOSS'
                 : isElite
-                    ? 'ENFRENTAR ELITE'
-                    : 'ENVIAR EXPEDICAO',
+                ? 'ENFRENTAR ELITE'
+                : 'ENVIAR EXPEDICAO',
             icon: isBoss
                 ? Icons.whatshot
                 : isElite
-                    ? Icons.shield
-                    : Icons.rocket_launch,
+                ? Icons.shield
+                : Icons.rocket_launch,
             color: isBoss
                 ? AppTheme.red
                 : isElite
-                    ? const Color(0xFFFF44FF)
-                    : AppTheme.orange,
+                ? const Color(0xFFFF44FF)
+                : AppTheme.orange,
             expanded: true,
             onPressed: gp.aliveNpcs.length >= 2
                 ? () => _showSendExpeditionDialog(context, gp, floor)
@@ -313,31 +360,35 @@ class _TowerScreenState extends State<TowerScreen> {
           if (gp.aliveNpcs.length < 2)
             const Padding(
               padding: EdgeInsets.only(top: 4),
-              child: TerminalText('Necessario ao menos 2 habitantes vivos.',
-                  fontSize: 8, color: AppTheme.red),
+              child: TerminalText(
+                'Necessario ao menos 2 habitantes vivos.',
+                fontSize: 8,
+                color: AppTheme.red,
+              ),
             ),
 
           // Atalhos de grupo
           if (gp.groups.isNotEmpty) ...[
             const SizedBox(height: 8),
-            const TerminalText('Enviar grupo formado:',
-                fontSize: 9, color: AppTheme.textDim),
+            const TerminalText(
+              'Enviar grupo formado:',
+              fontSize: 9,
+              color: AppTheme.textDim,
+            ),
             const SizedBox(height: 4),
             Wrap(
               spacing: 6,
               runSpacing: 4,
               children: gp.groups.map((group) {
                 final aliveCount = group.memberIds
-                    .where(
-                        (id) => gp.allNpcs.any((n) => n.id == id && n.alive))
+                    .where((id) => gp.allNpcs.any((n) => n.id == id && n.alive))
                     .length;
                 return TerminalButton(
                   label: '${group.name} ($aliveCount)',
                   icon: Icons.groups,
                   color: AppTheme.cyan,
                   onPressed: aliveCount >= 2
-                      ? () =>
-                          _confirmGroupExpedition(context, gp, group, floor)
+                      ? () => _confirmGroupExpedition(context, gp, group, floor)
                       : null,
                 );
               }).toList(),
@@ -354,10 +405,12 @@ class _TowerScreenState extends State<TowerScreen> {
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TerminalText('VOCE DECIDE QUEM SOBE.',
-              fontSize: 11,
-              color: AppTheme.orange,
-              fontWeight: FontWeight.bold),
+          TerminalText(
+            'VOCE DECIDE QUEM SOBE.',
+            fontSize: 11,
+            color: AppTheme.orange,
+            fontWeight: FontWeight.bold,
+          ),
           SizedBox(height: 6),
           TerminalText(
             'Acoes diretas: Enviar expedições, re-explorar andares, construir edificios.\n'
@@ -388,8 +441,8 @@ class _TowerScreenState extends State<TowerScreen> {
     final cleared = gp.clearedFloors;
     if (cleared.isEmpty) return const SizedBox.shrink();
 
-    // Mostrar apenas os ultimos 5 andares conquistados para nao poluir a UI
-    final recentCleared = cleared.reversed.take(5).toList();
+    // Mostrar todos os andares conquistados em ordem reversa (mais recentes primeiro)
+    final sortedCleared = cleared.reversed.toList();
 
     return TerminalCard(
       title: 'RE-EXPLORACAO (${cleared.length} andares disponiveis)',
@@ -403,63 +456,65 @@ class _TowerScreenState extends State<TowerScreen> {
             color: AppTheme.textSecondary,
           ),
           const SizedBox(height: 8),
-          ...recentCleared.map((floor) {
-            final resStr = floor.farmableResources.entries
-                .map((e) => '${e.key}:~${e.value.toStringAsFixed(0)}')
-                .join(', ');
-            final threatPct =
-                ((0.05 + floor.timesReexplored * 0.02) * 100).toStringAsFixed(0);
-            return Container(
-              margin: const EdgeInsets.only(bottom: 4),
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: AppTheme.bgElevated,
-                border: Border.all(
-                    color: AppTheme.green.withValues(alpha: 0.2)),
-                borderRadius: BorderRadius.circular(3),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          // Container com altura máxima e scroll
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 300),
+            child: SingleChildScrollView(
+              child: Column(
+                children: sortedCleared.map((floor) {
+                  final resStr = floor.farmableResources.entries
+                      .map((e) => '${e.key}:~${e.value.toStringAsFixed(0)}')
+                      .join(', ');
+                  final threatPct = ((0.05 + floor.timesReexplored * 0.02) * 100)
+                      .toStringAsFixed(0);
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 4),
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.bgElevated,
+                      border: Border.all(
+                        color: AppTheme.green.withValues(alpha: 0.2),
+                      ),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Row(
                       children: [
-                        TerminalText(
-                            'Andar ${floor.number} (${floor.type.label})',
-                            fontSize: 9,
-                            color: AppTheme.green,
-                            fontWeight: FontWeight.bold),
-                        TerminalText(resStr,
-                            fontSize: 7, color: AppTheme.cyan),
-                        TerminalText(
-                            'Visitas:${floor.timesReexplored} | Risco:$threatPct%',
-                            fontSize: 7,
-                            color: floor.timesReexplored > 3
-                                ? AppTheme.red
-                                : AppTheme.textDim),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              TerminalText(
+                                'Andar ${floor.number} (${floor.type.label})',
+                                fontSize: 9,
+                                color: AppTheme.green,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              TerminalText(resStr, fontSize: 7, color: AppTheme.cyan),
+                              TerminalText(
+                                'Visitas:${floor.timesReexplored} | Risco:$threatPct%',
+                                fontSize: 7,
+                                color: floor.timesReexplored > 3
+                                    ? AppTheme.red
+                                    : AppTheme.textDim,
+                              ),
+                            ],
+                          ),
+                        ),
+                        TerminalButton(
+                          label: 'COLETAR',
+                          icon: Icons.search,
+                          color: AppTheme.green,
+                          onPressed: gp.aliveNpcs.isNotEmpty
+                              ? () => _showReexploreDialog(context, gp, floor)
+                              : null,
+                        ),
                       ],
                     ),
-                  ),
-                  TerminalButton(
-                    label: 'COLETAR',
-                    icon: Icons.search,
-                    color: AppTheme.green,
-                    onPressed: gp.aliveNpcs.isNotEmpty
-                        ? () => _showReexploreDialog(context, gp, floor)
-                        : null,
-                  ),
-                ],
+                  );
+                }).toList(),
               ),
-            );
-          }),
-          if (cleared.length > 5)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: TerminalText(
-                  'E mais ${cleared.length - 5} andares (veja mapa abaixo)',
-                  fontSize: 8,
-                  color: AppTheme.textDim),
             ),
+          ),
         ],
       ),
     );
@@ -496,8 +551,11 @@ class _TowerScreenState extends State<TowerScreen> {
             );
           }),
           if (ch.log.length > 20)
-            TerminalText('... e mais ${ch.log.length - 20} linhas',
-                fontSize: 8, color: AppTheme.textDim),
+            TerminalText(
+              '... e mais ${ch.log.length - 20} linhas',
+              fontSize: 8,
+              color: AppTheme.textDim,
+            ),
         ],
       ),
     );
@@ -525,20 +583,34 @@ class _TowerScreenState extends State<TowerScreen> {
             fontWeight: FontWeight.bold,
           ),
           const SizedBox(height: 4),
-          TerminalText('Custo: ${r.foodCost.toStringAsFixed(0)} comida', fontSize: 9, color: AppTheme.orange),
+          TerminalText(
+            'Custo: ${r.foodCost.toStringAsFixed(0)} comida',
+            fontSize: 9,
+            color: AppTheme.orange,
+          ),
           TerminalText('Recursos: $resStr', fontSize: 9, color: AppTheme.cyan),
           if (r.expeditionEvents.isNotEmpty) ...[
             const SizedBox(height: 4),
-            ...r.expeditionEvents.map((e) => TerminalText(
-                  e, fontSize: 8,
-                  color: e.contains('Traicao') ? AppTheme.red
-                      : e.contains('raro') ? AppTheme.yellow
-                      : e.contains('Conflito') ? AppTheme.orange
-                      : AppTheme.textDim)),
+            ...r.expeditionEvents.map(
+              (e) => TerminalText(
+                e,
+                fontSize: 8,
+                color: e.contains('Traicao')
+                    ? AppTheme.red
+                    : e.contains('raro')
+                    ? AppTheme.yellow
+                    : e.contains('Conflito')
+                    ? AppTheme.orange
+                    : AppTheme.textDim,
+              ),
+            ),
           ],
           if (hasCasualties)
-            TerminalText('Baixas: ${r.casualties.length}',
-                fontSize: 9, color: AppTheme.red),
+            TerminalText(
+              'Baixas: ${r.casualties.length}',
+              fontSize: 9,
+              color: AppTheme.red,
+            ),
         ],
       ),
     );
@@ -553,9 +625,10 @@ class _TowerScreenState extends State<TowerScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const TerminalText(
-              'Toque em um Tier para expandir/colapsar os andares.',
-              fontSize: 8,
-              color: AppTheme.textDim),
+            'Toque em um Tier para expandir/colapsar os andares.',
+            fontSize: 8,
+            color: AppTheme.textDim,
+          ),
           const SizedBox(height: 8),
           // 10 tiers, de cima para baixo
           ...List.generate(10, (i) {
@@ -570,15 +643,16 @@ class _TowerScreenState extends State<TowerScreen> {
   Widget _buildTierSection(GameProvider gp, int tier) {
     final tierStart = (tier - 1) * 10 + 1;
     final tierEnd = tier * 10;
-    final floorsInTier =
-        gp.floors.where((f) => f.number >= tierStart && f.number <= tierEnd).toList();
+    final floorsInTier = gp.floors
+        .where((f) => f.number >= tierStart && f.number <= tierEnd)
+        .toList();
     final clearedCount = floorsInTier.where((f) => f.cleared).length;
     final isExpanded = _expandedTier == tier;
     final isFullyCleared = clearedCount == 10;
     final hasBossCleared = floorsInTier.last.cleared;
     final isCurrentTier =
         gp.state.highestFloorCleared >= tierStart - 1 &&
-            gp.state.highestFloorCleared < tierEnd;
+        gp.state.highestFloorCleared < tierEnd;
     final isLocked = gp.state.highestFloorCleared < tierStart - 1;
 
     final tierNames = [
@@ -591,7 +665,7 @@ class _TowerScreenState extends State<TowerScreen> {
       'Almas',
       'Caos',
       'Sombra',
-      'Criadora'
+      'Criadora',
     ];
 
     Color tierColor;
@@ -611,8 +685,8 @@ class _TowerScreenState extends State<TowerScreen> {
           onTap: isLocked
               ? null
               : () => setState(() {
-                    _expandedTier = isExpanded ? -1 : tier;
-                  }),
+                  _expandedTier = isExpanded ? -1 : tier;
+                }),
           child: Container(
             margin: const EdgeInsets.only(bottom: 2),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -620,8 +694,7 @@ class _TowerScreenState extends State<TowerScreen> {
               color: isCurrentTier
                   ? AppTheme.yellow.withValues(alpha: 0.05)
                   : AppTheme.bgElevated,
-              border: Border.all(
-                  color: tierColor.withValues(alpha: 0.4)),
+              border: Border.all(color: tierColor.withValues(alpha: 0.4)),
               borderRadius: BorderRadius.circular(3),
             ),
             child: Row(
@@ -633,13 +706,13 @@ class _TowerScreenState extends State<TowerScreen> {
                 ),
                 const SizedBox(width: 6),
                 TerminalText(
-                    'TIER $tier: ${tierNames[(tier - 1).clamp(0, 9)].toUpperCase()}',
-                    fontSize: 10,
-                    color: tierColor,
-                    fontWeight: FontWeight.bold),
+                  'TIER $tier: ${tierNames[(tier - 1).clamp(0, 9)].toUpperCase()}',
+                  fontSize: 10,
+                  color: tierColor,
+                  fontWeight: FontWeight.bold,
+                ),
                 const Spacer(),
-                TerminalText('$clearedCount/10',
-                    fontSize: 9, color: tierColor),
+                TerminalText('$clearedCount/10', fontSize: 9, color: tierColor),
                 const SizedBox(width: 6),
                 // Mini barra
                 SizedBox(
@@ -684,7 +757,8 @@ class _TowerScreenState extends State<TowerScreen> {
             final isNext = floor.number == gp.state.highestFloorCleared + 1;
             final isBoss = floor.number % 10 == 0;
             final isElite = floor.number % 5 == 0 && !isBoss;
-            final isFloorLocked = floor.number > gp.state.highestFloorCleared + 1;
+            final isFloorLocked =
+                floor.number > gp.state.highestFloorCleared + 1;
 
             Color floorColor;
             if (isCleared) {
@@ -706,45 +780,54 @@ class _TowerScreenState extends State<TowerScreen> {
                 ),
                 borderRadius: BorderRadius.circular(2),
               ),
-              child: Row(children: [
-                SizedBox(
-                  width: 14,
-                  child: TerminalText(
-                    isCleared
-                        ? 'V'
-                        : isNext
-                            ? '>'
-                            : '-',
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 14,
+                    child: TerminalText(
+                      isCleared
+                          ? 'V'
+                          : isNext
+                          ? '>'
+                          : '-',
+                      fontSize: 9,
+                      color: floorColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  TerminalText(
+                    floor.number.toString().padLeft(3, '0'),
                     fontSize: 9,
                     color: floorColor,
                     fontWeight: FontWeight.bold,
                   ),
-                ),
-                TerminalText(
-                    floor.number.toString().padLeft(3, '0'),
-                    fontSize: 9,
-                    color: floorColor,
-                    fontWeight: FontWeight.bold),
-                const SizedBox(width: 6),
-                TerminalText(floor.type.icon,
-                    fontSize: 8, color: floorColor),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: TerminalText(
-                    '${floor.type.label}${isBoss ? ' [BOSS]' : isElite ? ' [ELITE]' : ''}',
-                    fontSize: 8,
-                    color: isBoss
-                        ? (isFloorLocked ? AppTheme.textDim : AppTheme.red)
-                        : isElite
-                            ? (isFloorLocked ? AppTheme.textDim : const Color(0xFFFF44FF))
-                            : floorColor,
+                  const SizedBox(width: 6),
+                  TerminalText(floor.type.icon, fontSize: 8, color: floorColor),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: TerminalText(
+                      '${floor.type.label}${isBoss
+                          ? ' [BOSS]'
+                          : isElite
+                          ? ' [ELITE]'
+                          : ''}',
+                      fontSize: 8,
+                      color: isBoss
+                          ? (isFloorLocked ? AppTheme.textDim : AppTheme.red)
+                          : isElite
+                          ? (isFloorLocked
+                                ? AppTheme.textDim
+                                : const Color(0xFFFF44FF))
+                          : floorColor,
+                    ),
                   ),
-                ),
-                TerminalText(
+                  TerminalText(
                     'Dif:${floor.scaledDifficulty.toStringAsFixed(1)}',
                     fontSize: 7,
-                    color: floorColor),
-              ]),
+                    color: floorColor,
+                  ),
+                ],
+              ),
             );
           }),
           const SizedBox(height: 4),
@@ -756,7 +839,10 @@ class _TowerScreenState extends State<TowerScreen> {
   // ==================== DIALOGOS DE ACAO ====================
 
   void _showSendExpeditionDialog(
-      BuildContext context, GameProvider gp, TowerFloor floor) {
+    BuildContext context,
+    GameProvider gp,
+    TowerFloor floor,
+  ) {
     final selectedIds = <String>{};
 
     showModalBottomSheet(
@@ -774,7 +860,9 @@ class _TowerScreenState extends State<TowerScreen> {
               .whereType<Npc>()
               .toList();
           final totalPower = selectedNpcs.fold<double>(
-              0.0, (sum, n) => sum + n.attributes.combatPower);
+            0.0,
+            (sum, n) => sum + n.attributes.combatPower,
+          );
           final powerPct = floor.recommendedPower > 0
               ? (totalPower / floor.recommendedPower * 100)
               : 0.0;
@@ -790,18 +878,24 @@ class _TowerScreenState extends State<TowerScreen> {
               ? gp.engine.previewPartyPersonalityMod(selectedIds.toList())
               : 0.0;
           final attrYield = selectedIds.isNotEmpty
-              ? gp.engine.previewPartyAttributeYield(selectedIds.toList(), floor.type)
+              ? gp.engine.previewPartyAttributeYield(
+                  selectedIds.toList(),
+                  floor.type,
+                )
               : 0.0;
           final eventChances = selectedIds.isNotEmpty
               ? gp.engine.previewEventChances(selectedIds.toList(), floor)
               : <String, double>{};
 
           // Analise de traicao
-          final hasSuspect = selectedNpcs.any((n) =>
-              n.isSuspicious || n.calculatedBetrayalRisk > 35);
-          final hasLazy = selectedNpcs.any((n) =>
-              n.traits.contains(PersonalityTrait.lazy));
-          final allExhausted = selectedNpcs.isNotEmpty &&
+          final hasSuspect = selectedNpcs.any(
+            (n) => n.isSuspicious || n.calculatedBetrayalRisk > 35,
+          );
+          final hasLazy = selectedNpcs.any(
+            (n) => n.traits.contains(PersonalityTrait.lazy),
+          );
+          final allExhausted =
+              selectedNpcs.isNotEmpty &&
               selectedNpcs.every((n) => n.isExhausted);
 
           return DraggableScrollableSheet(
@@ -816,27 +910,34 @@ class _TowerScreenState extends State<TowerScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Center(
-                      child: Container(
-                          width: 40,
-                          height: 3,
-                          color: AppTheme.border,
-                          margin: const EdgeInsets.only(bottom: 12))),
+                    child: Container(
+                      width: 40,
+                      height: 3,
+                      color: AppTheme.border,
+                      margin: const EdgeInsets.only(bottom: 12),
+                    ),
+                  ),
 
                   // === CABECALHO ===
                   TerminalText(
-                      'EXPEDICAO: ANDAR ${floor.number} (${floor.difficultyTag})',
-                      fontSize: 14,
-                      color: AppTheme.orange,
-                      fontWeight: FontWeight.bold),
+                    'EXPEDICAO: ANDAR ${floor.number} (${floor.difficultyTag})',
+                    fontSize: 14,
+                    color: AppTheme.orange,
+                    fontWeight: FontWeight.bold,
+                  ),
                   const SizedBox(height: 4),
                   TerminalText(
-                      '${floor.type.icon} ${floor.type.label} | Dif: ${floor.scaledDifficulty.toStringAsFixed(1)} | Mort: ${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
-                      fontSize: 10,
-                      color: AppTheme.textSecondary),
+                    '${floor.type.icon} ${floor.type.label} | Dif: ${floor.scaledDifficulty.toStringAsFixed(1)} | Mort: ${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
+                    fontSize: 10,
+                    color: AppTheme.textSecondary,
+                  ),
                   if (floor.specialCondition.isNotEmpty) ...[
                     const SizedBox(height: 2),
-                    TerminalText('Condicao: ${floor.specialCondition}',
-                        fontSize: 9, color: AppTheme.yellow),
+                    TerminalText(
+                      'Condicao: ${floor.specialCondition}',
+                      fontSize: 9,
+                      color: AppTheme.yellow,
+                    ),
                   ],
                   const SizedBox(height: 10),
 
@@ -846,11 +947,12 @@ class _TowerScreenState extends State<TowerScreen> {
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         border: Border.all(
-                            color: powerPct >= 100
-                                ? AppTheme.green
-                                : powerPct >= 60
-                                    ? AppTheme.yellow
-                                    : AppTheme.red),
+                          color: powerPct >= 100
+                              ? AppTheme.green
+                              : powerPct >= 60
+                              ? AppTheme.yellow
+                              : AppTheme.red,
+                        ),
                         borderRadius: BorderRadius.circular(5),
                         color: AppTheme.bgElevated,
                       ),
@@ -858,35 +960,41 @@ class _TowerScreenState extends State<TowerScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Titulo
-                          Row(children: [
-                            Icon(
-                              powerPct >= 100
-                                  ? Icons.check_circle
-                                  : powerPct >= 60
-                                      ? Icons.warning_amber
-                                      : Icons.dangerous,
-                              color: powerPct >= 100
-                                  ? AppTheme.green
-                                  : powerPct >= 60
-                                      ? AppTheme.yellow
-                                      : AppTheme.red,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 6),
-                            TerminalText(
-                              'ANALISE DA EXPEDICAO',
-                              fontSize: 11,
-                              color: AppTheme.cyan,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ]),
+                          Row(
+                            children: [
+                              Icon(
+                                powerPct >= 100
+                                    ? Icons.check_circle
+                                    : powerPct >= 60
+                                    ? Icons.warning_amber
+                                    : Icons.dangerous,
+                                color: powerPct >= 100
+                                    ? AppTheme.green
+                                    : powerPct >= 60
+                                    ? AppTheme.yellow
+                                    : AppTheme.red,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 6),
+                              TerminalText(
+                                'ANALISE DA EXPEDICAO',
+                                fontSize: 11,
+                                color: AppTheme.cyan,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 8),
 
                           // Poder
                           _analysisRow(
                             'Poder de Combate',
                             '${totalPower.toStringAsFixed(1)} / ${floor.recommendedPower.toStringAsFixed(1)} (${powerPct.toStringAsFixed(0)}%)',
-                            powerPct >= 100 ? AppTheme.green : powerPct >= 60 ? AppTheme.yellow : AppTheme.red,
+                            powerPct >= 100
+                                ? AppTheme.green
+                                : powerPct >= 60
+                                ? AppTheme.yellow
+                                : AppTheme.red,
                           ),
 
                           // Custo
@@ -898,8 +1006,11 @@ class _TowerScreenState extends State<TowerScreen> {
                           if (!hasFood)
                             const Padding(
                               padding: EdgeInsets.only(left: 100, bottom: 2),
-                              child: TerminalText('SEM COMIDA SUFICIENTE!',
-                                  fontSize: 8, color: AppTheme.red),
+                              child: TerminalText(
+                                'SEM COMIDA SUFICIENTE!',
+                                fontSize: 8,
+                                color: AppTheme.red,
+                              ),
                             ),
 
                           // Sinergia
@@ -909,13 +1020,13 @@ class _TowerScreenState extends State<TowerScreen> {
                               synergy > 0
                                   ? '+${(synergy * 100).toStringAsFixed(0)}% bonus'
                                   : synergy < 0
-                                      ? '${(synergy * 100).toStringAsFixed(0)}% penalidade'
-                                      : 'Neutro',
+                                  ? '${(synergy * 100).toStringAsFixed(0)}% penalidade'
+                                  : 'Neutro',
                               synergy > 0.1
                                   ? AppTheme.green
                                   : synergy < -0.1
-                                      ? AppTheme.red
-                                      : AppTheme.textSecondary,
+                                  ? AppTheme.red
+                                  : AppTheme.textSecondary,
                             ),
                           ],
 
@@ -925,9 +1036,11 @@ class _TowerScreenState extends State<TowerScreen> {
                             personalityMod > 0
                                 ? '+${(personalityMod * 100).toStringAsFixed(0)}% eficiencia'
                                 : personalityMod < 0
-                                    ? '${(personalityMod * 100).toStringAsFixed(0)}% eficiencia'
-                                    : 'Neutro',
-                            personalityMod >= 0 ? AppTheme.cyan : AppTheme.orange,
+                                ? '${(personalityMod * 100).toStringAsFixed(0)}% eficiencia'
+                                : 'Neutro',
+                            personalityMod >= 0
+                                ? AppTheme.cyan
+                                : AppTheme.orange,
                           ),
 
                           // Atributos
@@ -937,8 +1050,8 @@ class _TowerScreenState extends State<TowerScreen> {
                             attrYield >= 1.2
                                 ? AppTheme.green
                                 : attrYield >= 0.8
-                                    ? AppTheme.cyan
-                                    : AppTheme.orange,
+                                ? AppTheme.cyan
+                                : AppTheme.orange,
                           ),
 
                           const SizedBox(height: 6),
@@ -946,70 +1059,128 @@ class _TowerScreenState extends State<TowerScreen> {
                           const SizedBox(height: 6),
 
                           // Riscos de evento
-                          const TerminalText('RISCOS ESTIMADOS:',
-                              fontSize: 9, color: AppTheme.textDim),
+                          const TerminalText(
+                            'RISCOS ESTIMADOS:',
+                            fontSize: 9,
+                            color: AppTheme.textDim,
+                          ),
                           const SizedBox(height: 3),
                           if (eventChances.containsKey('acidente'))
                             _riskRow('Acidente', eventChances['acidente']!),
                           if (eventChances.containsKey('doenca'))
                             _riskRow('Doenca', eventChances['doenca']!),
-                          if (eventChances.containsKey('conflito') && eventChances['conflito']! > 0.05)
-                            _riskRow('Conflito Interno', eventChances['conflito']!),
-                          if (eventChances.containsKey('traicao') && eventChances['traicao']! > 0)
-                            _riskRow('Traicao', eventChances['traicao']!, isWarning: true),
+                          if (eventChances.containsKey('conflito') &&
+                              eventChances['conflito']! > 0.05)
+                            _riskRow(
+                              'Conflito Interno',
+                              eventChances['conflito']!,
+                            ),
+                          if (eventChances.containsKey('traicao') &&
+                              eventChances['traicao']! > 0)
+                            _riskRow(
+                              'Traicao',
+                              eventChances['traicao']!,
+                              isWarning: true,
+                            ),
                           if (eventChances.containsKey('evento_raro'))
-                            _riskRow('Evento Raro (+)', eventChances['evento_raro']!, isPositive: true),
+                            _riskRow(
+                              'Evento Raro (+)',
+                              eventChances['evento_raro']!,
+                              isPositive: true,
+                            ),
 
                           // Alertas criticos
                           if (hasSuspect) ...[
                             const SizedBox(height: 6),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppTheme.red.withValues(alpha: 0.12),
-                                border: Border.all(color: AppTheme.red.withValues(alpha: 0.5)),
+                                border: Border.all(
+                                  color: AppTheme.red.withValues(alpha: 0.5),
+                                ),
                                 borderRadius: BorderRadius.circular(3),
                               ),
-                              child: const Row(children: [
-                                Icon(Icons.warning, size: 11, color: AppTheme.red),
-                                SizedBox(width: 4),
-                                TerminalText('NPC SUSPEITO na expedicao! Risco de traicao elevado.',
-                                    fontSize: 8, color: AppTheme.red),
-                              ]),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.warning,
+                                    size: 11,
+                                    color: AppTheme.red,
+                                  ),
+                                  SizedBox(width: 4),
+                                  TerminalText(
+                                    'NPC SUSPEITO na expedicao! Risco de traicao elevado.',
+                                    fontSize: 8,
+                                    color: AppTheme.red,
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                           if (hasLazy) ...[
                             const SizedBox(height: 4),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppTheme.orange.withValues(alpha: 0.08),
-                                border: Border.all(color: AppTheme.orange.withValues(alpha: 0.4)),
+                                border: Border.all(
+                                  color: AppTheme.orange.withValues(alpha: 0.4),
+                                ),
                                 borderRadius: BorderRadius.circular(3),
                               ),
-                              child: const Row(children: [
-                                Icon(Icons.bedtime, size: 11, color: AppTheme.orange),
-                                SizedBox(width: 4),
-                                TerminalText('NPC PREGUICOSO reduz eficiencia do grupo.',
-                                    fontSize: 8, color: AppTheme.orange),
-                              ]),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.bedtime,
+                                    size: 11,
+                                    color: AppTheme.orange,
+                                  ),
+                                  SizedBox(width: 4),
+                                  TerminalText(
+                                    'NPC PREGUICOSO reduz eficiencia do grupo.',
+                                    fontSize: 8,
+                                    color: AppTheme.orange,
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                           if (allExhausted) ...[
                             const SizedBox(height: 4),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppTheme.red.withValues(alpha: 0.12),
-                                border: Border.all(color: AppTheme.red.withValues(alpha: 0.5)),
+                                border: Border.all(
+                                  color: AppTheme.red.withValues(alpha: 0.5),
+                                ),
                                 borderRadius: BorderRadius.circular(3),
                               ),
-                              child: const Row(children: [
-                                Icon(Icons.dangerous, size: 11, color: AppTheme.red),
-                                SizedBox(width: 4),
-                                TerminalText('TODOS EXAUSTOS! Rendimento drasticamente reduzido.',
-                                    fontSize: 8, color: AppTheme.red),
-                              ]),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.dangerous,
+                                    size: 11,
+                                    color: AppTheme.red,
+                                  ),
+                                  SizedBox(width: 4),
+                                  TerminalText(
+                                    'TODOS EXAUSTOS! Rendimento drasticamente reduzido.',
+                                    fontSize: 8,
+                                    color: AppTheme.red,
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ],
@@ -1028,23 +1199,27 @@ class _TowerScreenState extends State<TowerScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  TerminalText(
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    TerminalText(
                                       'Selecionados: 0 / Recomendado: ${floor.recommendedPartySize}',
                                       fontSize: 10,
-                                      color: AppTheme.textPrimary),
-                                  TerminalText(
+                                      color: AppTheme.textPrimary,
+                                    ),
+                                    TerminalText(
                                       'Poder Necesssario: ${floor.recommendedPower.toStringAsFixed(1)}',
                                       fontSize: 10,
-                                      color: AppTheme.textSecondary),
-                                ],
+                                      color: AppTheme.textSecondary,
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ]),
+                            ],
+                          ),
                           const SizedBox(height: 4),
                           TerminalText(
                             'Custo: ${gp.expeditionCostEstimate(1).toStringAsFixed(1)}/NPC | Estoque: ${gp.citadel.resources.food.toStringAsFixed(0)} comida',
@@ -1065,16 +1240,21 @@ class _TowerScreenState extends State<TowerScreen> {
 
                   // Grupos
                   if (gp.groups.isNotEmpty) ...[
-                    const TerminalText('Selecao rapida:',
-                        fontSize: 10, color: AppTheme.textDim),
+                    const TerminalText(
+                      'Selecao rapida:',
+                      fontSize: 10,
+                      color: AppTheme.textDim,
+                    ),
                     const SizedBox(height: 4),
                     Wrap(
                       spacing: 6,
                       runSpacing: 4,
                       children: gp.groups.map((group) {
                         final alive = group.memberIds
-                            .where((id) =>
-                                gp.allNpcs.any((n) => n.id == id && n.alive))
+                            .where(
+                              (id) =>
+                                  gp.allNpcs.any((n) => n.id == id && n.alive),
+                            )
                             .toList();
                         return TerminalButton(
                           label: '${group.name} (${alive.length})',
@@ -1082,9 +1262,9 @@ class _TowerScreenState extends State<TowerScreen> {
                           color: AppTheme.cyan,
                           onPressed: alive.isNotEmpty
                               ? () => setModalState(() {
-                                    selectedIds.clear();
-                                    selectedIds.addAll(alive);
-                                  })
+                                  selectedIds.clear();
+                                  selectedIds.addAll(alive);
+                                })
                               : null,
                         );
                       }).toList(),
@@ -1092,62 +1272,77 @@ class _TowerScreenState extends State<TowerScreen> {
                     const SizedBox(height: 12),
                   ],
 
-                  TerminalText('Habitantes (${gp.aliveNpcs.length} vivos):',
-                      fontSize: 10, color: AppTheme.textSecondary),
+                  TerminalText(
+                    'Habitantes (${gp.aliveNpcs.length} vivos):',
+                    fontSize: 10,
+                    color: AppTheme.textSecondary,
+                  ),
                   const SizedBox(height: 6),
 
                   ...gp.aliveNpcs.map((npc) {
                     final selected = selectedIds.contains(npc.id);
                     final power = npc.attributes.combatPower;
                     final isDisabled = npc.isIncapacitated;
-                    final fatigueColor = npc.fatigue >= 90 ? const Color(0xFFFF0044) :
-                        npc.fatigue >= 70 ? AppTheme.red :
-                        npc.fatigue >= 50 ? AppTheme.orange :
-                        npc.fatigue >= 30 ? AppTheme.yellow : AppTheme.green;
+                    final fatigueColor = npc.fatigue >= 90
+                        ? const Color(0xFFFF0044)
+                        : npc.fatigue >= 70
+                        ? AppTheme.red
+                        : npc.fatigue >= 50
+                        ? AppTheme.orange
+                        : npc.fatigue >= 30
+                        ? AppTheme.yellow
+                        : AppTheme.green;
 
                     // Tags de personalidade relevantes
                     final dangerTraits = npc.traits
-                        .where((t) =>
-                            t == PersonalityTrait.lazy ||
-                            t == PersonalityTrait.coward ||
-                            t == PersonalityTrait.treacherous ||
-                            t == PersonalityTrait.individualist)
+                        .where(
+                          (t) =>
+                              t == PersonalityTrait.lazy ||
+                              t == PersonalityTrait.coward ||
+                              t == PersonalityTrait.treacherous ||
+                              t == PersonalityTrait.individualist,
+                        )
                         .map((t) => t.label)
                         .toList();
                     final goodTraits = npc.traits
-                        .where((t) =>
-                            t == PersonalityTrait.brave ||
-                            t == PersonalityTrait.loyal ||
-                            t == PersonalityTrait.ambitious ||
-                            t == PersonalityTrait.analytical ||
-                            t == PersonalityTrait.leader)
+                        .where(
+                          (t) =>
+                              t == PersonalityTrait.brave ||
+                              t == PersonalityTrait.loyal ||
+                              t == PersonalityTrait.ambitious ||
+                              t == PersonalityTrait.analytical ||
+                              t == PersonalityTrait.leader,
+                        )
                         .map((t) => t.label)
                         .toList();
 
                     return GestureDetector(
-                      onTap: isDisabled ? null : () => setModalState(() {
-                        if (selected) {
-                          selectedIds.remove(npc.id);
-                        } else {
-                          selectedIds.add(npc.id);
-                        }
-                      }),
+                      onTap: isDisabled
+                          ? null
+                          : () => setModalState(() {
+                              if (selected) {
+                                selectedIds.remove(npc.id);
+                              } else {
+                                selectedIds.add(npc.id);
+                              }
+                            }),
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 4),
                         padding: const EdgeInsets.all(7),
                         decoration: BoxDecoration(
                           border: Border.all(
-                              color: isDisabled
-                                  ? AppTheme.red.withValues(alpha: 0.3)
-                                  : selected
-                                      ? AppTheme.orange
-                                      : AppTheme.border),
+                            color: isDisabled
+                                ? AppTheme.red.withValues(alpha: 0.3)
+                                : selected
+                                ? AppTheme.orange
+                                : AppTheme.border,
+                          ),
                           borderRadius: BorderRadius.circular(4),
                           color: isDisabled
                               ? AppTheme.red.withValues(alpha: 0.03)
                               : selected
-                                  ? AppTheme.orange.withValues(alpha: 0.06)
-                                  : null,
+                              ? AppTheme.orange.withValues(alpha: 0.06)
+                              : null,
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1155,17 +1350,18 @@ class _TowerScreenState extends State<TowerScreen> {
                             Row(
                               children: [
                                 Icon(
-                                    isDisabled
-                                        ? Icons.block
-                                        : selected
-                                            ? Icons.check_box
-                                            : Icons.check_box_outline_blank,
-                                    size: 14,
-                                    color: isDisabled
-                                        ? AppTheme.red.withValues(alpha: 0.5)
-                                        : selected
-                                            ? AppTheme.orange
-                                            : AppTheme.textDim),
+                                  isDisabled
+                                      ? Icons.block
+                                      : selected
+                                      ? Icons.check_box
+                                      : Icons.check_box_outline_blank,
+                                  size: 14,
+                                  color: isDisabled
+                                      ? AppTheme.red.withValues(alpha: 0.5)
+                                      : selected
+                                      ? AppTheme.orange
+                                      : AppTheme.textDim,
+                                ),
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: TerminalText(
@@ -1174,43 +1370,79 @@ class _TowerScreenState extends State<TowerScreen> {
                                     color: isDisabled
                                         ? AppTheme.red.withValues(alpha: 0.5)
                                         : selected
-                                            ? AppTheme.textPrimary
-                                            : AppTheme.textSecondary,
-                                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                                        ? AppTheme.textPrimary
+                                        : AppTheme.textSecondary,
+                                    fontWeight: selected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
                                   ),
                                 ),
                                 if (npc.isSuspicious)
-                                  const Icon(Icons.warning, size: 12, color: AppTheme.red),
+                                  const Icon(
+                                    Icons.warning,
+                                    size: 12,
+                                    color: AppTheme.red,
+                                  ),
                                 const SizedBox(width: 4),
-                                TerminalText('F:${npc.fatigue.toStringAsFixed(0)}',
-                                    fontSize: 8, color: fatigueColor),
+                                TerminalText(
+                                  'F:${npc.fatigue.toStringAsFixed(0)}',
+                                  fontSize: 8,
+                                  color: fatigueColor,
+                                ),
                                 const SizedBox(width: 6),
-                                TerminalText('PWR:${power.toStringAsFixed(1)}',
-                                    fontSize: 9, color: AppTheme.orange, fontWeight: FontWeight.bold),
+                                TerminalText(
+                                  'PWR:${power.toStringAsFixed(1)}',
+                                  fontSize: 9,
+                                  color: AppTheme.orange,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ],
                             ),
                             if (isDisabled)
                               const Padding(
                                 padding: EdgeInsets.only(left: 20, top: 2),
-                                child: TerminalText('[INCAPACITADO - NAO PODE PARTICIPAR]',
-                                    fontSize: 7, color: AppTheme.red),
+                                child: TerminalText(
+                                  '[INCAPACITADO - NAO PODE PARTICIPAR]',
+                                  fontSize: 7,
+                                  color: AppTheme.red,
+                                ),
                               )
                             else if (npc.isExhausted)
                               Padding(
-                                padding: const EdgeInsets.only(left: 20, top: 2),
-                                child: TerminalText('[EXAUSTO - rendimento severamente reduzido]',
-                                    fontSize: 7, color: AppTheme.red),
+                                padding: const EdgeInsets.only(
+                                  left: 20,
+                                  top: 2,
+                                ),
+                                child: TerminalText(
+                                  '[EXAUSTO - rendimento severamente reduzido]',
+                                  fontSize: 7,
+                                  color: AppTheme.red,
+                                ),
                               )
-                            else if (dangerTraits.isNotEmpty || goodTraits.isNotEmpty) ...[
+                            else if (dangerTraits.isNotEmpty ||
+                                goodTraits.isNotEmpty) ...[
                               Padding(
-                                padding: const EdgeInsets.only(left: 20, top: 2),
+                                padding: const EdgeInsets.only(
+                                  left: 20,
+                                  top: 2,
+                                ),
                                 child: Wrap(
                                   spacing: 4,
                                   children: [
-                                    ...goodTraits.map((t) => TerminalText(
-                                        '[+$t]', fontSize: 7, color: AppTheme.green)),
-                                    ...dangerTraits.map((t) => TerminalText(
-                                        '[-$t]', fontSize: 7, color: AppTheme.orange)),
+                                    ...goodTraits.map(
+                                      (t) => TerminalText(
+                                        '[+$t]',
+                                        fontSize: 7,
+                                        color: AppTheme.green,
+                                      ),
+                                    ),
+                                    ...dangerTraits.map(
+                                      (t) => TerminalText(
+                                        '[-$t]',
+                                        fontSize: 7,
+                                        color: AppTheme.orange,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -1233,13 +1465,19 @@ class _TowerScreenState extends State<TowerScreen> {
                         border: Border.all(color: AppTheme.red),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: const Row(children: [
-                        Icon(Icons.dangerous, size: 14, color: AppTheme.red),
-                        SizedBox(width: 6),
-                        Expanded(child: TerminalText(
-                            'PODER INSUFICIENTE (<60%). Probabilidade de DERROTA muito alta. Mortes certas.',
-                            fontSize: 9, color: AppTheme.red)),
-                      ]),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.dangerous, size: 14, color: AppTheme.red),
+                          SizedBox(width: 6),
+                          Expanded(
+                            child: TerminalText(
+                              'PODER INSUFICIENTE (<60%). Probabilidade de DERROTA muito alta. Mortes certas.',
+                              fontSize: 9,
+                              color: AppTheme.red,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   if (!hasFood && isReady)
                     Container(
@@ -1250,29 +1488,44 @@ class _TowerScreenState extends State<TowerScreen> {
                         border: Border.all(color: AppTheme.red),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: Row(children: [
-                        const Icon(Icons.no_food, size: 14, color: AppTheme.red),
-                        const SizedBox(width: 6),
-                        Expanded(child: TerminalText(
-                            'COMIDA INSUFICIENTE! Precisa: ${totalCost.toStringAsFixed(0)}, Tem: ${gp.citadel.resources.food.toStringAsFixed(0)}.',
-                            fontSize: 9, color: AppTheme.red)),
-                      ]),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.no_food,
+                            size: 14,
+                            color: AppTheme.red,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: TerminalText(
+                              'COMIDA INSUFICIENTE! Precisa: ${totalCost.toStringAsFixed(0)}, Tem: ${gp.citadel.resources.food.toStringAsFixed(0)}.',
+                              fontSize: 9,
+                              color: AppTheme.red,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
 
                   TerminalButton(
                     label: !isReady
                         ? 'SELECIONE 2+ NPCs'
                         : !hasFood
-                            ? 'SEM COMIDA SUFICIENTE'
-                            : 'CONFIRMAR EXPEDICAO',
+                        ? 'SEM COMIDA SUFICIENTE'
+                        : 'CONFIRMAR EXPEDICAO',
                     icon: Icons.rocket_launch,
                     expanded: true,
-                    color: !isReady || !hasFood ? AppTheme.textDim : AppTheme.orange,
+                    color: !isReady || !hasFood
+                        ? AppTheme.textDim
+                        : AppTheme.orange,
                     onPressed: isReady && hasFood
                         ? () {
                             Navigator.pop(ctx);
                             _executeExpedition(
-                                context, gp, selectedIds.toList());
+                              context,
+                              gp,
+                              selectedIds.toList(),
+                            );
                           }
                         : null,
                   ),
@@ -1288,19 +1541,31 @@ class _TowerScreenState extends State<TowerScreen> {
   Widget _analysisRow(String label, String value, Color valueColor) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(children: [
-        SizedBox(
-          width: 115,
-          child: TerminalText(label, fontSize: 9, color: AppTheme.textDim),
-        ),
-        Expanded(
-          child: TerminalText(value, fontSize: 9, color: valueColor, fontWeight: FontWeight.bold),
-        ),
-      ]),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 115,
+            child: TerminalText(label, fontSize: 9, color: AppTheme.textDim),
+          ),
+          Expanded(
+            child: TerminalText(
+              value,
+              fontSize: 9,
+              color: valueColor,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _riskRow(String label, double chance, {bool isWarning = false, bool isPositive = false}) {
+  Widget _riskRow(
+    String label,
+    double chance, {
+    bool isWarning = false,
+    bool isPositive = false,
+  }) {
     final pct = (chance * 100).toStringAsFixed(0);
     Color color;
     if (isPositive) {
@@ -1314,22 +1579,33 @@ class _TowerScreenState extends State<TowerScreen> {
     }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(children: [
-        SizedBox(
-          width: 115,
-          child: TerminalText(
-            isPositive ? '  + $label' : '  - $label',
-            fontSize: 8,
-            color: AppTheme.textSecondary,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 115,
+            child: TerminalText(
+              isPositive ? '  + $label' : '  - $label',
+              fontSize: 8,
+              color: AppTheme.textSecondary,
+            ),
           ),
-        ),
-        TerminalText('$pct%', fontSize: 8, color: color, fontWeight: FontWeight.bold),
-      ]),
+          TerminalText(
+            '$pct%',
+            fontSize: 8,
+            color: color,
+            fontWeight: FontWeight.bold,
+          ),
+        ],
+      ),
     );
   }
 
-  void _confirmGroupExpedition(BuildContext context, GameProvider gp,
-      NpcGroup group, TowerFloor floor) {
+  void _confirmGroupExpedition(
+    BuildContext context,
+    GameProvider gp,
+    NpcGroup group,
+    TowerFloor floor,
+  ) {
     final aliveMembers = group.memberIds
         .where((id) => gp.allNpcs.any((n) => n.id == id && n.alive))
         .toList();
@@ -1348,31 +1624,43 @@ class _TowerScreenState extends State<TowerScreen> {
           borderRadius: BorderRadius.circular(8),
           side: const BorderSide(color: AppTheme.orange),
         ),
-        title: TerminalText('ENVIAR ${group.name.toUpperCase()}?',
-            fontSize: 14,
-            color: AppTheme.orange,
-            fontWeight: FontWeight.bold),
+        title: TerminalText(
+          'ENVIAR ${group.name.toUpperCase()}?',
+          fontSize: 14,
+          color: AppTheme.orange,
+          fontWeight: FontWeight.bold,
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TerminalText('Andar ${floor.number} (${floor.type.label})',
-                fontSize: 11, color: AppTheme.textPrimary),
-            TerminalText('Membros: ${aliveMembers.length}',
-                fontSize: 10, color: AppTheme.textSecondary),
             TerminalText(
-                'Poder: ${totalPower.toStringAsFixed(1)} (${powerPct.toStringAsFixed(0)}%)',
-                fontSize: 10,
-                color: powerPct >= 100 ? AppTheme.green : AppTheme.red),
+              'Andar ${floor.number} (${floor.type.label})',
+              fontSize: 11,
+              color: AppTheme.textPrimary,
+            ),
             TerminalText(
-                'Mortalidade: ${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
-                fontSize: 10,
-                color: AppTheme.red),
+              'Membros: ${aliveMembers.length}',
+              fontSize: 10,
+              color: AppTheme.textSecondary,
+            ),
+            TerminalText(
+              'Poder: ${totalPower.toStringAsFixed(1)} (${powerPct.toStringAsFixed(0)}%)',
+              fontSize: 10,
+              color: powerPct >= 100 ? AppTheme.green : AppTheme.red,
+            ),
+            TerminalText(
+              'Mortalidade: ${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
+              fontSize: 10,
+              color: AppTheme.red,
+            ),
             const SizedBox(height: 8),
-            const TerminalText('MORTE PERMANENTE.',
-                fontSize: 10,
-                color: AppTheme.red,
-                fontWeight: FontWeight.bold),
+            const TerminalText(
+              'MORTE PERMANENTE.',
+              fontSize: 10,
+              color: AppTheme.red,
+              fontWeight: FontWeight.bold,
+            ),
           ],
         ),
         actions: [
@@ -1397,7 +1685,10 @@ class _TowerScreenState extends State<TowerScreen> {
   }
 
   void _executeExpedition(
-      BuildContext context, GameProvider gp, List<String> partyIds) {
+    BuildContext context,
+    GameProvider gp,
+    List<String> partyIds,
+  ) {
     final floor = gp.nextFloor;
     if (floor == null) return;
 
@@ -1406,7 +1697,9 @@ class _TowerScreenState extends State<TowerScreen> {
         .whereType<Npc>()
         .toList();
     final totalPower = partyNpcs.fold<double>(
-        0.0, (sum, n) => sum + n.attributes.combatPower);
+      0.0,
+      (sum, n) => sum + n.attributes.combatPower,
+    );
     final powerPct = floor.recommendedPower > 0
         ? (totalPower / floor.recommendedPower * 100)
         : 0.0;
@@ -1442,16 +1735,29 @@ class _TowerScreenState extends State<TowerScreen> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
           side: BorderSide(
-              color: isBoss ? AppTheme.red : isElite ? const Color(0xFFFF44FF) : AppTheme.orange,
-              width: isBoss ? 2 : 1),
+            color: isBoss
+                ? AppTheme.red
+                : isElite
+                ? const Color(0xFFFF44FF)
+                : AppTheme.orange,
+            width: isBoss ? 2 : 1,
+          ),
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             TerminalText(
-              isBoss ? 'CONFRONTO FINAL - BOSS!' : isElite ? 'ANDAR ELITE' : 'CONFIRMAR EXPEDICAO',
+              isBoss
+                  ? 'CONFRONTO FINAL - BOSS!'
+                  : isElite
+                  ? 'ANDAR ELITE'
+                  : 'CONFIRMAR EXPEDICAO',
               fontSize: 13,
-              color: isBoss ? AppTheme.red : isElite ? const Color(0xFFFF44FF) : AppTheme.orange,
+              color: isBoss
+                  ? AppTheme.red
+                  : isElite
+                  ? const Color(0xFFFF44FF)
+                  : AppTheme.orange,
               fontWeight: FontWeight.bold,
             ),
             TerminalText(
@@ -1468,22 +1774,34 @@ class _TowerScreenState extends State<TowerScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // NPCs selecionados
-              TerminalText('Enviando ${partyNpcs.length} NPC${partyNpcs.length > 1 ? "s" : ""}:',
-                  fontSize: 9, color: AppTheme.textDim),
+              TerminalText(
+                'Enviando ${partyNpcs.length} NPC${partyNpcs.length > 1 ? "s" : ""}:',
+                fontSize: 9,
+                color: AppTheme.textDim,
+              ),
               const SizedBox(height: 2),
-              ...partyNpcs.take(5).map((npc) => Padding(
-                padding: const EdgeInsets.only(left: 8, bottom: 1),
-                child: TerminalText(
-                  '> ${npc.name} (PWR:${npc.attributes.combatPower.toStringAsFixed(1)}, F:${npc.fatigue.toStringAsFixed(0)})',
-                  fontSize: 8,
-                  color: npc.isExhausted ? AppTheme.orange : AppTheme.textSecondary,
-                ),
-              )),
+              ...partyNpcs
+                  .take(5)
+                  .map(
+                    (npc) => Padding(
+                      padding: const EdgeInsets.only(left: 8, bottom: 1),
+                      child: TerminalText(
+                        '> ${npc.name} (PWR:${npc.attributes.combatPower.toStringAsFixed(1)}, F:${npc.fatigue.toStringAsFixed(0)})',
+                        fontSize: 8,
+                        color: npc.isExhausted
+                            ? AppTheme.orange
+                            : AppTheme.textSecondary,
+                      ),
+                    ),
+                  ),
               if (partyNpcs.length > 5)
                 Padding(
                   padding: const EdgeInsets.only(left: 8),
-                  child: TerminalText('... e mais ${partyNpcs.length - 5}',
-                      fontSize: 8, color: AppTheme.textDim),
+                  child: TerminalText(
+                    '... e mais ${partyNpcs.length - 5}',
+                    fontSize: 8,
+                    color: AppTheme.textDim,
+                  ),
                 ),
               const SizedBox(height: 10),
 
@@ -1492,26 +1810,37 @@ class _TowerScreenState extends State<TowerScreen> {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: AppTheme.orange.withValues(alpha: 0.06),
-                  border: Border.all(color: AppTheme.orange.withValues(alpha: 0.4)),
+                  border: Border.all(
+                    color: AppTheme.orange.withValues(alpha: 0.4),
+                  ),
                   borderRadius: BorderRadius.circular(3),
                 ),
-                child: Row(children: [
-                  const Icon(Icons.restaurant, size: 12, color: AppTheme.orange),
-                  const SizedBox(width: 6),
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    TerminalText(
-                      'CUSTO FIXO: ${totalCost.toStringAsFixed(0)} comida',
-                      fontSize: 9,
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.restaurant,
+                      size: 12,
                       color: AppTheme.orange,
-                      fontWeight: FontWeight.bold,
                     ),
-                    TerminalText(
-                      'Pago AGORA independente do resultado',
-                      fontSize: 7,
-                      color: AppTheme.textDim,
+                    const SizedBox(width: 6),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TerminalText(
+                          'CUSTO FIXO: ${totalCost.toStringAsFixed(0)} comida',
+                          fontSize: 9,
+                          color: AppTheme.orange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        TerminalText(
+                          'Pago AGORA independente do resultado',
+                          fontSize: 7,
+                          color: AppTheme.textDim,
+                        ),
+                      ],
                     ),
-                  ]),
-                ]),
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
 
@@ -1523,25 +1852,42 @@ class _TowerScreenState extends State<TowerScreen> {
                   border: Border.all(color: riskColor.withValues(alpha: 0.5)),
                   borderRadius: BorderRadius.circular(3),
                 ),
-                child: Row(children: [
-                  Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        TerminalText('RISCO: ', fontSize: 9, color: AppTheme.textDim),
-                        TerminalText(riskTag, fontSize: 10, color: riskColor, fontWeight: FontWeight.bold),
-                      ]),
-                      TerminalText(
-                        'Poder: ${totalPower.toStringAsFixed(1)} / ${floor.recommendedPower.toStringAsFixed(1)} (${powerPct.toStringAsFixed(0)}%)',
-                        fontSize: 8, color: AppTheme.textSecondary,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              TerminalText(
+                                'RISCO: ',
+                                fontSize: 9,
+                                color: AppTheme.textDim,
+                              ),
+                              TerminalText(
+                                riskTag,
+                                fontSize: 10,
+                                color: riskColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ],
+                          ),
+                          TerminalText(
+                            'Poder: ${totalPower.toStringAsFixed(1)} / ${floor.recommendedPower.toStringAsFixed(1)} (${powerPct.toStringAsFixed(0)}%)',
+                            fontSize: 8,
+                            color: AppTheme.textSecondary,
+                          ),
+                          TerminalText(
+                            'Mortalidade base: ${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
+                            fontSize: 8,
+                            color: AppTheme.red,
+                          ),
+                        ],
                       ),
-                      TerminalText(
-                        'Mortalidade base: ${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
-                        fontSize: 8, color: AppTheme.red,
-                      ),
-                    ],
-                  )),
-                ]),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 10),
 
@@ -1549,19 +1895,25 @@ class _TowerScreenState extends State<TowerScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 decoration: BoxDecoration(
                   color: AppTheme.red.withValues(alpha: 0.10),
-                  border: Border.all(color: AppTheme.red.withValues(alpha: 0.6)),
+                  border: Border.all(
+                    color: AppTheme.red.withValues(alpha: 0.6),
+                  ),
                   borderRadius: BorderRadius.circular(3),
                 ),
-                child: const Row(children: [
-                  Icon(Icons.close, size: 14, color: AppTheme.red),
-                  SizedBox(width: 6),
-                  Expanded(child: TerminalText(
-                    'MORTE PERMANENTE. Nao ha retorno.',
-                    fontSize: 9,
-                    color: AppTheme.red,
-                    fontWeight: FontWeight.bold,
-                  )),
-                ]),
+                child: const Row(
+                  children: [
+                    Icon(Icons.close, size: 14, color: AppTheme.red),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: TerminalText(
+                        'MORTE PERMANENTE. Nao ha retorno.',
+                        fontSize: 9,
+                        color: AppTheme.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -1595,7 +1947,8 @@ class _TowerScreenState extends State<TowerScreen> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
           side: BorderSide(
-              color: result.victory ? AppTheme.green : AppTheme.red),
+            color: result.victory ? AppTheme.green : AppTheme.red,
+          ),
         ),
         title: TerminalText(
           result.victory ? 'VITORIA!' : 'DERROTA',
@@ -1630,18 +1983,18 @@ class _TowerScreenState extends State<TowerScreen> {
           ),
         ),
         actions: [
-          TerminalButton(
-            label: 'FECHAR',
-            onPressed: () => Navigator.pop(ctx),
-          ),
+          TerminalButton(label: 'FECHAR', onPressed: () => Navigator.pop(ctx)),
         ],
       ),
     );
   }
 
   void _showReexploreDialog(
-      BuildContext context, GameProvider gp, TowerFloor floor) {
-    final selectedIds = <String>{};
+    BuildContext context,
+    GameProvider gp,
+    TowerFloor floor,
+  ) {
+    final selectedIds = <String>{}; // Mover para fora do StatefulBuilder
 
     showModalBottomSheet(
       context: context,
@@ -1657,6 +2010,124 @@ class _TowerScreenState extends State<TowerScreen> {
               .toStringAsFixed(0);
           final isReady = selectedIds.isNotEmpty;
 
+          // Análise de expedição (se NPCs selecionados)
+          Widget? analysisWidget;
+          if (selectedIds.isNotEmpty) {
+            final selectedNpcs = selectedIds.toList();
+            final costPerNpc = gp.engine.reexploreCostPerNpc(floor.number);
+            final totalCost = selectedNpcs.length * costPerNpc;
+            final synergy = gp.engine.previewGroupSynergy(selectedNpcs) * 100;
+            final personalityMod = gp.engine.previewPartyPersonalityMod(selectedNpcs) * 100;
+            final attributeYield = gp.engine.previewPartyAttributeYield(selectedNpcs, floor.type);
+            final eventChances = gp.engine.previewEventChances(selectedNpcs, floor);
+
+            // Estima recursos considerando sinergia e eficiência
+            final baseResources = floor.farmableResources;
+            final estimatedFood = baseResources['food'] ?? 0.0;
+            final totalYield = attributeYield * (1 + synergy / 100) * (1 + personalityMod / 100);
+            final estimatedReturn = estimatedFood * totalYield;
+            final netFood = estimatedReturn - totalCost;
+
+            analysisWidget = Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppTheme.cyan),
+                borderRadius: BorderRadius.circular(4),
+                color: AppTheme.cyan.withValues(alpha: 0.05),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const TerminalText(
+                    'ANALISE DA EXPEDICAO',
+                    fontSize: 11,
+                    color: AppTheme.cyan,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  const SizedBox(height: 8),
+                  TerminalText(
+                    'Membros: ${selectedNpcs.length} NPCs',
+                    fontSize: 9,
+                    color: AppTheme.textSecondary,
+                  ),
+                  TerminalText(
+                    'Custo: ${totalCost.toStringAsFixed(1)} comida (${costPerNpc.toStringAsFixed(1)}/NPC)',
+                    fontSize: 9,
+                    color: AppTheme.orange,
+                  ),
+                  TerminalText(
+                    'Sinergia: ${synergy.toStringAsFixed(0)}% ${synergy > 30 ? "(Excelente)" : synergy > 10 ? "(Boa)" : synergy < -10 ? "(Ruim)" : "(Neutra)"}',
+                    fontSize: 9,
+                    color: synergy > 30 ? AppTheme.green : synergy > 10 ? AppTheme.yellow : synergy < -10 ? AppTheme.red : AppTheme.textSecondary,
+                  ),
+                  TerminalText(
+                    'Eficiencia: ${(totalYield * 100).toStringAsFixed(0)}% (atrib: ${(attributeYield * 100).toStringAsFixed(0)}%, pers: ${personalityMod >= 0 ? "+" : ""}${personalityMod.toStringAsFixed(0)}%)',
+                    fontSize: 9,
+                    color: totalYield > 1.3 ? AppTheme.green : totalYield > 1.0 ? AppTheme.yellow : AppTheme.orange,
+                  ),
+                  const SizedBox(height: 4),
+                  const Divider(color: AppTheme.border, height: 1),
+                  const SizedBox(height: 4),
+                  const TerminalText(
+                    'Estimativa de retorno (comida):',
+                    fontSize: 9,
+                    color: AppTheme.textDim,
+                  ),
+                  TerminalText(
+                    'Lucro: ${netFood >= 0 ? "+" : ""}${netFood.toStringAsFixed(1)} ${netFood < 0 ? "(PREJUIZO)" : netFood < totalCost * 0.5 ? "(baixo)" : "(bom)"}',
+                    fontSize: 9,
+                    color: netFood < 0 ? AppTheme.red : netFood < totalCost * 0.5 ? AppTheme.orange : AppTheme.green,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  const SizedBox(height: 4),
+                  const Divider(color: AppTheme.border, height: 1),
+                  const SizedBox(height: 4),
+                  const TerminalText(
+                    'Riscos:',
+                    fontSize: 9,
+                    color: AppTheme.textDim,
+                  ),
+                  if (eventChances['acidente'] != null)
+                    TerminalText(
+                      'Acidente: ${(eventChances['acidente']! * 100).toStringAsFixed(0)}%',
+                      fontSize: 8,
+                      color: eventChances['acidente']! > 0.2 ? AppTheme.red : AppTheme.textDim,
+                    ),
+                  if (eventChances['doenca'] != null)
+                    TerminalText(
+                      'Doenca: ${(eventChances['doenca']! * 100).toStringAsFixed(0)}%',
+                      fontSize: 8,
+                      color: AppTheme.textDim,
+                    ),
+                  if (eventChances['conflito'] != null && eventChances['conflito']! > 0)
+                    TerminalText(
+                      'Conflito: ${(eventChances['conflito']! * 100).toStringAsFixed(0)}%',
+                      fontSize: 8,
+                      color: eventChances['conflito']! > 0.15 ? AppTheme.orange : AppTheme.textDim,
+                    ),
+                  if (eventChances['traicao'] != null && eventChances['traicao']! > 0)
+                    TerminalText(
+                      'Traicao: ${(eventChances['traicao']! * 100).toStringAsFixed(0)}% (!)',
+                      fontSize: 8,
+                      color: AppTheme.red,
+                    ),
+                  TerminalText(
+                    'Ameaca Reativada: ${((0.05 + floor.timesReexplored * 0.02) * 100).toStringAsFixed(0)}%',
+                    fontSize: 8,
+                    color: floor.timesReexplored > 3 ? AppTheme.red : AppTheme.yellow,
+                  ),
+                  if (eventChances['evento_raro'] != null)
+                    TerminalText(
+                      'Evento Raro (2x recursos): ${(eventChances['evento_raro']! * 100).toStringAsFixed(0)}%',
+                      fontSize: 8,
+                      color: AppTheme.green,
+                    ),
+                ],
+              ),
+            );
+          }
+
           return DraggableScrollableSheet(
             initialChildSize: 0.8,
             minChildSize: 0.4,
@@ -1669,38 +2140,53 @@ class _TowerScreenState extends State<TowerScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Center(
-                      child: Container(
-                          width: 40,
-                          height: 3,
-                          color: AppTheme.border,
-                          margin: const EdgeInsets.only(bottom: 12))),
-                  TerminalText('RE-EXPLORAR: ANDAR ${floor.number}',
-                      fontSize: 14,
-                      color: AppTheme.green,
-                      fontWeight: FontWeight.bold),
+                    child: Container(
+                      width: 40,
+                      height: 3,
+                      color: AppTheme.border,
+                      margin: const EdgeInsets.only(bottom: 12),
+                    ),
+                  ),
+                  TerminalText(
+                    'RE-EXPLORAR: ANDAR ${floor.number}',
+                    fontSize: 14,
+                    color: AppTheme.green,
+                    fontWeight: FontWeight.bold,
+                  ),
                   const SizedBox(height: 4),
                   TerminalText(
-                      '${floor.type.label} | Risco: $threatPct%',
-                      fontSize: 10,
-                      color: AppTheme.textSecondary),
+                    '${floor.type.label} | Risco: $threatPct%',
+                    fontSize: 10,
+                    color: AppTheme.textSecondary,
+                  ),
                   const SizedBox(height: 4),
                   TerminalText(
-                      'Recursos: ${floor.farmableResources.entries.map((e) => '${e.key}:~${e.value.toStringAsFixed(0)}').join(', ')}',
-                      fontSize: 9,
-                      color: AppTheme.cyan),
+                    'Recursos: ${floor.farmableResources.entries.map((e) => '${e.key}:~${e.value.toStringAsFixed(0)}').join(', ')}',
+                    fontSize: 9,
+                    color: AppTheme.cyan,
+                  ),
+
+                  // Mostra análise quando NPCs são selecionados
+                  if (analysisWidget != null) analysisWidget,
+
                   const SizedBox(height: 12),
 
                   if (gp.groups.isNotEmpty) ...[
-                    const TerminalText('Selecao rapida:',
-                        fontSize: 10, color: AppTheme.textDim),
+                    const TerminalText(
+                      'Selecao rapida:',
+                      fontSize: 10,
+                      color: AppTheme.textDim,
+                    ),
                     const SizedBox(height: 4),
                     Wrap(
                       spacing: 6,
                       runSpacing: 4,
                       children: gp.groups.map((group) {
                         final alive = group.memberIds
-                            .where((id) =>
-                                gp.allNpcs.any((n) => n.id == id && n.alive))
+                            .where(
+                              (id) =>
+                                  gp.allNpcs.any((n) => n.id == id && n.alive),
+                            )
                             .toList();
                         return TerminalButton(
                           label: '${group.name} (${alive.length})',
@@ -1708,9 +2194,9 @@ class _TowerScreenState extends State<TowerScreen> {
                           color: AppTheme.cyan,
                           onPressed: alive.isNotEmpty
                               ? () => setModalState(() {
-                                    selectedIds.clear();
-                                    selectedIds.addAll(alive);
-                                  })
+                                  selectedIds.clear();
+                                  selectedIds.addAll(alive);
+                                })
                               : null,
                         );
                       }).toList(),
@@ -1718,66 +2204,192 @@ class _TowerScreenState extends State<TowerScreen> {
                     const SizedBox(height: 12),
                   ],
 
-                  TerminalText('Coletores (${selectedIds.length}):',
-                      fontSize: 10, color: AppTheme.textSecondary),
+                  TerminalText(
+                    'Coletores (${selectedIds.length}):',
+                    fontSize: 10,
+                    color: AppTheme.textSecondary,
+                  ),
                   const SizedBox(height: 8),
 
                   ...gp.aliveNpcs.map((npc) {
                     final selected = selectedIds.contains(npc.id);
-                    final isDisabled = npc.isIncapacitated;
-                    final fatigueColor = npc.fatigue >= 90 ? const Color(0xFFFF0044) :
-                        npc.fatigue >= 70 ? AppTheme.red :
-                        npc.fatigue >= 50 ? AppTheme.orange :
-                        npc.fatigue >= 30 ? AppTheme.yellow : AppTheme.green;
+                    final isTooYoung = !npc.canGoOnExpedition(gp.state.currentDay);
+                    final isDisabled = npc.isIncapacitated || isTooYoung;
+                    final power = npc.attributes.combatPower;
+
+                    final fatigueColor = npc.fatigue >= 90
+                        ? const Color(0xFFFF0044)
+                        : npc.fatigue >= 70
+                        ? AppTheme.red
+                        : npc.fatigue >= 50
+                        ? AppTheme.orange
+                        : npc.fatigue >= 30
+                        ? AppTheme.yellow
+                        : AppTheme.green;
+
+                    // Tags de personalidade relevantes
+                    final dangerTraits = npc.traits
+                        .where(
+                          (t) =>
+                              t == PersonalityTrait.lazy ||
+                              t == PersonalityTrait.coward ||
+                              t == PersonalityTrait.treacherous ||
+                              t == PersonalityTrait.individualist,
+                        )
+                        .map((t) => t.label)
+                        .toList();
+                    final goodTraits = npc.traits
+                        .where(
+                          (t) =>
+                              t == PersonalityTrait.brave ||
+                              t == PersonalityTrait.loyal ||
+                              t == PersonalityTrait.ambitious ||
+                              t == PersonalityTrait.analytical ||
+                              t == PersonalityTrait.leader,
+                        )
+                        .map((t) => t.label)
+                        .toList();
+
                     return GestureDetector(
-                      onTap: isDisabled ? null : () => setModalState(() {
-                        if (selected) {
-                          selectedIds.remove(npc.id);
-                        } else {
-                          selectedIds.add(npc.id);
-                        }
-                      }),
+                      onTap: isDisabled
+                          ? null
+                          : () => setModalState(() {
+                              if (selected) {
+                                selectedIds.remove(npc.id);
+                              } else {
+                                selectedIds.add(npc.id);
+                              }
+                            }),
                       child: Container(
-                        margin: const EdgeInsets.only(bottom: 3),
-                        padding: const EdgeInsets.all(6),
+                        margin: const EdgeInsets.only(bottom: 4),
+                        padding: const EdgeInsets.all(7),
                         decoration: BoxDecoration(
                           border: Border.all(
-                              color: isDisabled
-                                  ? AppTheme.red.withValues(alpha: 0.3)
-                                  : selected
-                                      ? AppTheme.green
-                                      : AppTheme.border),
-                          borderRadius: BorderRadius.circular(3),
+                            color: isDisabled
+                                ? AppTheme.red.withValues(alpha: 0.3)
+                                : selected
+                                ? AppTheme.green
+                                : AppTheme.border,
+                          ),
+                          borderRadius: BorderRadius.circular(4),
                           color: isDisabled
                               ? AppTheme.red.withValues(alpha: 0.03)
                               : selected
-                                  ? AppTheme.green.withValues(alpha: 0.05)
-                                  : null,
+                              ? AppTheme.green.withValues(alpha: 0.06)
+                              : null,
                         ),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                                isDisabled
-                                    ? Icons.block
-                                    : selected
-                                        ? Icons.check_box
-                                        : Icons.check_box_outline_blank,
-                                size: 14,
-                                color: isDisabled
-                                    ? AppTheme.red.withValues(alpha: 0.5)
-                                    : selected
-                                        ? AppTheme.green
-                                        : AppTheme.textDim),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: TerminalText(
-                                '${npc.name} | ${npc.profession.label} | PWR:${npc.attributes.combatPower.toStringAsFixed(1)}${isDisabled ? " [INCAPACITADO]" : npc.isExhausted ? " [EXAUSTO]" : ""}',
-                                fontSize: 9,
-                                color: isDisabled ? AppTheme.red.withValues(alpha: 0.5) : AppTheme.textSecondary,
-                              ),
+                            Row(
+                              children: [
+                                Icon(
+                                  isDisabled
+                                      ? Icons.block
+                                      : selected
+                                      ? Icons.check_box
+                                      : Icons.check_box_outline_blank,
+                                  size: 14,
+                                  color: isDisabled
+                                      ? AppTheme.red.withValues(alpha: 0.5)
+                                      : selected
+                                      ? AppTheme.green
+                                      : AppTheme.textDim,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: TerminalText(
+                                    '${npc.name} | ${npc.profession.label}',
+                                    fontSize: 9,
+                                    color: isDisabled
+                                        ? AppTheme.red.withValues(alpha: 0.5)
+                                        : selected
+                                        ? AppTheme.textPrimary
+                                        : AppTheme.textSecondary,
+                                    fontWeight: selected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                                if (npc.isSuspicious)
+                                  const Icon(
+                                    Icons.warning,
+                                    size: 12,
+                                    color: AppTheme.red,
+                                  ),
+                                const SizedBox(width: 4),
+                                TerminalText(
+                                  'F:${npc.fatigue.toStringAsFixed(0)}',
+                                  fontSize: 8,
+                                  color: fatigueColor,
+                                ),
+                                const SizedBox(width: 6),
+                                TerminalText(
+                                  'PWR:${power.toStringAsFixed(1)}',
+                                  fontSize: 9,
+                                  color: AppTheme.green,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ],
                             ),
-                            TerminalText('F:${npc.fatigue.toStringAsFixed(0)}',
-                                fontSize: 8, color: fatigueColor),
+                            if (isTooYoung)
+                              const Padding(
+                                padding: EdgeInsets.only(left: 20, top: 2),
+                                child: TerminalText(
+                                  '[JOVEM DEMAIS - NAO PODE PARTICIPAR]',
+                                  fontSize: 7,
+                                  color: AppTheme.red,
+                                ),
+                              )
+                            else if (isDisabled)
+                              const Padding(
+                                padding: EdgeInsets.only(left: 20, top: 2),
+                                child: TerminalText(
+                                  '[INCAPACITADO - NAO PODE PARTICIPAR]',
+                                  fontSize: 7,
+                                  color: AppTheme.red,
+                                ),
+                              )
+                            else if (npc.isExhausted)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  left: 20,
+                                  top: 2,
+                                ),
+                                child: TerminalText(
+                                  '[EXAUSTO - rendimento severamente reduzido]',
+                                  fontSize: 7,
+                                  color: AppTheme.red,
+                                ),
+                              )
+                            else if (dangerTraits.isNotEmpty ||
+                                goodTraits.isNotEmpty) ...[
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  left: 20,
+                                  top: 2,
+                                ),
+                                child: Wrap(
+                                  spacing: 4,
+                                  children: [
+                                    ...goodTraits.map(
+                                      (t) => TerminalText(
+                                        '[+$t]',
+                                        fontSize: 7,
+                                        color: AppTheme.green,
+                                      ),
+                                    ),
+                                    ...dangerTraits.map(
+                                      (t) => TerminalText(
+                                        '[-$t]',
+                                        fontSize: 7,
+                                        color: AppTheme.orange,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -1794,7 +2406,9 @@ class _TowerScreenState extends State<TowerScreen> {
                         ? () {
                             Navigator.pop(ctx);
                             final result = gp.sendReexploration(
-                                floor.number, selectedIds.toList());
+                              floor.number,
+                              selectedIds.toList(),
+                            );
                             if (result != null) {
                               setState(() => _lastReexploreResult = result);
                               _showReexploreResultDialog(context, result);
@@ -1812,7 +2426,9 @@ class _TowerScreenState extends State<TowerScreen> {
   }
 
   void _showReexploreResultDialog(
-      BuildContext context, FloorExplorationResult result) {
+    BuildContext context,
+    FloorExplorationResult result,
+  ) {
     final resStr = result.resourcesGained.entries
         .map((e) => '${e.key}: +${e.value.toStringAsFixed(0)}')
         .join('\n');
@@ -1825,7 +2441,8 @@ class _TowerScreenState extends State<TowerScreen> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
           side: BorderSide(
-              color: hasCasualties ? AppTheme.red : AppTheme.green),
+            color: hasCasualties ? AppTheme.red : AppTheme.green,
+          ),
         ),
         title: TerminalText(
           hasCasualties ? 'AMEACA REATIVADA!' : 'COLETA OK',
@@ -1837,26 +2454,27 @@ class _TowerScreenState extends State<TowerScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TerminalText('Andar ${result.floorNumber}',
-                fontSize: 12, color: AppTheme.textPrimary),
+            TerminalText(
+              'Andar ${result.floorNumber}',
+              fontSize: 12,
+              color: AppTheme.textPrimary,
+            ),
             const SizedBox(height: 8),
-            const TerminalText('Recursos:',
-                fontSize: 10, color: AppTheme.cyan),
+            const TerminalText('Recursos:', fontSize: 10, color: AppTheme.cyan),
             TerminalText(resStr, fontSize: 10, color: AppTheme.green),
             if (hasCasualties) ...[
               const SizedBox(height: 8),
-              TerminalText('BAIXAS: ${result.casualties.length}',
-                  fontSize: 10,
-                  color: AppTheme.red,
-                  fontWeight: FontWeight.bold),
+              TerminalText(
+                'BAIXAS: ${result.casualties.length}',
+                fontSize: 10,
+                color: AppTheme.red,
+                fontWeight: FontWeight.bold,
+              ),
             ],
           ],
         ),
         actions: [
-          TerminalButton(
-            label: 'FECHAR',
-            onPressed: () => Navigator.pop(ctx),
-          ),
+          TerminalButton(label: 'FECHAR', onPressed: () => Navigator.pop(ctx)),
         ],
       ),
     );

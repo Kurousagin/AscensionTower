@@ -243,18 +243,18 @@ class TowerFloor {
     final floors = <TowerFloor>[];
 
     // Nomes de bosses por tier
-    final bossNames = [
-      'O Guardiao do Primeiro Umbral',
-      'A Hidra das Profundezas',
-      'O Oraculo da Loucura',
-      'A Fortaleza Viva',
-      'O Imperador de Ferro',
-      'A Rainha Venenosa',
-      'O Devorador de Almas',
-      'O Arquiteto do Caos',
-      'A Sombra Primordial',
-      'TEL - A Criadora do Jogo',
-    ];
+    // final bossNames = [
+    //   'O Guardiao do Primeiro Umbral',
+    //   'A Hidra das Profundezas',
+    //   'O Oraculo da Loucura',
+    //   'A Fortaleza Viva',
+    //   'O Imperador de Ferro',
+    //   'A Rainha Venenosa',
+    //   'O Devorador de Almas',
+    //   'O Arquiteto do Caos',
+    //   'A Sombra Primordial',
+    //   'TEL - A Criadora do Jogo',
+    // ];
 
     final bossDescriptions = [
       'Uma entidade massiva que testa o valor da humanidade. O primeiro grande desafio.',

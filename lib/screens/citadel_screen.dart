@@ -28,6 +28,8 @@ class CitadelScreen extends StatelessWidget {
                 const SizedBox(height: 12),
                 _buildUpgradeSection(context, citadel, gp),
                 const SizedBox(height: 12),
+                _buildRequestSettlersSection(context, citadel, gp),
+                const SizedBox(height: 12),
                 _buildCurrentBuildings(context, citadel, gp),
                 const SizedBox(height: 12),
                 _buildBuildSection(context, citadel, gp),
@@ -46,8 +48,12 @@ class CitadelScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TerminalText('CIDADELA: ${citadel.level.label.toUpperCase()}',
-              fontSize: 14, color: AppTheme.cyan, fontWeight: FontWeight.bold),
+          TerminalText(
+            'CIDADELA: ${citadel.level.label.toUpperCase()}',
+            fontSize: 14,
+            color: AppTheme.cyan,
+            fontWeight: FontWeight.bold,
+          ),
           const SizedBox(height: 4),
           _buildCitadelAscii(citadel.level),
           const SizedBox(height: 8),
@@ -56,14 +62,20 @@ class CitadelScreen extends StatelessWidget {
             runSpacing: 4,
             children: [
               TerminalText(
-                  'Edificios: ${citadel.buildings.length}/${citadel.level.maxBuildings}',
-                  fontSize: 10, color: AppTheme.textSecondary),
+                'Edificios: ${citadel.buildings.length}/${citadel.level.maxBuildings}',
+                fontSize: 10,
+                color: AppTheme.textSecondary,
+              ),
               TerminalText(
-                  'Populacao: ${gp.population}/${citadel.populationCapacity}',
-                  fontSize: 10, color: AppTheme.textSecondary),
+                'Populacao: ${gp.population}/${citadel.totalPopulationCapacity}',
+                fontSize: 10,
+                color: AppTheme.textSecondary,
+              ),
               TerminalText(
-                  'Tier Torre: ${((gp.state.highestFloorCleared) ~/ 10) + (gp.state.highestFloorCleared % 10 > 0 ? 1 : 0)}',
-                  fontSize: 10, color: AppTheme.orange),
+                'Tier Torre: ${((gp.state.highestFloorCleared) ~/ 10) + (gp.state.highestFloorCleared % 10 > 0 ? 1 : 0)}',
+                fontSize: 10,
+                color: AppTheme.orange,
+              ),
             ],
           ),
         ],
@@ -81,19 +93,26 @@ class CitadelScreen extends StatelessWidget {
       case CitadelLevel.village:
         art = '   _|_|_\n  /     \\\n /  [ ]  \\\n/=========\\';
       case CitadelLevel.town:
-        art = '  |_|  _|_|_  |_|\n  | | /     \\ | |\n  | |/ [ ] [ ]\\| |\n==|=============|==';
+        art =
+            '  |_|  _|_|_  |_|\n  | | /     \\ | |\n  | |/ [ ] [ ]\\| |\n==|=============|==';
       case CitadelLevel.city:
-        art = '  |T|  _|_|_  |T|\n  | | /     \\ | |\n  | |/ [ ] [ ]\\| |\n==|=============|==';
+        art =
+            '  |T|  _|_|_  |T|\n  | | /     \\ | |\n  | |/ [ ] [ ]\\| |\n==|=============|==';
       case CitadelLevel.fortress:
-        art = ' /T\\  _|_|_  /T\\\n |=| /  *  \\ |=|\n |=|/ [=][=] \\|=|\n=|=============|=';
+        art =
+            ' /T\\  _|_|_  /T\\\n |=| /  *  \\ |=|\n |=|/ [=][=] \\|=|\n=|=============|=';
       case CitadelLevel.citadel:
-        art = ' .|T|.  ._|_|_.  .|T|.\n |=|=| /  ***  \\ |=|=|\n |=|=|/ [=] [=] \\|=|=|\n=|===|===========|===|=';
+        art =
+            ' .|T|.  ._|_|_.  .|T|.\n |=|=| /  ***  \\ |=|=|\n |=|=|/ [=] [=] \\|=|=|\n=|===|===========|===|=';
       case CitadelLevel.kingdom:
-        art = '  .*T*. .._|*|_.. .*T*.\n  |===| / *** *** \\ |===|\n  |===|/ [===][===] \\|===|\n==|=====|===========|=====|==';
+        art =
+            '  .*T*. .._|*|_.. .*T*.\n  |===| / *** *** \\ |===|\n  |===|/ [===][===] \\|===|\n==|=====|===========|=====|==';
       case CitadelLevel.empire:
-        art = ' .***T***. .._|***|_.. .***T***.\n |=======| / ********* \\ |=======|\n |=======|/[====][====] \\|=======|\n=|=========|==============|=========|=';
+        art =
+            ' .***T***. .._|***|_.. .***T***.\n |=======| / ********* \\ |=======|\n |=======|/[====][====] \\|=======|\n=|=========|==============|=========|=';
       case CitadelLevel.ascended:
-        art = '       ._*_.\n      / * * \\\n   ._|__*__|_.\n  / * * * * * \\\n |=============|\n=|=== APEX ===|=';
+        art =
+            '       ._*_.\n      / * * \\\n   ._|__*__|_.\n  / * * * * * \\\n |=============|\n=|=== APEX ===|=';
     }
     return TerminalText(art, fontSize: 9, color: AppTheme.cyan);
   }
@@ -105,20 +124,24 @@ class CitadelScreen extends StatelessWidget {
     final atCapacity = !isInfinite && res.anyAtCapacity(citadel.storageLevel);
 
     // Calcular uso percentual medio
-    final maxUsage = isInfinite ? 0.0 : [
-      res.food / cap,
-      res.wood / cap,
-      res.stone / cap,
-      res.iron / cap,
-      res.knowledge / cap,
-    ].reduce((a, b) => a > b ? a : b);
+    final maxUsage = isInfinite
+        ? 0.0
+        : [
+            res.food / cap,
+            res.wood / cap,
+            res.stone / cap,
+            res.iron / cap,
+            res.knowledge / cap,
+          ].reduce((a, b) => a > b ? a : b);
 
     Color storageBorderColor = AppTheme.border;
     if (!isInfinite) {
       if (maxUsage >= 1.0) {
         storageBorderColor = AppTheme.red;
-      } else if (maxUsage >= 0.8) storageBorderColor = AppTheme.orange;
-      else if (maxUsage >= 0.6) storageBorderColor = AppTheme.yellow;
+      } else if (maxUsage >= 0.8)
+        storageBorderColor = AppTheme.orange;
+      else if (maxUsage >= 0.6)
+        storageBorderColor = AppTheme.yellow;
     }
 
     return TerminalCard(
@@ -128,33 +151,43 @@ class CitadelScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Indicador de capacidade do armazem
-          Row(children: [
-            Icon(
-              isInfinite ? Icons.all_inclusive : Icons.warehouse,
-              size: 11,
-              color: isInfinite ? AppTheme.green : atCapacity ? AppTheme.red : AppTheme.cyan,
-            ),
-            const SizedBox(width: 4),
-            TerminalText(
-              '${citadel.storageLabel}  ',
-              fontSize: 9,
-              color: isInfinite ? AppTheme.green : AppTheme.cyan,
-            ),
-            TerminalText(
-              isInfinite
-                  ? 'Capacidade: INFINITA'
-                  : 'Capacidade: ${cap.toStringAsFixed(0)} por recurso',
-              fontSize: 9,
-              color: atCapacity ? AppTheme.red : AppTheme.textDim,
-            ),
-            const Spacer(),
-            if (!isInfinite)
-              TerminalText(
-                '${(maxUsage * 100).toStringAsFixed(0)}% cheio',
-                fontSize: 8,
-                color: maxUsage >= 0.9 ? AppTheme.red : maxUsage >= 0.7 ? AppTheme.orange : AppTheme.textDim,
+          Row(
+            children: [
+              Icon(
+                isInfinite ? Icons.all_inclusive : Icons.warehouse,
+                size: 11,
+                color: isInfinite
+                    ? AppTheme.green
+                    : atCapacity
+                    ? AppTheme.red
+                    : AppTheme.cyan,
               ),
-          ]),
+              const SizedBox(width: 4),
+              TerminalText(
+                '${citadel.storageLabel}  ',
+                fontSize: 9,
+                color: isInfinite ? AppTheme.green : AppTheme.cyan,
+              ),
+              TerminalText(
+                isInfinite
+                    ? 'Capacidade: INFINITA'
+                    : 'Capacidade: ${cap.toStringAsFixed(0)} por recurso',
+                fontSize: 9,
+                color: atCapacity ? AppTheme.red : AppTheme.textDim,
+              ),
+              const Spacer(),
+              if (!isInfinite)
+                TerminalText(
+                  '${(maxUsage * 100).toStringAsFixed(0)}% cheio',
+                  fontSize: 8,
+                  color: maxUsage >= 0.9
+                      ? AppTheme.red
+                      : maxUsage >= 0.7
+                      ? AppTheme.orange
+                      : AppTheme.textDim,
+                ),
+            ],
+          ),
           const SizedBox(height: 6),
 
           // Barra de uso geral do armazem
@@ -174,10 +207,10 @@ class CitadelScreen extends StatelessWidget {
                     color: maxUsage >= 1.0
                         ? AppTheme.red
                         : maxUsage >= 0.8
-                            ? AppTheme.orange
-                            : maxUsage >= 0.6
-                                ? AppTheme.yellow
-                                : AppTheme.green,
+                        ? AppTheme.orange
+                        : maxUsage >= 0.6
+                        ? AppTheme.yellow
+                        : AppTheme.green,
                     borderRadius: BorderRadius.circular(1),
                   ),
                 ),
@@ -186,23 +219,57 @@ class CitadelScreen extends StatelessWidget {
             const SizedBox(height: 8),
           ],
 
-          _resRowCapped('Comida', res.food, cap, isInfinite, AppTheme.green,
-              'Consumo: ~${(gp.population * 1.5).toStringAsFixed(0)}/dia'),
-          _resRowCapped('Madeira', res.wood, cap, isInfinite, AppTheme.orange, 'Material de construcao'),
-          _resRowCapped('Pedra', res.stone, cap, isInfinite, AppTheme.textSecondary, 'Construcao avancada'),
-          _resRowCapped('Ferro', res.iron, cap, isInfinite, AppTheme.blue, 'Armas e ferramentas'),
-          _resRowCapped('Conhecimento', res.knowledge, cap, isInfinite, AppTheme.purple,
-              'Pesquisa e evolucao'),
+          _resRowCapped(
+            'Comida',
+            res.food,
+            cap,
+            isInfinite,
+            AppTheme.green,
+            'Consumo: ~${(gp.population * 1.5).toStringAsFixed(0)}/dia',
+          ),
+          _resRowCapped(
+            'Madeira',
+            res.wood,
+            cap,
+            isInfinite,
+            AppTheme.orange,
+            'Material de construcao',
+          ),
+          _resRowCapped(
+            'Pedra',
+            res.stone,
+            cap,
+            isInfinite,
+            AppTheme.textSecondary,
+            'Construcao avancada',
+          ),
+          _resRowCapped(
+            'Ferro',
+            res.iron,
+            cap,
+            isInfinite,
+            AppTheme.blue,
+            'Armas e ferramentas',
+          ),
+          _resRowCapped(
+            'Conhecimento',
+            res.knowledge,
+            cap,
+            isInfinite,
+            AppTheme.purple,
+            'Pesquisa e evolucao',
+          ),
           const SizedBox(height: 4),
           StatBar(
-              label: 'MORAL',
-              value: res.morale,
-              maxValue: 100,
-              color: res.morale > 70
-                  ? AppTheme.green
-                  : res.morale > 40
-                      ? AppTheme.yellow
-                      : AppTheme.red),
+            label: 'MORAL',
+            value: res.morale,
+            maxValue: 100,
+            color: res.morale > 70
+                ? AppTheme.green
+                : res.morale > 40
+                ? AppTheme.yellow
+                : AppTheme.red,
+          ),
           const SizedBox(height: 6),
 
           // Avisos de capacidade
@@ -214,75 +281,110 @@ class CitadelScreen extends StatelessWidget {
                 border: Border.all(color: AppTheme.red.withValues(alpha: 0.6)),
                 borderRadius: BorderRadius.circular(3),
               ),
-              child: const Row(children: [
-                Icon(Icons.warning, size: 14, color: AppTheme.red),
-                SizedBox(width: 6),
-                Expanded(child: TerminalText(
-                  'ARMAZEM CHEIO! Excedente sendo PERDIDO. Amplie o armazem urgente.',
-                  fontSize: 8, color: AppTheme.red, fontWeight: FontWeight.bold,
-                )),
-              ]),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning, size: 14, color: AppTheme.red),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: TerminalText(
+                      'ARMAZEM CHEIO! Excedente sendo PERDIDO. Amplie o armazem urgente.',
+                      fontSize: 8,
+                      color: AppTheme.red,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
             )
           else if (!isInfinite && maxUsage >= 0.80)
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: AppTheme.orange.withValues(alpha: 0.08),
-                border: Border.all(color: AppTheme.orange.withValues(alpha: 0.4)),
+                border: Border.all(
+                  color: AppTheme.orange.withValues(alpha: 0.4),
+                ),
                 borderRadius: BorderRadius.circular(3),
               ),
-              child: const Row(children: [
-                Icon(Icons.warning_amber, size: 12, color: AppTheme.orange),
-                SizedBox(width: 6),
-                Expanded(child: TerminalText(
-                  'Armazem quase cheio. Recursos podem ser perdidos em breve.',
-                  fontSize: 8, color: AppTheme.orange,
-                )),
-              ]),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning_amber, size: 12, color: AppTheme.orange),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: TerminalText(
+                      'Armazem quase cheio. Recursos podem ser perdidos em breve.',
+                      fontSize: 8,
+                      color: AppTheme.orange,
+                    ),
+                  ),
+                ],
+              ),
             ),
         ],
       ),
     );
   }
 
-  Widget _resRowCapped(String label, double value, double cap, bool isInfinite, Color color, String desc) {
+  Widget _resRowCapped(
+    String label,
+    double value,
+    double cap,
+    bool isInfinite,
+    Color color,
+    String desc,
+  ) {
     final pct = isInfinite ? 0.0 : (value / cap).clamp(0.0, 1.0);
     final atCap = !isInfinite && value >= cap;
     final nearCap = !isInfinite && pct >= 0.80 && !atCap;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(children: [
-        SizedBox(
-          width: 85,
-          child: TerminalText(label, fontSize: 10, color: color),
-        ),
-        TerminalText(
-          value.toStringAsFixed(0),
-          fontSize: 11,
-          color: atCap ? AppTheme.red : nearCap ? AppTheme.orange : color,
-          fontWeight: FontWeight.bold,
-        ),
-        if (!isInfinite) ...[
-          TerminalText(
-            '/${cap.toStringAsFixed(0)}',
-            fontSize: 8,
-            color: AppTheme.textDim,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 85,
+            child: TerminalText(label, fontSize: 10, color: color),
           ),
-          const SizedBox(width: 3),
-          if (atCap)
-            const TerminalText('[MAX]', fontSize: 7, color: AppTheme.red)
-          else if (nearCap)
-            TerminalText('[${(pct * 100).toStringAsFixed(0)}%]',
-                fontSize: 7, color: AppTheme.orange),
-        ] else
-          const TerminalText('/INF', fontSize: 8, color: AppTheme.green),
-        const SizedBox(width: 6),
-        Expanded(child: TerminalText(desc, fontSize: 8, color: AppTheme.textDim)),
-      ]),
+          TerminalText(
+            value.toStringAsFixed(0),
+            fontSize: 11,
+            color: atCap
+                ? AppTheme.red
+                : nearCap
+                ? AppTheme.orange
+                : color,
+            fontWeight: FontWeight.bold,
+          ),
+          if (!isInfinite) ...[
+            TerminalText(
+              '/${cap.toStringAsFixed(0)}',
+              fontSize: 8,
+              color: AppTheme.textDim,
+            ),
+            const SizedBox(width: 3),
+            if (atCap)
+              const TerminalText('[MAX]', fontSize: 7, color: AppTheme.red)
+            else if (nearCap)
+              TerminalText(
+                '[${(pct * 100).toStringAsFixed(0)}%]',
+                fontSize: 7,
+                color: AppTheme.orange,
+              ),
+          ] else
+            const TerminalText('/INF', fontSize: 8, color: AppTheme.green),
+          const SizedBox(width: 6),
+          Expanded(
+            child: TerminalText(desc, fontSize: 8, color: AppTheme.textDim),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildStorageUpgrade(BuildContext context, Citadel citadel, GameProvider gp) {
+  Widget _buildStorageUpgrade(
+    BuildContext context,
+    Citadel citadel,
+    GameProvider gp,
+  ) {
     final next = citadel.storageLevel.nextLevel;
     if (next == null) {
       return TerminalCard(
@@ -291,16 +393,23 @@ class CitadelScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: const [
-            Row(children: [
-              Icon(Icons.all_inclusive, size: 16, color: AppTheme.green),
-              SizedBox(width: 6),
-              TerminalText('Armazem Espacial ativo!',
-                  color: AppTheme.green, fontSize: 11, fontWeight: FontWeight.bold),
-            ]),
+            Row(
+              children: [
+                Icon(Icons.all_inclusive, size: 16, color: AppTheme.green),
+                SizedBox(width: 6),
+                TerminalText(
+                  'Armazem Espacial ativo!',
+                  color: AppTheme.green,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ],
+            ),
             SizedBox(height: 4),
             TerminalText(
               'Capacidade INFINITA. Nunca mais perca recursos por falta de espaco.',
-              fontSize: 9, color: AppTheme.textSecondary,
+              fontSize: 9,
+              color: AppTheme.textSecondary,
             ),
           ],
         ),
@@ -309,7 +418,8 @@ class CitadelScreen extends StatelessWidget {
 
     final cost = citadel.storageLevel.upgradeCost;
     final canAfford = citadel.resources.canAfford(cost);
-    final currentTier = ((gp.state.highestFloorCleared) ~/ 10) +
+    final currentTier =
+        ((gp.state.highestFloorCleared) ~/ 10) +
         (gp.state.highestFloorCleared % 10 > 0 ? 1 : 0);
     final hasTier = currentTier >= next.requiredTier;
     final canUpgrade = canAfford && hasTier;
@@ -325,37 +435,48 @@ class CitadelScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Status atual do armazem
-          Row(children: [
-            // Niveis em sequencia visual
-            for (int i = 0; i < StorageLevel.values.length; i++) ...[
-              if (i > 0) const TerminalText(' > ', fontSize: 8, color: AppTheme.textDim),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                decoration: BoxDecoration(
-                  border: Border.all(
+          Row(
+            children: [
+              // Niveis em sequencia visual
+              for (int i = 0; i < StorageLevel.values.length; i++) ...[
+                if (i > 0)
+                  const TerminalText(
+                    ' > ',
+                    fontSize: 8,
+                    color: AppTheme.textDim,
+                  ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(
                       color: StorageLevel.values[i] == citadel.storageLevel
                           ? AppTheme.orange
-                          : AppTheme.border),
-                  borderRadius: BorderRadius.circular(2),
-                  color: StorageLevel.values[i] == citadel.storageLevel
-                      ? AppTheme.orange.withValues(alpha: 0.1)
-                      : null,
+                          : AppTheme.border,
+                    ),
+                    borderRadius: BorderRadius.circular(2),
+                    color: StorageLevel.values[i] == citadel.storageLevel
+                        ? AppTheme.orange.withValues(alpha: 0.1)
+                        : null,
+                  ),
+                  child: TerminalText(
+                    StorageLevel.values[i].isInfinite
+                        ? 'INF'
+                        : StorageLevel.values[i].capacity.toStringAsFixed(0),
+                    fontSize: 8,
+                    color: StorageLevel.values[i] == citadel.storageLevel
+                        ? AppTheme.orange
+                        : AppTheme.textDim,
+                    fontWeight: StorageLevel.values[i] == citadel.storageLevel
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
                 ),
-                child: TerminalText(
-                  StorageLevel.values[i].isInfinite
-                      ? 'INF'
-                      : StorageLevel.values[i].capacity.toStringAsFixed(0),
-                  fontSize: 8,
-                  color: StorageLevel.values[i] == citadel.storageLevel
-                      ? AppTheme.orange
-                      : AppTheme.textDim,
-                  fontWeight: StorageLevel.values[i] == citadel.storageLevel
-                      ? FontWeight.bold
-                      : FontWeight.normal,
-                ),
-              ),
+              ],
             ],
-          ]),
+          ),
           const SizedBox(height: 8),
 
           if (isUrgent)
@@ -367,42 +488,70 @@ class CitadelScreen extends StatelessWidget {
                 border: Border.all(color: AppTheme.red),
                 borderRadius: BorderRadius.circular(3),
               ),
-              child: const Row(children: [
-                Icon(Icons.block, size: 12, color: AppTheme.red),
-                SizedBox(width: 6),
-                Expanded(child: TerminalText(
-                  'ARMAZEM CHEIO! Recursos estao sendo PERDIDOS. '
-                  'Expanda sua capacidade para parar o desperdicio.',
-                  fontSize: 8, color: AppTheme.red,
-                )),
-              ]),
+              child: const Row(
+                children: [
+                  Icon(Icons.block, size: 12, color: AppTheme.red),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: TerminalText(
+                      'ARMAZEM CHEIO! Recursos estao sendo PERDIDOS. '
+                      'Expanda sua capacidade para parar o desperdicio.',
+                      fontSize: 8,
+                      color: AppTheme.red,
+                    ),
+                  ),
+                ],
+              ),
             ),
 
-          Row(children: [
-            TerminalText('${citadel.storageLevel.shortLabel} (${citadel.storageCapacity.toStringAsFixed(0)})',
-                fontSize: 10, color: AppTheme.textSecondary),
-            const TerminalText('  ->  ', fontSize: 9, color: AppTheme.textDim),
-            TerminalText(
-              next.isInfinite ? '${next.shortLabel} (INFINITO)' : '${next.shortLabel} (${next.capacity.toStringAsFixed(0)})',
-              fontSize: 11, color: AppTheme.orange, fontWeight: FontWeight.bold,
-            ),
-          ]),
+          Row(
+            children: [
+              TerminalText(
+                '${citadel.storageLevel.shortLabel} (${citadel.storageCapacity.toStringAsFixed(0)})',
+                fontSize: 10,
+                color: AppTheme.textSecondary,
+              ),
+              const TerminalText(
+                '  ->  ',
+                fontSize: 9,
+                color: AppTheme.textDim,
+              ),
+              TerminalText(
+                next.isInfinite
+                    ? '${next.shortLabel} (INFINITO)'
+                    : '${next.shortLabel} (${next.capacity.toStringAsFixed(0)})',
+                fontSize: 11,
+                color: AppTheme.orange,
+                fontWeight: FontWeight.bold,
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
-          TerminalText('Custo: ${_costString(cost)}',
-              fontSize: 9, color: canAfford ? AppTheme.green : AppTheme.red),
+          TerminalText(
+            'Custo: ${_costString(cost)}',
+            fontSize: 9,
+            color: canAfford ? AppTheme.green : AppTheme.red,
+          ),
           if (!canAfford)
-            TerminalText('Faltam recursos para construir.',
-                fontSize: 8, color: AppTheme.red),
+            TerminalText(
+              'Faltam recursos para construir.',
+              fontSize: 8,
+              color: AppTheme.red,
+            ),
           if (!hasTier)
-            TerminalText('Requer Tier ${next.requiredTier} da Torre (atual: $currentTier)',
-                fontSize: 9, color: AppTheme.red),
+            TerminalText(
+              'Requer Tier ${next.requiredTier} da Torre (atual: $currentTier)',
+              fontSize: 9,
+              color: AppTheme.red,
+            ),
 
           if (next.isInfinite)
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: const TerminalText(
                 'ARMAZEM ESPACIAL: Marco de progressao final. Extremamente dificil de alcancar.',
-                fontSize: 8, color: AppTheme.yellow,
+                fontSize: 8,
+                color: AppTheme.yellow,
               ),
             ),
 
@@ -419,8 +568,9 @@ class CitadelScreen extends StatelessWidget {
                       SnackBar(
                         backgroundColor: AppTheme.bgCard,
                         content: TerminalText(
-                            'Armazem evoluiu para ${next.label}! Cap: ${next.isInfinite ? "INFINITA" : next.capacity.toStringAsFixed(0)}',
-                            color: AppTheme.orange),
+                          'Armazem evoluiu para ${next.label}! Cap: ${next.isInfinite ? "INFINITA" : next.capacity.toStringAsFixed(0)}',
+                          color: AppTheme.orange,
+                        ),
                       ),
                     );
                   }
@@ -434,22 +584,27 @@ class CitadelScreen extends StatelessWidget {
   // ==================== EVOLUCAO DA CIDADELA (MANUAL) ====================
 
   Widget _buildUpgradeSection(
-      BuildContext context, Citadel citadel, GameProvider gp) {
+    BuildContext context,
+    Citadel citadel,
+    GameProvider gp,
+  ) {
     final next = citadel.nextLevel;
     if (next == null) {
       return TerminalCard(
         title: 'NIVEL MAXIMO',
         borderColor: AppTheme.green,
         child: const TerminalText(
-            'A Cidadela atingiu o nivel Ascendido! Voce transcendeu.',
-            color: AppTheme.green),
+          'A Cidadela atingiu o nivel Ascendido! Voce transcendeu.',
+          color: AppTheme.green,
+        ),
       );
     }
 
     final cost = citadel.upgradeCost;
     final canAfford = citadel.resources.canAfford(cost);
     final hasPopulation = gp.population >= next.populationRequired;
-    final currentTier = ((gp.state.highestFloorCleared) ~/ 10) +
+    final currentTier =
+        ((gp.state.highestFloorCleared) ~/ 10) +
         (gp.state.highestFloorCleared % 10 > 0 ? 1 : 0);
     final hasTier = currentTier >= next.requiredTowerTier;
     final canUpgrade = canAfford && hasPopulation && hasTier;
@@ -460,10 +615,12 @@ class CitadelScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TerminalText('${citadel.level.label} -> ${next.label}',
-              fontSize: 12,
-              color: AppTheme.cyan,
-              fontWeight: FontWeight.bold),
+          TerminalText(
+            '${citadel.level.label} -> ${next.label}',
+            fontSize: 12,
+            color: AppTheme.cyan,
+            fontWeight: FontWeight.bold,
+          ),
           const SizedBox(height: 8),
           _progressRow('Comida', citadel.resources.food, cost.food),
           _progressRow('Madeira', citadel.resources.wood, cost.wood),
@@ -472,21 +629,26 @@ class CitadelScreen extends StatelessWidget {
             _progressRow('Ferro', citadel.resources.iron, cost.iron),
           if (cost.knowledge > 0)
             _progressRow(
-                'Conhecimento', citadel.resources.knowledge, cost.knowledge),
+              'Conhecimento',
+              citadel.resources.knowledge,
+              cost.knowledge,
+            ),
           const SizedBox(height: 4),
-          Row(children: [
-            TerminalText(
-              'Populacao: ${gp.population}/${next.populationRequired}',
-              fontSize: 9,
-              color: hasPopulation ? AppTheme.green : AppTheme.red,
-            ),
-            const SizedBox(width: 12),
-            TerminalText(
-              'Tier Torre: $currentTier/${next.requiredTowerTier}',
-              fontSize: 9,
-              color: hasTier ? AppTheme.green : AppTheme.red,
-            ),
-          ]),
+          Row(
+            children: [
+              TerminalText(
+                'Populacao: ${gp.population}/${next.populationRequired}',
+                fontSize: 9,
+                color: hasPopulation ? AppTheme.green : AppTheme.red,
+              ),
+              const SizedBox(width: 12),
+              TerminalText(
+                'Tier Torre: $currentTier/${next.requiredTowerTier}',
+                fontSize: 9,
+                color: hasTier ? AppTheme.green : AppTheme.red,
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
           TerminalText(
             'Apos evolucao: max ${next.maxBuildings} edificios',
@@ -506,8 +668,9 @@ class CitadelScreen extends StatelessWidget {
                       SnackBar(
                         backgroundColor: AppTheme.bgCard,
                         content: TerminalText(
-                            'Cidadela evoluiu para ${next.label}!',
-                            color: AppTheme.cyan),
+                          'Cidadela evoluiu para ${next.label}!',
+                          color: AppTheme.cyan,
+                        ),
                       ),
                     );
                   }
@@ -527,9 +690,13 @@ class CitadelScreen extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-              width: 90,
-              child:
-                  TerminalText(label, fontSize: 9, color: AppTheme.textSecondary)),
+            width: 90,
+            child: TerminalText(
+              label,
+              fontSize: 9,
+              color: AppTheme.textSecondary,
+            ),
+          ),
           Expanded(
             child: Container(
               height: 8,
@@ -564,92 +731,224 @@ class CitadelScreen extends StatelessWidget {
     );
   }
 
+  // ==================== SOLICITAR NOVOS MORADORES ====================
+
+  Widget _buildRequestSettlersSection(
+    BuildContext context,
+    Citadel citadel,
+    GameProvider gp,
+  ) {
+    final spacesAvailable = citadel.totalPopulationCapacity - gp.population;
+    final isOvercapacity = gp.population > citadel.totalPopulationCapacity;
+    final canRequest = citadel.resources.morale >= 60 && spacesAvailable > 0;
+
+    return TerminalCard(
+      title: 'SOLICITAR NOVOS MORADORES',
+      borderColor: canRequest ? AppTheme.green : AppTheme.border,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (isOvercapacity) ...[
+            TerminalText(
+              '⚠️ SUPERPOPULACAO: ${gp.population}/${citadel.totalPopulationCapacity}',
+              fontSize: 10,
+              color: AppTheme.orange,
+              fontWeight: FontWeight.bold,
+            ),
+            const TerminalText(
+              'Populacao acima do limite! Construa mais moradias ou evolua a cidadela.',
+              fontSize: 8,
+              color: AppTheme.orange,
+            ),
+            const SizedBox(height: 8),
+          ],
+
+          TerminalText(
+            'Espacos disponiveis: $spacesAvailable',
+            fontSize: 10,
+            color: spacesAvailable > 0 ? AppTheme.green : AppTheme.red,
+          ),
+          const SizedBox(height: 4),
+          const TerminalText(
+            'Custo: ~30 comida por morador',
+            fontSize: 8,
+            color: AppTheme.textDim,
+          ),
+          const TerminalText(
+            'Moral necessaria: 60+ (chance de familias e casais)',
+            fontSize: 8,
+            color: AppTheme.textDim,
+          ),
+          const SizedBox(height: 8),
+
+          TerminalButton(
+            label: canRequest ? 'SOLICITAR MORADORES' : 'REQUISITOS FALTANDO',
+            icon: Icons.group_add,
+            color: canRequest ? AppTheme.green : AppTheme.textDim,
+            expanded: true,
+            onPressed: canRequest
+                ? () {
+                    final result = gp.requestNewSettlers();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: AppTheme.bgCard,
+                        content: TerminalText(result, color: AppTheme.green),
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                  }
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+
   // ==================== EDIFICIOS CONSTRUIDOS ====================
 
   Widget _buildCurrentBuildings(
-      BuildContext context, Citadel citadel, GameProvider gp) {
+    BuildContext context,
+    Citadel citadel,
+    GameProvider gp,
+  ) {
     if (citadel.buildings.isEmpty) {
       return TerminalCard(
         title: 'EDIFICIOS CONSTRUIDOS',
         child: const TerminalText(
-            'Nenhum edificio construido. Use a secao abaixo para construir!',
-            color: AppTheme.textDim),
+          'Nenhum edificio construido. Use a secao abaixo para construir!',
+          color: AppTheme.textDim,
+        ),
       );
     }
 
-    // Agrupar por categoria
-    final byCategory = <BuildingCategory, List<Building>>{};
+    // Agrupar por categoria e por tipo
+    final byCategory = <BuildingCategory, Map<BuildingType, List<Building>>>{};
     for (final b in citadel.buildings) {
-      byCategory.putIfAbsent(b.category, () => []).add(b);
+      byCategory.putIfAbsent(b.category, () => {});
+      byCategory[b.category]!.putIfAbsent(b.type, () => []).add(b);
     }
 
     return TerminalCard(
       title: 'EDIFICIOS CONSTRUIDOS (${citadel.buildings.length})',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: byCategory.entries.map((entry) {
+        children: byCategory.entries.map((categoryEntry) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 2),
-                child: TerminalText('--- ${entry.key.label.toUpperCase()} ---',
-                    fontSize: 8, color: AppTheme.textDim),
+                child: TerminalText(
+                  '--- ${categoryEntry.key.label.toUpperCase()} ---',
+                  fontSize: 8,
+                  color: AppTheme.textDim,
+                ),
               ),
-              ...entry.value.map((b) => Container(
-                    margin: const EdgeInsets.only(bottom: 4),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppTheme.bgElevated,
-                      border: Border.all(
-                          color: AppTheme.green.withValues(alpha: 0.2)),
-                      borderRadius: BorderRadius.circular(4),
+              ...categoryEntry.value.entries.map((typeEntry) {
+                final buildings = typeEntry.value;
+                final first = buildings.first;
+                final count = buildings.length;
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.bgElevated,
+                    border: Border.all(
+                      color: AppTheme.green.withValues(alpha: 0.2),
                     ),
-                    child: Row(children: [
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                TerminalText(b.name,
-                                    fontSize: 10,
-                                    color: AppTheme.textPrimary,
-                                    fontWeight: FontWeight.bold),
+                                if (count > 1) ...[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 1,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.cyan.withValues(
+                                        alpha: 0.2,
+                                      ),
+                                      border: Border.all(
+                                        color: AppTheme.cyan.withValues(
+                                          alpha: 0.5,
+                                        ),
+                                      ),
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                    child: TerminalText(
+                                      'x$count',
+                                      fontSize: 8,
+                                      color: AppTheme.cyan,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                ],
+                                TerminalText(
+                                  first.name,
+                                  fontSize: 10,
+                                  color: AppTheme.textPrimary,
+                                  fontWeight: FontWeight.bold,
+                                ),
                                 const SizedBox(width: 6),
-                                TerminalText('Nv.${b.level}/${b.maxLevel}',
-                                    fontSize: 9, color: AppTheme.green),
+                                TerminalText(
+                                  'Nv.${first.level}/${first.maxLevel}',
+                                  fontSize: 9,
+                                  color: AppTheme.green,
+                                ),
                               ],
                             ),
-                            TerminalText(b.description,
-                                fontSize: 8, color: AppTheme.textDim),
+                            TerminalText(
+                              first.description,
+                              fontSize: 8,
+                              color: AppTheme.textDim,
+                            ),
                           ],
                         ),
                       ),
-                      if (b.level < b.maxLevel)
+                      if (first.level < first.maxLevel)
                         TerminalButton(
-                          label: 'UP',
+                          label: count > 1 ? 'UP TODAS' : 'UP',
                           icon: Icons.arrow_upward,
-                          color: gp.canUpgradeBuilding(b.type)
+                          color: gp.canUpgradeBuilding(first.type)
                               ? AppTheme.cyan
                               : AppTheme.textDim,
-                          onPressed: gp.canUpgradeBuilding(b.type)
+                          onPressed: gp.canUpgradeBuilding(first.type)
                               ? () {
-                                  gp.upgradeBuilding(b.type);
+                                  // Upgrade todas as copias
+                                  for (int i = 0; i < count; i++) {
+                                    gp.upgradeBuilding(first.type);
+                                  }
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       backgroundColor: AppTheme.bgCard,
                                       content: TerminalText(
-                                          '${b.name} evoluiu para nivel ${b.level + 1}!',
-                                          color: AppTheme.cyan),
+                                        count > 1
+                                            ? '$count x ${first.name} evoluiram para nivel ${first.level + 1}!'
+                                            : '${first.name} evoluiu para nivel ${first.level + 1}!',
+                                        color: AppTheme.cyan,
+                                      ),
                                     ),
                                   );
                                 }
                               : null,
                         ),
-                    ]),
-                  )),
+                    ],
+                  ),
+                );
+              }),
             ],
           );
         }).toList(),
@@ -660,17 +959,26 @@ class CitadelScreen extends StatelessWidget {
   // ==================== CONSTRUIR NOVOS EDIFICIOS ====================
 
   Widget _buildBuildSection(
-      BuildContext context, Citadel citadel, GameProvider gp) {
+    BuildContext context,
+    Citadel citadel,
+    GameProvider gp,
+  ) {
     final atLimit = citadel.buildings.length >= citadel.level.maxBuildings;
     final available = gp.availableBuildings;
-    final currentTier = ((gp.state.highestFloorCleared) ~/ 10) +
+    final currentTier =
+        ((gp.state.highestFloorCleared) ~/ 10) +
         (gp.state.highestFloorCleared % 10 > 0 ? 1 : 0);
 
     // Tambem mostrar edificios bloqueados por tier
     final locked = BuildingType.values.where((type) {
-      if (citadel.hasBuilding(type)) return false;
       if (available.contains(type)) return false;
       final b = Building(type: type);
+
+      // Se ja atingiu o limite de copias, nao mostrar como locked (esta disponivel para upgrade)
+      final count = citadel.countBuildings(type);
+      final maxCopies = b.isUnique ? 1 : citadel.level.maxBuildingCopies;
+      if (count >= maxCopies) return false;
+
       return b.requiredTier > currentTier;
     }).toList();
 
@@ -682,22 +990,27 @@ class CitadelScreen extends StatelessWidget {
         children: [
           if (atLimit) ...[
             const TerminalText(
-                'Limite de edificios atingido! Evolua a Cidadela para desbloquear mais slots.',
-                fontSize: 9,
-                color: AppTheme.orange),
+              'Limite de edificios atingido! Evolua a Cidadela para desbloquear mais slots.',
+              fontSize: 9,
+              color: AppTheme.orange,
+            ),
             const SizedBox(height: 8),
           ],
           const TerminalText(
-              'VOCE ESCOLHE O QUE CONSTRUIR. NPCs reagirao a sua decisao.',
-              fontSize: 9,
-              color: AppTheme.orange,
-              fontWeight: FontWeight.bold),
+            'VOCE ESCOLHE O QUE CONSTRUIR. NPCs reagirao a sua decisao.',
+            fontSize: 9,
+            color: AppTheme.orange,
+            fontWeight: FontWeight.bold,
+          ),
           const SizedBox(height: 8),
 
           // Edificios disponiveis (desbloqueados)
           if (available.isNotEmpty) ...[
-            const TerminalText('DISPONIVEIS:',
-                fontSize: 9, color: AppTheme.green),
+            const TerminalText(
+              'DISPONIVEIS:',
+              fontSize: 9,
+              color: AppTheme.green,
+            ),
             const SizedBox(height: 4),
             ...available.map((type) {
               final b = Building(type: type);
@@ -706,16 +1019,20 @@ class CitadelScreen extends StatelessWidget {
             }),
           ] else ...[
             const TerminalText(
-                'Nenhum edificio novo disponivel. Conquiste mais andares da Torre para desbloquear!',
-                fontSize: 9,
-                color: AppTheme.textDim),
+              'Nenhum edificio novo disponivel. Conquiste mais andares da Torre para desbloquear!',
+              fontSize: 9,
+              color: AppTheme.textDim,
+            ),
           ],
 
           // Edificios bloqueados (por tier)
           if (locked.isNotEmpty) ...[
             const SizedBox(height: 12),
-            TerminalText('BLOQUEADOS (${locked.length}):',
-                fontSize: 9, color: AppTheme.textDim),
+            TerminalText(
+              'BLOQUEADOS (${locked.length}):',
+              fontSize: 9,
+              color: AppTheme.textDim,
+            ),
             const SizedBox(height: 4),
             ...locked.take(5).map((type) {
               final b = Building(type: type);
@@ -725,7 +1042,8 @@ class CitadelScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppTheme.bgElevated,
                   border: Border.all(
-                      color: AppTheme.border.withValues(alpha: 0.2)),
+                    color: AppTheme.border.withValues(alpha: 0.2),
+                  ),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Row(
@@ -736,40 +1054,63 @@ class CitadelScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          TerminalText(b.name,
-                              fontSize: 10, color: AppTheme.textDim),
-                          TerminalText(b.description,
-                              fontSize: 8, color: AppTheme.textDim),
+                          TerminalText(
+                            b.name,
+                            fontSize: 10,
+                            color: AppTheme.textDim,
+                          ),
+                          TerminalText(
+                            b.description,
+                            fontSize: 8,
+                            color: AppTheme.textDim,
+                          ),
                         ],
                       ),
                     ),
-                    TerminalText('Tier ${b.requiredTier}',
-                        fontSize: 8, color: AppTheme.red),
+                    TerminalText(
+                      'Tier ${b.requiredTier}',
+                      fontSize: 8,
+                      color: AppTheme.red,
+                    ),
                   ],
                 ),
               );
             }),
             if (locked.length > 5)
-              TerminalText('...e mais ${locked.length - 5} edificios',
-                  fontSize: 8, color: AppTheme.textDim),
+              TerminalText(
+                '...e mais ${locked.length - 5} edificios',
+                fontSize: 8,
+                color: AppTheme.textDim,
+              ),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildBuildingOption(BuildContext context, GameProvider gp,
-      Building b, bool canAfford, bool atLimit) {
+  Widget _buildBuildingOption(
+    BuildContext context,
+    GameProvider gp,
+    Building b,
+    bool canAfford,
+    bool atLimit,
+  ) {
     final canBuild = canAfford && !atLimit;
+    final citadel = gp.citadel;
+    final currentCount = citadel.countBuildings(b.type);
+    final maxCopies = b.isUnique ? 1 : citadel.level.maxBuildingCopies;
+    final showCopyInfo = currentCount > 0 || !b.isUnique;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: AppTheme.bgElevated,
         border: Border.all(
-            color: canBuild
-                ? AppTheme.orange.withValues(alpha: 0.4)
-                : AppTheme.border.withValues(alpha: 0.3)),
+          color: canBuild
+              ? AppTheme.orange.withValues(alpha: 0.4)
+              : AppTheme.border.withValues(alpha: 0.3),
+        ),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Row(
@@ -780,30 +1121,71 @@ class CitadelScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    TerminalText(b.name,
-                        fontSize: 10,
-                        color: canBuild ? AppTheme.textPrimary : AppTheme.textDim,
-                        fontWeight: FontWeight.bold),
+                    TerminalText(
+                      b.name,
+                      fontSize: 10,
+                      color: canBuild ? AppTheme.textPrimary : AppTheme.textDim,
+                      fontWeight: FontWeight.bold,
+                    ),
                     const SizedBox(width: 6),
                     Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
                         border: Border.all(
-                            color: _categoryColor(b.category)
-                                .withValues(alpha: 0.5)),
+                          color: _categoryColor(
+                            b.category,
+                          ).withValues(alpha: 0.5),
+                        ),
                         borderRadius: BorderRadius.circular(2),
                       ),
-                      child: TerminalText(b.category.label,
-                          fontSize: 7, color: _categoryColor(b.category)),
+                      child: TerminalText(
+                        b.category.label,
+                        fontSize: 7,
+                        color: _categoryColor(b.category),
+                      ),
                     ),
+                    if (showCopyInfo) ...[
+                      const SizedBox(width: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: currentCount >= maxCopies
+                              ? AppTheme.red.withValues(alpha: 0.2)
+                              : AppTheme.cyan.withValues(alpha: 0.2),
+                          border: Border.all(
+                            color: currentCount >= maxCopies
+                                ? AppTheme.red.withValues(alpha: 0.5)
+                                : AppTheme.cyan.withValues(alpha: 0.5),
+                          ),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                        child: TerminalText(
+                          b.isUnique ? 'UNICA' : '$currentCount/$maxCopies',
+                          fontSize: 7,
+                          color: currentCount >= maxCopies
+                              ? AppTheme.red
+                              : AppTheme.cyan,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
-                TerminalText(b.description,
-                    fontSize: 8, color: AppTheme.textDim),
-                TerminalText(_costString(b.cost),
-                    fontSize: 8,
-                    color: canAfford ? AppTheme.green : AppTheme.red),
+                TerminalText(
+                  b.description,
+                  fontSize: 8,
+                  color: AppTheme.textDim,
+                ),
+                TerminalText(
+                  _costString(b.cost),
+                  fontSize: 8,
+                  color: canAfford ? AppTheme.green : AppTheme.red,
+                ),
               ],
             ),
           ),
@@ -822,8 +1204,7 @@ class CitadelScreen extends StatelessWidget {
     );
   }
 
-  void _confirmBuild(
-      BuildContext context, GameProvider gp, Building building) {
+  void _confirmBuild(BuildContext context, GameProvider gp, Building building) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -832,22 +1213,33 @@ class CitadelScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           side: const BorderSide(color: AppTheme.orange),
         ),
-        title: TerminalText('CONSTRUIR ${building.name.toUpperCase()}?',
-            fontSize: 14, color: AppTheme.orange, fontWeight: FontWeight.bold),
+        title: TerminalText(
+          'CONSTRUIR ${building.name.toUpperCase()}?',
+          fontSize: 14,
+          color: AppTheme.orange,
+          fontWeight: FontWeight.bold,
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TerminalText(building.description,
-                fontSize: 10, color: AppTheme.textSecondary),
+            TerminalText(
+              building.description,
+              fontSize: 10,
+              color: AppTheme.textSecondary,
+            ),
             const SizedBox(height: 8),
-            TerminalText('Custo: ${_costString(building.cost)}',
-                fontSize: 10, color: AppTheme.cyan),
+            TerminalText(
+              'Custo: ${_costString(building.cost)}',
+              fontSize: 10,
+              color: AppTheme.cyan,
+            ),
             const SizedBox(height: 8),
             const TerminalText(
-                'Os moradores podem reagir positiva ou negativamente a esta construcao.',
-                fontSize: 9,
-                color: AppTheme.textDim),
+              'Os moradores podem reagir positiva ou negativamente a esta construcao.',
+              fontSize: 9,
+              color: AppTheme.textDim,
+            ),
           ],
         ),
         actions: [
@@ -868,8 +1260,9 @@ class CitadelScreen extends StatelessWidget {
                   SnackBar(
                     backgroundColor: AppTheme.bgCard,
                     content: TerminalText(
-                        '${building.name} construido! NPCs reagindo...',
-                        color: AppTheme.green),
+                      '${building.name} construido! NPCs reagindo...',
+                      color: AppTheme.green,
+                    ),
                   ),
                 );
               }

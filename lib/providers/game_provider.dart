@@ -83,16 +83,17 @@ class GameProvider extends ChangeNotifier {
   TowerFloor? get nextFloor => _engine.nextFloor;
   List<TowerFloor> get clearedFloors => _engine.clearedFloors;
   List<NpcGroup> get groups => _engine.groups;
-  List<TrainingSuggestion> get trainingSuggestions => _engine.trainingSuggestions;
+  List<TrainingSuggestion> get trainingSuggestions =>
+      _engine.trainingSuggestions;
   bool get hasTrainingField => _engine.hasTrainingField;
 
   // NPCs suspeitos
-  List<Npc> get suspiciousNpcs =>
-      aliveNpcs.where((n) => n.isSuspicious || n.calculatedBetrayalRisk > 30).toList();
+  List<Npc> get suspiciousNpcs => aliveNpcs
+      .where((n) => n.isSuspicious || n.calculatedBetrayalRisk > 30)
+      .toList();
 
   // NPCs exaustos ou incapacitados
-  List<Npc> get exhaustedNpcs =>
-      aliveNpcs.where((n) => n.isExhausted).toList();
+  List<Npc> get exhaustedNpcs => aliveNpcs.where((n) => n.isExhausted).toList();
 
   List<Npc> get incapacitatedNpcs =>
       aliveNpcs.where((n) => n.isIncapacitated).toList();
@@ -249,7 +250,10 @@ class GameProvider extends ChangeNotifier {
 
   void _scheduleUpdate() {
     if (!_simRunning || _paused || state.gameOver) return;
-    _updateTimer = Timer(const Duration(milliseconds: uiRefreshMs), _processTimeStep);
+    _updateTimer = Timer(
+      const Duration(milliseconds: uiRefreshMs),
+      _processTimeStep,
+    );
   }
 
   /// Processamento principal: calcula delta real, converte para game time,
@@ -308,28 +312,38 @@ class GameProvider extends ChangeNotifier {
     if (nextFlr == null) return;
 
     final candidates = _engine.aliveNpcs
-        .where((n) =>
-            n.attributes.mentalStability > 25 &&
-            n.fatigue < 60 && // Nao enviar cansados automaticamente
-            (n.profession == Profession.guard ||
-                n.profession == Profession.explorer ||
-                n.profession == Profession.scout))
+        .where(
+          (n) =>
+              n.attributes.mentalStability > 25 &&
+              n.fatigue < 60 && // Nao enviar cansados automaticamente
+              (n.profession == Profession.guard ||
+                  n.profession == Profession.explorer ||
+                  n.profession == Profession.scout),
+        )
         .toList();
 
     if (candidates.length < 3) {
       final extras = _engine.aliveNpcs
-          .where((n) =>
-              n.attributes.mentalStability > 30 &&
-              n.attributes.combatPower > 4.0 &&
-              !candidates.contains(n))
+          .where(
+            (n) =>
+                n.attributes.mentalStability > 30 &&
+                n.attributes.combatPower > 4.0 &&
+                !candidates.contains(n),
+          )
           .toList();
-      extras.sort((a, b) => b.attributes.combatPower.compareTo(a.attributes.combatPower));
-      candidates.addAll(extras.take(nextFlr.recommendedPartySize - candidates.length));
+      extras.sort(
+        (a, b) => b.attributes.combatPower.compareTo(a.attributes.combatPower),
+      );
+      candidates.addAll(
+        extras.take(nextFlr.recommendedPartySize - candidates.length),
+      );
     }
 
     if (candidates.length < 2) return;
 
-    candidates.sort((a, b) => b.attributes.combatPower.compareTo(a.attributes.combatPower));
+    candidates.sort(
+      (a, b) => b.attributes.combatPower.compareTo(a.attributes.combatPower),
+    );
     final partySize = nextFlr.recommendedPartySize.clamp(2, candidates.length);
     final party = candidates.take(partySize).map((n) => n.id).toList();
 
@@ -359,7 +373,9 @@ class GameProvider extends ChangeNotifier {
       return npc?.isIncapacitated ?? false;
     }).toList();
     // Remover incapacitados da expedicao automaticamente
-    final validPartyIds = partyIds.where((id) => !incapacitated.contains(id)).toList();
+    final validPartyIds = partyIds
+        .where((id) => !incapacitated.contains(id))
+        .toList();
     if (validPartyIds.length < 2) return null;
 
     _lastChallenge = _engine.attemptFloor(validPartyIds);
@@ -391,9 +407,14 @@ class GameProvider extends ChangeNotifier {
   }
 
   /// ACAO PRINCIPAL: Re-explorar andar conquistado para coletar recursos
-  FloorExplorationResult? sendReexploration(int floorNumber, List<String> partyIds) {
+  FloorExplorationResult? sendReexploration(
+    int floorNumber,
+    List<String> partyIds,
+  ) {
     if (partyIds.isEmpty) return null;
-    final floor = _engine.floors.where((f) => f.number == floorNumber && f.cleared).firstOrNull;
+    final floor = _engine.floors
+        .where((f) => f.number == floorNumber && f.cleared)
+        .firstOrNull;
     if (floor == null) return null;
 
     // Remover incapacitados
@@ -441,7 +462,10 @@ class GameProvider extends ChangeNotifier {
   }
 
   /// Enviar grupo inteiro para re-explorar andar conquistado
-  FloorExplorationResult? sendGroupReexploration(String groupId, int floorNumber) {
+  FloorExplorationResult? sendGroupReexploration(
+    String groupId,
+    int floorNumber,
+  ) {
     final group = _engine.groups.where((g) => g.id == groupId).firstOrNull;
     if (group == null || group.memberIds.isEmpty) return null;
 
@@ -489,7 +513,8 @@ class GameProvider extends ChangeNotifier {
   bool canBuild(BuildingType type) => _engine.canBuild(type);
 
   /// Verifica se pode fazer upgrade
-  bool canUpgradeBuilding(BuildingType type) => _engine.canUpgradeBuilding(type);
+  bool canUpgradeBuilding(BuildingType type) =>
+      _engine.canUpgradeBuilding(type);
 
   /// ACAO DO JOGADOR: Construir edificio
   bool buildStructure(BuildingType type) {
@@ -522,6 +547,14 @@ class GameProvider extends ChangeNotifier {
     return result;
   }
 
+  /// ACAO DO JOGADOR: Solicitar novos moradores
+  String requestNewSettlers() {
+    final result = _engine.requestNewSettlers();
+    _saveGame();
+    notifyListeners();
+    return result;
+  }
+
   /// ACAO DO JOGADOR: Fazer upgrade do armazem
   bool upgradeStorage() {
     final result = _engine.upgradeStorage();
@@ -538,20 +571,31 @@ class GameProvider extends ChangeNotifier {
   /// Verifica se pode evoluir cidadela
   bool get canUpgradeCitadel {
     if (!_engine.citadel.canUpgrade) return false;
-    if (!_engine.citadel.resources.canAfford(_engine.citadel.upgradeCost)) return false;
+    if (!_engine.citadel.resources.canAfford(_engine.citadel.upgradeCost))
+      return false;
     final next = _engine.citadel.nextLevel;
     if (next == null) return false;
     if (population < next.populationRequired) return false;
     // Verificar tier da torre necessario
-    final currentTier = ((_engine.state.highestFloorCleared) ~/ 10) + (_engine.state.highestFloorCleared % 10 > 0 ? 1 : 0);
+    final currentTier =
+        ((_engine.state.highestFloorCleared) ~/ 10) +
+        (_engine.state.highestFloorCleared % 10 > 0 ? 1 : 0);
     if (currentTier < next.requiredTowerTier) return false;
     return true;
   }
 
   // ==================== SUGESTAO DE TREINO ====================
 
-  TrainingSuggestion suggestTraining(String targetId, String targetType, int floorNumber) {
-    final suggestion = _engine.suggestTraining(targetId, targetType, floorNumber);
+  TrainingSuggestion suggestTraining(
+    String targetId,
+    String targetType,
+    int floorNumber,
+  ) {
+    final suggestion = _engine.suggestTraining(
+      targetId,
+      targetType,
+      floorNumber,
+    );
     _saveGame();
     notifyListeners();
     return suggestion;
@@ -576,7 +620,8 @@ class GameProvider extends ChangeNotifier {
   void setSpeed(int speed) {
     if (!availableSpeeds.contains(speed)) {
       _speedMultiplier = availableSpeeds.reduce(
-          (a, b) => (a - speed).abs() < (b - speed).abs() ? a : b);
+        (a, b) => (a - speed).abs() < (b - speed).abs() ? a : b,
+      );
     } else {
       _speedMultiplier = speed;
     }

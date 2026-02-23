@@ -166,7 +166,7 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
   Widget _buildCredits() {
     return const Column(
       children: [
-        TerminalText('// Desenvolvido com Flutter', fontSize: 8, color: AppTheme.textDim, textAlign: TextAlign.center),
+        TerminalText('// Desenvolvido por Kurousagin and Kira', fontSize: 8, color: AppTheme.textDim, textAlign: TextAlign.center),
         TerminalText('// Simulacao deterministica + probabilistica', fontSize: 8, color: AppTheme.textDim, textAlign: TextAlign.center),
         TerminalText('// 100% offline | Dados locais', fontSize: 8, color: AppTheme.textDim, textAlign: TextAlign.center),
       ],
