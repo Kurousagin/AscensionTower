@@ -889,7 +889,7 @@ class _TowerScreenState extends State<TowerScreen> {
 
           // Analise de traicao
           final hasSuspect = selectedNpcs.any(
-            (n) => n.isSuspicious || n.calculatedBetrayalRisk > 35,
+            (n) => n.isSuspicious || n.betrayalRisk > 35,
           );
           final hasLazy = selectedNpcs.any(
             (n) => n.traits.contains(PersonalityTrait.lazy),

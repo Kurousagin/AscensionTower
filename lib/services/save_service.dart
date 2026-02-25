@@ -4,55 +4,43 @@ import 'game_engine.dart';
 
 class SaveService {
   static const String _boxName = 'tower_saves';
-  static const String _saveKey = 'game_save';
-  static const String _settingsKey = 'settings';
 
-  static Future<void> init() async {
-    await Hive.initFlutter();
-    await Hive.openBox(_boxName);
-  }
-
-  static Future<void> saveGame(GameEngine engine) async {
+  static Future<void> saveGame(GameEngine engine, String slot) async {
     final box = Hive.box(_boxName);
     final jsonStr = jsonEncode(engine.toJson());
-    await box.put(_saveKey, jsonStr);
+    await box.put('game_save_$slot', jsonStr);
   }
 
-  static Future<bool> loadGame(GameEngine engine) async {
+  static Future<bool> loadGame(GameEngine engine, String slot) async {
     final box = Hive.box(_boxName);
-    final jsonStr = box.get(_saveKey) as String?;
+    final jsonStr = box.get('game_save_$slot') as String?;
     if (jsonStr == null) return false;
     try {
       final json = jsonDecode(jsonStr) as Map<String, dynamic>;
       engine.loadFromJson(json);
+      // MIGRAÇÃO: Ajusta saves antigos para herança de bônus
+      engine.migrateOldSave(engine.citadel);
       return true;
     } catch (_) {
       return false;
     }
   }
 
-  static Future<bool> hasSave() async {
+  static Future<bool> hasSave(String slot) async {
     final box = Hive.box(_boxName);
-    return box.containsKey(_saveKey);
+    return box.containsKey('game_save_$slot');
   }
 
-  static Future<void> deleteSave() async {
+  static Future<void> deleteSave(String slot) async {
     final box = Hive.box(_boxName);
-    await box.delete(_saveKey);
+    await box.delete('game_save_$slot');
   }
 
-  static Future<void> saveSetting(String key, dynamic value) async {
+  static List<String> listSlots() {
     final box = Hive.box(_boxName);
-    final settings = box.get(_settingsKey, defaultValue: '{}') as String;
-    final map = jsonDecode(settings) as Map<String, dynamic>;
-    map[key] = value;
-    await box.put(_settingsKey, jsonEncode(map));
-  }
-
-  static Future<dynamic> getSetting(String key) async {
-    final box = Hive.box(_boxName);
-    final settings = box.get(_settingsKey, defaultValue: '{}') as String;
-    final map = jsonDecode(settings) as Map<String, dynamic>;
-    return map[key];
+    return box.keys
+        .where((k) => k.toString().startsWith('game_save_'))
+        .map((k) => k.toString().replaceFirst('game_save_', ''))
+        .toList();
   }
 }

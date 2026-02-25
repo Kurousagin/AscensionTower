@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import '../services/game_engine.dart';
 import '../services/save_service.dart';
@@ -7,6 +8,8 @@ import '../models/citadel.dart';
 import '../models/tower.dart';
 import '../models/game_event.dart';
 import '../models/group_model.dart';
+import '../models/equipment.dart'; // ← ADICIONADO [FASE 1]
+import '../services/equipment_service.dart'; // ← ADICIONADO [FASE 1]
 
 class GameProvider extends ChangeNotifier {
   final GameEngine _engine = GameEngine();
@@ -18,6 +21,7 @@ class GameProvider extends ChangeNotifier {
   bool _simRunning = false;
   bool _paused = false;
   int _speedMultiplier = 1;
+  String _currentSlot = '1';
 
   // ═══════════════════════════════════════════════════════════════
   // SISTEMA TEMPORAL CONTINUO
@@ -50,16 +54,13 @@ class GameProvider extends ChangeNotifier {
   static const double timeRatio = 2.0;
 
   /// Intervalo do timer de atualizacao UI (ms).
-  /// Nao e um "tick de simulacao" — e apenas a frequencia com que
-  /// processamos delta real e redesenhamos a UI.
   static const int uiRefreshMs = 1000;
 
   /// Limite maximo de dias processados por ciclo de update (anti-travamento).
-  /// Previne que o jogo fique travado processando anos de offline.
   static const int maxDaysPerUpdate = 30;
 
   /// Velocidades disponiveis
-  static const List<int> availableSpeeds = [1, 2, 5, 10, 25, 50];
+  static const List<int> availableSpeeds = [1, 100, 500, 10000];
 
   // ===== GETTERS PUBLICOS =====
 
@@ -88,9 +89,8 @@ class GameProvider extends ChangeNotifier {
   bool get hasTrainingField => _engine.hasTrainingField;
 
   // NPCs suspeitos
-  List<Npc> get suspiciousNpcs => aliveNpcs
-      .where((n) => n.isSuspicious || n.calculatedBetrayalRisk > 30)
-      .toList();
+  List<Npc> get suspiciousNpcs =>
+      aliveNpcs.where((n) => n.isSuspicious || n.betrayalRisk > 30).toList();
 
   // NPCs exaustos ou incapacitados
   List<Npc> get exhaustedNpcs => aliveNpcs.where((n) => n.isExhausted).toList();
@@ -156,35 +156,74 @@ class GameProvider extends ChangeNotifier {
 
   // ===== LIFECYCLE =====
 
+  void setSlot(String slot) {
+    _currentSlot = slot;
+    notifyListeners();
+  }
+
   Future<void> init() async {
     _isLoading = true;
     notifyListeners();
-    await SaveService.init();
-    _hasSave = await SaveService.hasSave();
+    await SaveService.hasSave(_currentSlot);
+    _hasSave = await SaveService.hasSave(_currentSlot);
     _isLoading = false;
     notifyListeners();
   }
 
+  bool get anySave => SaveService.listSlots().isNotEmpty;
+
   void newGame() {
+    final slots = _getSortedSlots();
+
+    if (slots.length >= maxSaves) {
+      throw Exception('Limite máximo de saves atingido');
+    }
+
+    _currentSlot = _generateNextSlot();
     _engine.initNewGame();
-    // Setar timestamp inicial
-    state.lastRealTimestamp = DateTime.now().millisecondsSinceEpoch;
-    state.gameSeconds = 6.0 * 3600; // Comeca as 06:00 da manha
-    _recentEvents = _engine.events.toList();
-    _lastChallenge = null;
     _saveGame();
     _startSimulation();
     notifyListeners();
   }
 
+  Future<void> saveGame() async {
+    await SaveService.saveGame(_engine, _currentSlot);
+    _hasSave = true;
+    notifyListeners();
+  }
+
+  String _generateNextSlot() {
+    final slots = SaveService.listSlots();
+    if (slots.isEmpty) return '1';
+
+    final numbers = slots.map(int.tryParse).whereType<int>().toList();
+
+    final next = numbers.isEmpty
+        ? 1
+        : (numbers.reduce((a, b) => a > b ? a : b) + 1);
+    return next.toString();
+  }
+
+  static const int maxSaves = 5;
+
+  List<int> _getSortedSlots() {
+    final slots = SaveService.listSlots();
+
+    return slots.map(int.tryParse).whereType<int>().toList()..sort();
+  }
+
+  bool canCreateNewSave() {
+    return _getSortedSlots().length < maxSaves;
+  }
+
   Future<bool> loadGame() async {
     _isLoading = true;
     notifyListeners();
-    final success = await SaveService.loadGame(_engine);
+    final success = await SaveService.loadGame(_engine, _currentSlot);
     _isLoading = false;
     _hasSave = success;
     if (success) {
-      // Processar tempo offline acumulado
+      state.gameSeconds = (state.gameSeconds as num).toDouble();
       _processOfflineProgress();
       _startSimulation();
     }
@@ -198,18 +237,18 @@ class GameProvider extends ChangeNotifier {
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final deltaRealMs = now - state.lastRealTimestamp;
+
     if (deltaRealMs <= 0) {
       state.lastRealTimestamp = now;
       return;
     }
 
     final deltaRealSeconds = deltaRealMs / 1000.0;
-    // Offline progress usa velocidade 1x (ratio base) para nao explodir
     final deltaGameSeconds = deltaRealSeconds * timeRatio;
 
-    state.gameSeconds += deltaGameSeconds;
+    state.gameSeconds =
+        (state.gameSeconds as num).toDouble() + deltaGameSeconds;
 
-    // Processar dias acumulados (com limite para evitar travamento)
     int daysProcessed = 0;
     _recentEvents = [];
     while (state.gameSeconds >= 86400.0 && daysProcessed < maxDaysPerUpdate) {
@@ -219,15 +258,12 @@ class GameProvider extends ChangeNotifier {
       daysProcessed++;
       if (state.gameOver) break;
 
-      // Auto-torre a cada 28 dias
       if (state.currentDay % 28 == 0 && !state.gameOver) {
         _autoTowerAttempt();
       }
     }
 
-    // Se ainda sobram dias alem do limite, clampar gameSeconds
-    // (evita acumular meses de simulacao)
-    if (state.gameSeconds >= 86400.0 * maxDaysPerUpdate) {
+    if (state.gameSeconds >= 86400.0) {
       state.gameSeconds = state.gameSeconds % 86400.0;
     }
 
@@ -238,6 +274,53 @@ class GameProvider extends ChangeNotifier {
     }
   }
 
+  // ==== Consumo de comida ==== //
+  double get dailyFoodConsumption {
+    final reductionMultiplier = _granaryReductionMultiplier();
+
+    return aliveNpcs.fold(0.0, (total, npc) {
+      final baseConsumption = _baseConsumption(npc).clamp(0.5, 3.0);
+      final finalConsumption = baseConsumption * reductionMultiplier;
+
+      return total + finalConsumption;
+    });
+  }
+
+  double _granaryReductionMultiplier() {
+    final granary = citadel.getBuilding(BuildingType.granary);
+
+    if (granary == null) return 1.0;
+
+    final reduction = granary.foodConsumptionReduction.clamp(0.0, 0.9);
+
+    return 1 - reduction;
+  }
+
+  double _baseConsumption(Npc npc) {
+    double base = 1.5;
+
+    // ===== Traços =====
+    if (npc.traits.contains(PersonalityTrait.lazy)) base += 0.3;
+    if (npc.traits.contains(PersonalityTrait.gluttonous)) base += 0.7;
+    if (npc.traits.contains(PersonalityTrait.frugal)) base -= 0.5;
+
+    // ===== Estágio de crescimento =====
+    switch (npc.growthStage(state.currentDay)) {
+      case GrowthStage.baby:
+        base *= 0.3;
+        break;
+      case GrowthStage.child:
+        base *= 0.6;
+        break;
+      case GrowthStage.adolescent:
+        base *= 0.85;
+        break;
+      default:
+        break;
+    }
+
+    return base;
+  }
   // ===== SIMULACAO CONTINUA =====
 
   void _startSimulation() {
@@ -256,8 +339,6 @@ class GameProvider extends ChangeNotifier {
     );
   }
 
-  /// Processamento principal: calcula delta real, converte para game time,
-  /// e executa simulateDay() para cada dia completo acumulado.
   void _processTimeStep() {
     if (!_simRunning || _paused || state.gameOver) return;
 
@@ -270,31 +351,29 @@ class GameProvider extends ChangeNotifier {
       return;
     }
 
-    // Converter tempo real em tempo na Torre
     final deltaRealSeconds = deltaRealMs / 1000.0;
     final deltaGameSeconds = deltaRealSeconds * timeRatio * _speedMultiplier;
 
-    state.gameSeconds += deltaGameSeconds;
+    state.gameSeconds =
+        (state.gameSeconds as num).toDouble() + deltaGameSeconds;
 
-    // Processar dias completos
     bool dayAdvanced = false;
     int daysThisCycle = 0;
 
     while (state.gameSeconds >= 86400.0 && daysThisCycle < maxDaysPerUpdate) {
       state.gameSeconds -= 86400.0;
       final dayEvents = _engine.simulateDay();
+
       _recentEvents = [..._recentEvents, ...dayEvents];
       dayAdvanced = true;
       daysThisCycle++;
       if (state.gameOver) break;
 
-      // Auto-torre a cada 28 dias
       if (state.currentDay % 28 == 0 && !state.gameOver) {
         _autoTowerAttempt();
       }
     }
 
-    // Limitar eventos recentes para nao explodir memoria
     if (_recentEvents.length > 100) {
       _recentEvents = _recentEvents.sublist(_recentEvents.length - 100);
     }
@@ -315,7 +394,7 @@ class GameProvider extends ChangeNotifier {
         .where(
           (n) =>
               n.attributes.mentalStability > 25 &&
-              n.fatigue < 60 && // Nao enviar cansados automaticamente
+              n.fatigue < 60 &&
               (n.profession == Profession.guard ||
                   n.profession == Profession.explorer ||
                   n.profession == Profession.scout),
@@ -349,8 +428,8 @@ class GameProvider extends ChangeNotifier {
 
     double partyPower = 0;
     for (final id in party) {
-      final npc = _engine.npcs.firstWhere((n) => n.id == id);
-      partyPower += npc.attributes.combatPower;
+      final npc = _engine.npcs.firstWhereOrNull((n) => n.id == id);
+      if (npc != null) partyPower += npc.attributes.combatPower;
     }
 
     if (partyPower < nextFlr.recommendedPower * 0.6) return;
@@ -358,48 +437,85 @@ class GameProvider extends ChangeNotifier {
     _lastChallenge = _engine.attemptFloor(party);
   }
 
+  // ==================== GETTER DE BONUS DIARIO ====================
+  double get dailyFoodBonus {
+    double total = 0.0;
+    for (final farm in citadel.buildings.where(
+      (b) => b.type == BuildingType.farm,
+    )) {
+      total += farm.bonus;
+    }
+    // Adicione outros edifícios que dão comida, se houver
+    return total;
+  }
+
+  double get dailyWoodBonus {
+    double total = 0.0;
+    for (final wood in citadel.buildings.where(
+      (b) => b.type == BuildingType.woodworking,
+    )) {
+      total += wood.bonus;
+    }
+    return total;
+  }
+
+  double get dailyIronBonus {
+    double total = 0.0;
+    for (final forge in citadel.buildings.where(
+      (b) => b.type == BuildingType.forge,
+    )) {
+      total += forge.bonus;
+    }
+    return total;
+  }
+
+  double get dailyAdvancedBonus {
+    double total = 0.0;
+    for (final adv in citadel.buildings.where(
+      (b) => b.type == BuildingType.workshop,
+    )) {
+      total += adv.bonus;
+    }
+    return total;
+  }
+
+  double get dailyResearchBonus {
+    double total = 0.0;
+    for (final lab in citadel.buildings.where(
+      (b) => b.type == BuildingType.library,
+    )) {
+      total += lab.bonus;
+    }
+    return total;
+  }
+
   // ==================== ACOES DO JOGADOR (PRINCIPAL) ====================
 
   /// ACAO PRINCIPAL: Enviar expedição ao proximo andar
-  /// Esta é a UNICA ação direta do jogador - decidir quem sobe.
   TowerChallenge? sendExpedition(List<String> partyIds) {
     final floor = _engine.nextFloor;
     if (floor == null) return null;
     if (partyIds.length < 2) return null;
 
-    // Verificar incapacitados e alertar sobre exaustos
-    final incapacitated = partyIds.where((id) {
-      final npc = _engine.npcs.where((n) => n.id == id).firstOrNull;
-      return npc?.isIncapacitated ?? false;
+    final validPartyIds = partyIds.where((id) {
+      final npc = _engine.npcs.firstWhereOrNull((n) => n.id == id);
+      return npc != null && !npc.isIncapacitated;
     }).toList();
-    // Remover incapacitados da expedicao automaticamente
-    final validPartyIds = partyIds
-        .where((id) => !incapacitated.contains(id))
-        .toList();
+
     if (validPartyIds.length < 2) return null;
 
     _lastChallenge = _engine.attemptFloor(validPartyIds);
 
-    // Atualizar missoes do grupo se todos forem do mesmo grupo
     final partyNpcs = partyIds
-        .map((id) => _engine.npcs.where((n) => n.id == id).firstOrNull)
+        .map((id) => _engine.npcs.firstWhereOrNull((n) => n.id == id))
         .whereType<Npc>()
         .toList();
-    final groupIds = partyNpcs
-        .where((n) => n.groupId != null)
-        .map((n) => n.groupId!)
-        .toSet();
-    for (final gid in groupIds) {
-      final group = _engine.groups.where((g) => g.id == gid).firstOrNull;
-      if (group != null) {
-        group.missionsCompleted++;
-        if (_lastChallenge!.victory) {
-          group.cohesion = (group.cohesion + 5).clamp(0, 100);
-        } else {
-          group.cohesion = (group.cohesion - 3).clamp(0, 100);
-        }
-      }
-    }
+
+    _updateGroupStats(
+      partyNpcs,
+      victory: _lastChallenge!.victory,
+      missionBonus: 0,
+    );
 
     _saveGame();
     notifyListeners();
@@ -412,45 +528,57 @@ class GameProvider extends ChangeNotifier {
     List<String> partyIds,
   ) {
     if (partyIds.isEmpty) return null;
-    final floor = _engine.floors
-        .where((f) => f.number == floorNumber && f.cleared)
-        .firstOrNull;
+    final floor = _engine.floors.firstWhereOrNull(
+      (f) => f.number == floorNumber && f.cleared,
+    );
     if (floor == null) return null;
 
-    // Remover incapacitados
     final validIds = partyIds.where((id) {
-      final npc = _engine.npcs.where((n) => n.id == id).firstOrNull;
+      final npc = _engine.npcs.firstWhereOrNull((n) => n.id == id);
       return npc != null && !npc.isIncapacitated;
     }).toList();
     if (validIds.isEmpty) return null;
 
     final result = _engine.reexploreFloor(floorNumber, validIds);
 
-    // Atualizar missoes do grupo
     final rePartyNpcs = validIds
-        .map((id) => _engine.npcs.where((n) => n.id == id).firstOrNull)
+        .map((id) => _engine.npcs.firstWhereOrNull((n) => n.id == id))
         .whereType<Npc>()
         .toList();
-    final groupIds = rePartyNpcs
-        .where((n) => n.groupId != null)
-        .map((n) => n.groupId!)
-        .toSet();
-    for (final gid in groupIds) {
-      final group = _engine.groups.where((g) => g.id == gid).firstOrNull;
-      if (group != null) {
-        group.missionsCompleted++;
-        group.cohesion = (group.cohesion + 2).clamp(0, 100);
-      }
-    }
+
+    _updateGroupStats(rePartyNpcs, victory: true, missionBonus: 2);
 
     _saveGame();
     notifyListeners();
     return result;
   }
 
+  /// Helper: atualiza missoes e coesao de grupos envolvidos numa expedicao.
+  void _updateGroupStats(
+    List<Npc> npcs, {
+    required bool victory,
+    required int missionBonus,
+  }) {
+    final groupIds = npcs
+        .where((n) => n.groupId != null)
+        .map((n) => n.groupId!)
+        .toSet();
+    for (final gid in groupIds) {
+      final group = _engine.groups.firstWhereOrNull((g) => g.id == gid);
+      if (group != null) {
+        group.missionsCompleted++;
+        if (victory) {
+          group.cohesion = (group.cohesion + 5 + missionBonus).clamp(0, 100);
+        } else {
+          group.cohesion = (group.cohesion - 3).clamp(0, 100);
+        }
+      }
+    }
+  }
+
   /// Enviar grupo inteiro para expedição no proximo andar
   TowerChallenge? sendGroupExpedition(String groupId) {
-    final group = _engine.groups.where((g) => g.id == groupId).firstOrNull;
+    final group = _engine.groups.firstWhereOrNull((g) => g.id == groupId);
     if (group == null || group.memberIds.isEmpty) return null;
 
     final aliveMembers = group.memberIds
@@ -466,7 +594,7 @@ class GameProvider extends ChangeNotifier {
     String groupId,
     int floorNumber,
   ) {
-    final group = _engine.groups.where((g) => g.id == groupId).firstOrNull;
+    final group = _engine.groups.firstWhereOrNull((g) => g.id == groupId);
     if (group == null || group.memberIds.isEmpty) return null;
 
     final aliveMembers = group.memberIds
@@ -504,10 +632,81 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ==================== EQUIPAMENTOS [FASE 1] ====================
+
+  // ── Getters ─────────────────────────────────
+
+  /// Inventário global de equipamentos
+  List<Equipment> get inventory => _engine.inventory;
+
+  /// Equipamentos disponíveis para um slot específico (não equipados)
+  List<Equipment> availableForSlot(EquipmentSlot slot) =>
+      _engine.availableEquipmentForSlot(slot);
+
+  /// Equipamentos atualmente equipados em um NPC
+  List<Equipment> equippedOn(String npcId) => _engine.equippedOn(npcId);
+
+  /// Verifica se é possível craftar dado a raridade (recursos + forja)
+  bool canCraft(EquipmentRarity rarity) => _engine.canCraftEquipment(rarity);
+
+  /// Verifica se a Forja está construída
+  bool get hasForge => _engine.citadel.hasBuilding(BuildingType.forge);
+
+  /// Custo de craft para uma raridade específica
+  ({double iron, double knowledge, double stone}) craftCostFor(
+    EquipmentRarity rarity,
+  ) => EquipmentFactory.craftCost(rarity);
+
+  // ── Ações do jogador ────────────────────────
+
+  /// Equipa um item em um NPC.
+  /// Retorna true se bem-sucedido.
+  bool equipItem(String npcId, String equipmentId) {
+    final result = _engine.equipItem(npcId, equipmentId);
+    if (result == EquipResult.success) {
+      _saveGame();
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  /// Desequipa o item do slot indicado de um NPC.
+  /// Retorna true se bem-sucedido.
+  bool unequipItem(String npcId, EquipmentSlot slot) {
+    final result = _engine.unequipItem(npcId, slot);
+    if (result == UnequipResult.success) {
+      _saveGame();
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  /// Tenta craftar um equipamento na Forja.
+  /// Retorna o Equipment criado, ou null em caso de falha.
+  Equipment? craftEquipment(EquipmentSlot slot, EquipmentRarity rarity) {
+    final (result, eq) = _engine.craftEquipment(slot, rarity);
+    if (result == CraftResult.success && eq != null) {
+      _saveGame();
+      notifyListeners();
+      return eq;
+    }
+    return null;
+  }
+
   // ==================== CONSTRUCAO MANUAL ====================
 
   /// Edificios disponiveis para construir
-  List<BuildingType> get availableBuildings => _engine.availableBuildings;
+  List<BuildingType> get availableBuildings {
+    final currentTier =
+        ((state.highestFloorCleared) ~/ 10) +
+        (state.highestFloorCleared % 10 > 0 ? 1 : 0);
+
+    return BuildingType.values
+        .where((type) => citadel.canBuild(type, currentTier))
+        .toList();
+  }
 
   /// Verifica se pode construir
   bool canBuild(BuildingType type) => _engine.canBuild(type);
@@ -530,6 +729,20 @@ class GameProvider extends ChangeNotifier {
   /// ACAO DO JOGADOR: Fazer upgrade de edificio
   bool upgradeBuilding(BuildingType type) {
     final result = _engine.upgradeBuilding(type);
+    if (result) {
+      _saveGame();
+      notifyListeners();
+    }
+    return result;
+  }
+
+  /// Verifica se pode fazer upgrade de TODOS os edifícios de um tipo
+  bool canUpgradeAllBuildings(BuildingType type) =>
+      _engine.canUpgradeAllBuildings(type);
+
+  /// ACAO DO JOGADOR: Fazer upgrade de TODOS os edifícios de um tipo
+  bool upgradeAllBuildings(BuildingType type) {
+    final result = _engine.upgradeAllBuildings(type);
     if (result) {
       _saveGame();
       notifyListeners();
@@ -571,12 +784,14 @@ class GameProvider extends ChangeNotifier {
   /// Verifica se pode evoluir cidadela
   bool get canUpgradeCitadel {
     if (!_engine.citadel.canUpgrade) return false;
-    if (!_engine.citadel.resources.canAfford(_engine.citadel.upgradeCost))
+    if (!_engine.citadel.resources.canAfford(
+      _engine.citadel.upgradeCost.toResources(),
+    )) {
       return false;
-    final next = _engine.citadel.nextLevel;
+    }
+    final next = _engine.citadel.nextCitadelLevel;
     if (next == null) return false;
     if (population < next.populationRequired) return false;
-    // Verificar tier da torre necessario
     final currentTier =
         ((_engine.state.highestFloorCleared) ~/ 10) +
         (_engine.state.highestFloorCleared % 10 > 0 ? 1 : 0);
@@ -607,10 +822,8 @@ class GameProvider extends ChangeNotifier {
     _paused = !_paused;
     if (_paused) {
       _updateTimer?.cancel();
-      // Salvar estado ao pausar
       _saveGame();
     } else {
-      // Ao retomar, atualizar timestamp para evitar salto temporal
       state.lastRealTimestamp = DateTime.now().millisecondsSinceEpoch;
       _scheduleUpdate();
     }
@@ -625,7 +838,6 @@ class GameProvider extends ChangeNotifier {
     } else {
       _speedMultiplier = speed;
     }
-    // Resetar timestamp para evitar salto com nova velocidade
     state.lastRealTimestamp = DateTime.now().millisecondsSinceEpoch;
     notifyListeners();
   }
@@ -634,7 +846,6 @@ class GameProvider extends ChangeNotifier {
     _updateTimer?.cancel();
     _simRunning = false;
     _paused = false;
-    // Salvar timestamp ao parar
     state.lastRealTimestamp = DateTime.now().millisecondsSinceEpoch;
     _saveGame();
     notifyListeners();
@@ -642,15 +853,14 @@ class GameProvider extends ChangeNotifier {
 
   Future<void> deleteSave() async {
     stopSimulation();
-    await SaveService.deleteSave();
+    await SaveService.deleteSave(_currentSlot);
     _hasSave = false;
     notifyListeners();
   }
 
   Future<void> _saveGame() async {
-    // Atualizar timestamp antes de salvar
     state.lastRealTimestamp = DateTime.now().millisecondsSinceEpoch;
-    await SaveService.saveGame(_engine);
+    await SaveService.saveGame(_engine, _currentSlot);
     _hasSave = true;
   }
 

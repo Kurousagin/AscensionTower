@@ -7,7 +7,7 @@ class NpcGroup {
   GroupRole role;
   int missionsCompleted;
   int casualties;
-  double cohesion; // 0-100: coesao do grupo
+  double cohesion; 
 
   NpcGroup({
     required this.id,

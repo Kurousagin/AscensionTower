@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:tower_ascension/services/save_service.dart';
 import '../providers/game_provider.dart';
 import '../widgets/theme.dart';
 import '../widgets/terminal_widgets.dart';
@@ -12,7 +13,8 @@ class TitleScreen extends StatefulWidget {
   State<TitleScreen> createState() => _TitleScreenState();
 }
 
-class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStateMixin {
+class _TitleScreenState extends State<TitleScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnim;
   bool _showContent = false;
@@ -20,7 +22,10 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 2000));
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    );
     _fadeAnim = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
     _controller.forward();
     Future.delayed(const Duration(milliseconds: 800), () {
@@ -52,11 +57,27 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
                       children: [
                         _buildTowerArt(),
                         const SizedBox(height: 24),
-                        const TerminalText('THE TOWER OF THE', fontSize: 10, color: AppTheme.textDim, textAlign: TextAlign.center),
+                        const TerminalText(
+                          'THE TOWER OF THE',
+                          fontSize: 10,
+                          color: AppTheme.textDim,
+                          textAlign: TextAlign.center,
+                        ),
                         const SizedBox(height: 4),
-                        const TerminalText('SECOND HUMANITY', fontSize: 20, color: AppTheme.cyan, fontWeight: FontWeight.bold, textAlign: TextAlign.center),
+                        const TerminalText(
+                          'SECOND HUMANITY',
+                          fontSize: 20,
+                          color: AppTheme.cyan,
+                          fontWeight: FontWeight.bold,
+                          textAlign: TextAlign.center,
+                        ),
                         const SizedBox(height: 8),
-                        const TerminalText('v1.0 MVP', fontSize: 9, color: AppTheme.textDim, textAlign: TextAlign.center),
+                        const TerminalText(
+                          'v1.0 MVP',
+                          fontSize: 9,
+                          color: AppTheme.textDim,
+                          textAlign: TextAlign.center,
+                        ),
                         const SizedBox(height: 32),
                         if (_showContent) ...[
                           _buildAsciiDivider(),
@@ -72,12 +93,38 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
                             label: 'NOVO JOGO',
                             icon: Icons.play_arrow,
                             expanded: true,
-                            onPressed: () {
+                            onPressed: () async {
+                              if (!gp.canCreateNewSave()) {
+                                await showDialog(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text(
+                                      'Limite de saves atingido',
+                                    ),
+                                    content: const TerminalText(
+                                      'Você atingiu o limite máximo de saves.\nExclua um save para criar um novo.',
+                                      color: AppTheme.textPrimary,
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx),
+                                        child: const TerminalText(
+                                          'OK',
+                                          color: AppTheme.textDim,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                return;
+                              }
                               gp.newGame();
+                              await gp.saveGame();
+                              setState(() {});
                               widget.onStartGame();
                             },
                           ),
-                          if (gp.hasSave) ...[
+                          if (gp.anySave) ...[
                             const SizedBox(height: 12),
                             TerminalButton(
                               label: 'CONTINUAR',
@@ -85,8 +132,33 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
                               color: AppTheme.green,
                               expanded: true,
                               onPressed: () async {
-                                await gp.loadGame();
-                                widget.onStartGame();
+                                final slots = SaveService.listSlots();
+                                String? selectedSlot = await showDialog<String>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('Escolha o save'),
+                                    content: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: slots
+                                          .map(
+                                            (slot) => ListTile(
+                                              title: TerminalText(
+                                                'Save $slot',
+                                                fontSize: 10,
+                                              ),
+                                              onTap: () =>
+                                                  Navigator.pop(ctx, slot),
+                                            ),
+                                          )
+                                          .toList(),
+                                    ),
+                                  ),
+                                );
+                                if (selectedSlot != null) {
+                                  gp.setSlot(selectedSlot);
+                                  await gp.loadGame();
+                                  widget.onStartGame();
+                                }
                               },
                             ),
                             const SizedBox(height: 12),
@@ -95,7 +167,39 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
                               icon: Icons.delete,
                               color: AppTheme.red,
                               expanded: true,
-                              onPressed: () => _confirmDelete(context, gp),
+                              onPressed: () async {
+                                final slots = SaveService.listSlots();
+                                String? selectedSlot = await showDialog<String>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text(
+                                      'Escolha o save para apagar',
+                                    ),
+                                    content: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: slots
+                                          .map(
+                                            (slot) => ListTile(
+                                              title: TerminalText(
+                                                'Save $slot',
+                                                fontSize: 10,
+                                              ),
+                                              onTap: () =>
+                                                  Navigator.pop(ctx, slot),
+                                            ),
+                                          )
+                                          .toList(),
+                                    ),
+                                  ),
+                                );
+                                if (selectedSlot != null) {
+                                  gp.setSlot(selectedSlot);
+                                  _confirmDelete(context, gp);
+                                  setState(
+                                    () {},
+                                  ); // Atualiza a tela após apagar
+                                }
+                              },
                             ),
                           ],
                           const SizedBox(height: 32),
@@ -128,7 +232,12 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
 |==================|
 |   TOWER  v1.0    |
 |==================|''';
-    return TerminalText(art, fontSize: 9, color: AppTheme.cyan, textAlign: TextAlign.center);
+    return TerminalText(
+      art,
+      fontSize: 9,
+      color: AppTheme.cyan,
+      textAlign: TextAlign.center,
+    );
   }
 
   Widget _buildAsciiDivider() {
@@ -145,7 +254,10 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('CONFIRMAR'),
-        content: const TerminalText('Apagar save permanentemente?\nEsta acao nao pode ser desfeita.', color: AppTheme.textPrimary),
+        content: const TerminalText(
+          'Apagar save permanentemente?\nEsta acao nao pode ser desfeita.',
+          color: AppTheme.textPrimary,
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -166,9 +278,24 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
   Widget _buildCredits() {
     return const Column(
       children: [
-        TerminalText('// Desenvolvido por Kurousagin and Kira', fontSize: 8, color: AppTheme.textDim, textAlign: TextAlign.center),
-        TerminalText('// Simulacao deterministica + probabilistica', fontSize: 8, color: AppTheme.textDim, textAlign: TextAlign.center),
-        TerminalText('// 100% offline | Dados locais', fontSize: 8, color: AppTheme.textDim, textAlign: TextAlign.center),
+        TerminalText(
+          '// Desenvolvido por Kurousagin and Kira',
+          fontSize: 8,
+          color: AppTheme.textDim,
+          textAlign: TextAlign.center,
+        ),
+        TerminalText(
+          '// Simulacao deterministica + probabilistica',
+          fontSize: 8,
+          color: AppTheme.textDim,
+          textAlign: TextAlign.center,
+        ),
+        TerminalText(
+          '// 100% offline | Dados locais',
+          fontSize: 8,
+          color: AppTheme.textDim,
+          textAlign: TextAlign.center,
+        ),
       ],
     );
   }

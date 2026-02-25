@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 import 'providers/game_provider.dart';
 import 'screens/title_screen.dart';
@@ -13,6 +14,8 @@ import 'widgets/theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+    await Hive.initFlutter();
+  await Hive.openBox('tower_saves');
   runApp(const TowerApp());
 }
 
@@ -52,6 +55,7 @@ class _AppShellState extends State<AppShell> {
     GroupsScreen(),
     EventLogScreen(),
     CodexScreen(),
+    // EquipmentScreen não está como aba, mas pode ser acessada via botão
   ];
 
   final List<String> _titles = [
@@ -78,10 +82,21 @@ class _AppShellState extends State<AppShell> {
               SizedBox(
                 width: 24,
                 height: 24,
-                child: CircularProgressIndicator(color: AppTheme.cyan, strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  color: AppTheme.cyan,
+                  strokeWidth: 2,
+                ),
               ),
               SizedBox(height: 16),
-              Text('INICIALIZANDO...', style: TextStyle(fontFamily: 'FiraCode', color: AppTheme.cyan, fontSize: 11, letterSpacing: 2)),
+              Text(
+                'INICIALIZANDO...',
+                style: TextStyle(
+                  fontFamily: 'FiraCode',
+                  color: AppTheme.cyan,
+                  fontSize: 11,
+                  letterSpacing: 2,
+                ),
+              ),
             ],
           ),
         ),
@@ -114,7 +129,11 @@ class _AppShellState extends State<AppShell> {
               ),
               child: Text(
                 '${gp.timeDisplay} | Andar ${gp.state.highestFloorCleared} | ${gp.population} hab.',
-                style: const TextStyle(fontFamily: 'FiraCode', fontSize: 8, color: AppTheme.textSecondary),
+                style: const TextStyle(
+                  fontFamily: 'FiraCode',
+                  fontSize: 8,
+                  color: AppTheme.textSecondary,
+                ),
               ),
             ),
           ],
@@ -129,13 +148,34 @@ class _AppShellState extends State<AppShell> {
           currentIndex: _currentTab,
           onTap: (i) => setState(() => _currentTab = i),
           items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.remove_red_eye_outlined, size: 18), label: 'Observar'),
-            BottomNavigationBarItem(icon: Icon(Icons.cell_tower, size: 18), label: 'Torre'),
-            BottomNavigationBarItem(icon: Icon(Icons.castle_outlined, size: 18), label: 'Cidadela'),
-            BottomNavigationBarItem(icon: Icon(Icons.people_outline, size: 18), label: 'Habitantes'),
-            BottomNavigationBarItem(icon: Icon(Icons.groups_outlined, size: 18), label: 'Grupos'),
-            BottomNavigationBarItem(icon: Icon(Icons.article_outlined, size: 18), label: 'Registros'),
-            BottomNavigationBarItem(icon: Icon(Icons.menu_book_outlined, size: 18), label: 'Codex'),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.remove_red_eye_outlined, size: 18),
+              label: 'Observar',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.cell_tower, size: 18),
+              label: 'Torre',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.castle_outlined, size: 18),
+              label: 'Cidadela',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.people_outline, size: 18),
+              label: 'Habitantes',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.groups_outlined, size: 18),
+              label: 'Grupos',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.article_outlined, size: 18),
+              label: 'Registros',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.menu_book_outlined, size: 18),
+              label: 'Codex',
+            ),
           ],
         ),
       ),

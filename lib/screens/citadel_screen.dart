@@ -225,7 +225,7 @@ class CitadelScreen extends StatelessWidget {
             cap,
             isInfinite,
             AppTheme.green,
-            'Consumo: ~${(gp.population * 1.5).toStringAsFixed(0)}/dia',
+            'Consumo: ~${gp.dailyFoodConsumption.toStringAsFixed(1)}/dia',
           ),
           _resRowCapped(
             'Madeira',
@@ -258,6 +258,15 @@ class CitadelScreen extends StatelessWidget {
             isInfinite,
             AppTheme.purple,
             'Pesquisa e evolucao',
+          ),
+          TerminalText(
+            'Bônus diário: +${gp.dailyFoodBonus.toStringAsFixed(1)} comida, '
+            '+${gp.dailyWoodBonus.toStringAsFixed(1)} madeira, '
+            '+${gp.dailyIronBonus.toStringAsFixed(1)} ferro, '
+            '+${gp.dailyAdvancedBonus.toStringAsFixed(1)} avançado, '
+            '+${gp.dailyResearchBonus.toStringAsFixed(1)} conhecimento',
+            fontSize: 9,
+            color: AppTheme.green,
           ),
           const SizedBox(height: 4),
           StatBar(
@@ -588,7 +597,7 @@ class CitadelScreen extends StatelessWidget {
     Citadel citadel,
     GameProvider gp,
   ) {
-    final next = citadel.nextLevel;
+    final next = citadel.nextCitadelLevel;
     if (next == null) {
       return TerminalCard(
         title: 'NIVEL MAXIMO',
@@ -601,7 +610,7 @@ class CitadelScreen extends StatelessWidget {
     }
 
     final cost = citadel.upgradeCost;
-    final canAfford = citadel.resources.canAfford(cost);
+    final canAfford = citadel.resources.canAfford(cost.toResources());
     final hasPopulation = gp.population >= next.populationRequired;
     final currentTier =
         ((gp.state.highestFloorCleared) ~/ 10) +
@@ -922,26 +931,28 @@ class CitadelScreen extends StatelessWidget {
                         TerminalButton(
                           label: count > 1 ? 'UP TODAS' : 'UP',
                           icon: Icons.arrow_upward,
-                          color: gp.canUpgradeBuilding(first.type)
+                          color: gp.canUpgradeAllBuildings(first.type)
                               ? AppTheme.cyan
                               : AppTheme.textDim,
-                          onPressed: gp.canUpgradeBuilding(first.type)
+                          onPressed: gp.canUpgradeAllBuildings(first.type)
                               ? () {
-                                  // Upgrade todas as copias
-                                  for (int i = 0; i < count; i++) {
-                                    gp.upgradeBuilding(first.type);
-                                  }
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      backgroundColor: AppTheme.bgCard,
-                                      content: TerminalText(
-                                        count > 1
-                                            ? '$count x ${first.name} evoluiram para nivel ${first.level + 1}!'
-                                            : '${first.name} evoluiu para nivel ${first.level + 1}!',
-                                        color: AppTheme.cyan,
-                                      ),
-                                    ),
+                                  // Upgrade todas as cópias de uma vez
+                                  final success = gp.upgradeAllBuildings(
+                                    first.type,
                                   );
+                                  if (success) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        backgroundColor: AppTheme.bgCard,
+                                        content: TerminalText(
+                                          count > 1
+                                              ? '$count x ${first.name} evoluiram para nivel ${first.level + 1}!'
+                                              : '${first.name} evoluiu para nivel ${first.level + 1}!',
+                                          color: AppTheme.cyan,
+                                        ),
+                                      ),
+                                    );
+                                  }
                                 }
                               : null,
                         ),
@@ -1014,7 +1025,9 @@ class CitadelScreen extends StatelessWidget {
             const SizedBox(height: 4),
             ...available.map((type) {
               final b = Building(type: type);
-              final canAfford = citadel.resources.canAfford(b.cost);
+              final canAfford = citadel.resources.canAfford(
+                b.cost.toResources(),
+              );
               return _buildBuildingOption(context, gp, b, canAfford, atLimit);
             }),
           ] else ...[
@@ -1095,7 +1108,7 @@ class CitadelScreen extends StatelessWidget {
     bool canAfford,
     bool atLimit,
   ) {
-    final canBuild = canAfford && !atLimit;
+    final canBuild = canAfford;
     final citadel = gp.citadel;
     final currentCount = citadel.countBuildings(b.type);
     final maxCopies = b.isUnique ? 1 : citadel.level.maxBuildingCopies;
@@ -1182,7 +1195,7 @@ class CitadelScreen extends StatelessWidget {
                   color: AppTheme.textDim,
                 ),
                 TerminalText(
-                  _costString(b.cost),
+                  _costString(b.cost.toResources()),
                   fontSize: 8,
                   color: canAfford ? AppTheme.green : AppTheme.red,
                 ),
@@ -1230,7 +1243,7 @@ class CitadelScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             TerminalText(
-              'Custo: ${_costString(building.cost)}',
+              'Custo: ${_costString(building.cost.toResources())}',
               fontSize: 10,
               color: AppTheme.cyan,
             ),

@@ -5,6 +5,8 @@ import '../models/citadel.dart';
 import '../models/tower.dart';
 import '../models/game_event.dart';
 import '../models/group_model.dart';
+import '../models/equipment.dart'; // ← ADICIONADO [FASE 1]
+import 'equipment_service.dart'; // ← ADICIONADO [FASE 1]
 
 class GameEngine {
   final Random _rng;
@@ -19,6 +21,10 @@ class GameEngine {
   int _groupIdCounter = 0;
   int _suggestionIdCounter = 0;
 
+  // ── Equipamentos [FASE 1] ────────────────────
+  final EquipmentService _equipmentService = EquipmentService();
+  final List<Equipment> _inventory = [];
+
   GameEngine({int? seed})
     : _rng = Random(seed),
       state = GameState(),
@@ -27,7 +33,9 @@ class GameEngine {
       floors = TowerFloor.generateMvpFloors(),
       events = [],
       groups = [],
-      trainingSuggestions = [];
+      trainingSuggestions = [] {
+    // Inicializa processadores de eventos
+  }
 
   // ── Accessors ──────────────────────────────
 
@@ -41,6 +49,9 @@ class GameEngine {
     final idx = state.highestFloorCleared;
     return idx < floors.length ? floors[idx] : null;
   }
+
+  // ── Getter de Inventário [FASE 1] ───────────
+  List<Equipment> get inventory => List.unmodifiable(_inventory);
 
   // ── ID Generators ──────────────────────────
 
@@ -56,12 +67,12 @@ class GameEngine {
     citadel = Citadel(
       buildings: [Building(type: BuildingType.firepit)],
       resources: Resources(
-        food: 60,
-        wood: 40,
-        stone: 15,
+        food: 30,
+        wood: 30,
+        stone: 30,
         iron: 0,
         knowledge: 5,
-        morale: 65,
+        morale: 25,
       ),
     );
     floors = TowerFloor.generateMvpFloors();
@@ -71,6 +82,7 @@ class GameEngine {
     trainingSuggestions = [];
     _groupIdCounter = 0;
     _suggestionIdCounter = 0;
+    _inventory.clear(); // [FASE 1]
 
     // Gerar 15 Primordiais
     for (int i = 0; i < 15; i++) {
@@ -87,30 +99,28 @@ class GameEngine {
       isMajor: true,
     );
 
-    // Alertar sobre NPCs suspeitos
-    for (final npc in npcs.where((n) => n.origin.isDarkOrigin)) {
-      npc.isSuspicious = true;
-      _addEvent(
-        GameEventType.system,
-        'Invocado Suspeito',
-        '${npc.name} (${npc.origin.label}) demonstra comportamento inquietante.',
-        involvedIds: [npc.id],
-      );
+    for (int i = 0; i < npcs.length; i++) {
+      if (npcs[i].origin.isDarkOrigin) {
+        npcs[i] = npcs[i].copyWith(isSuspicious: true);
+        _addEvent(
+          GameEventType.system,
+          'Invocado Suspeito',
+          '${npcs[i].name} (${npcs[i].origin.label}) demonstra comportamento inquietante.',
+          involvedIds: [npcs[i].id],
+        );
+      }
     }
   }
 
-  /// Atribui profissões iniciais baseadas em atributos
   void _assignInitialProfessions() {
     final alive = aliveNpcs;
     if (alive.isEmpty) return;
 
-    // Por força → guarda/explorador
     final byStrength = [...alive]
       ..sort((a, b) => b.attributes.strength.compareTo(a.attributes.strength));
     if (byStrength.isNotEmpty) byStrength[0].profession = Profession.guard;
     if (byStrength.length > 1) byStrength[1].profession = Profession.explorer;
 
-    // Por inteligência → escriba
     final byInt = [...alive]
       ..sort(
         (a, b) =>
@@ -118,12 +128,10 @@ class GameEngine {
       );
     if (byInt.length > 2) byInt[2].profession = Profession.scribe;
 
-    // Por carisma → mercador
     final byCharisma = [...alive]
       ..sort((a, b) => b.attributes.charisma.compareTo(a.attributes.charisma));
     if (byCharisma.length > 3) byCharisma[3].profession = Profession.merchant;
 
-    // Restantes: por origem
     for (final npc in alive.where((n) => n.profession == Profession.idle)) {
       npc.profession = _professionFromOrigin(npc.origin);
     }
@@ -154,6 +162,7 @@ class GameEngine {
   List<GameEvent> simulateDay() {
     _dayEvents = [];
     if (state.gameOver) return _dayEvents;
+    autoEquipAllNpcs();
 
     if (aliveNpcs.isEmpty) {
       state.gameOver = true;
@@ -194,9 +203,8 @@ class GameEngine {
     _processTavernEvents();
     _processEmergencySummon();
 
-    // Clampa recursos à capacidade do armazém
     final overflow = citadel.resources.clampToCapacity(citadel.storageLevel);
-    if (overflow.totalLost > 0) {
+    if (overflow.totalPhysical > 0) {
       _addEvent(
         GameEventType.resourceLoss,
         'Armazem Cheio!',
@@ -205,11 +213,8 @@ class GameEngine {
       );
     }
 
-    // Atualiza estado diário de cada NPC
     for (final npc in aliveNpcs) {
       npc.daysSurvived++;
-      npc.mentalCondition = npc.calculatedMentalCondition;
-      npc.betrayalRisk = npc.calculatedBetrayalRisk;
     }
 
     return _dayEvents;
@@ -217,22 +222,42 @@ class GameEngine {
 
   String _formatOverflow(overflow) {
     final parts = <String>[];
-    if (overflow.food > 0)
+    if (overflow.food > 0) {
       parts.add('Comida:${overflow.food.toStringAsFixed(0)}');
-    if (overflow.wood > 0)
+    }
+    if (overflow.wood > 0) {
       parts.add('Madeira:${overflow.wood.toStringAsFixed(0)}');
-    if (overflow.stone > 0)
+    }
+    if (overflow.stone > 0) {
       parts.add('Pedra:${overflow.stone.toStringAsFixed(0)}');
-    if (overflow.iron > 0)
+    }
+    if (overflow.iron > 0) {
       parts.add('Ferro:${overflow.iron.toStringAsFixed(0)}');
-    if (overflow.knowledge > 0)
+    }
+    if (overflow.knowledge > 0) {
       parts.add('Conhec.:${overflow.knowledge.toStringAsFixed(0)}');
+    }
     return parts.join(' ');
   }
 
   // ─────────────────────────────────────────────
   // PRODUCAO & CONSUMO
   // ─────────────────────────────────────────────
+  void _applyGlobalModifiers(Resources res) {
+    final moraleModifier =
+        1 + ((citadel.resources.morale - 50) / 200).clamp(-0.25, 0.25);
+
+    res.food *= moraleModifier;
+    res.wood *= moraleModifier;
+    res.stone *= moraleModifier;
+    res.iron *= moraleModifier;
+    res.knowledge *= moraleModifier;
+  }
+
+  double _softCap(double value, double capStart) {
+    if (value <= capStart) return value;
+    return capStart + (value - capStart) * 0.5;
+  }
 
   void _processResourceProduction() {
     final res = citadel.resources;
@@ -240,55 +265,156 @@ class GameEngine {
     final builders = _countProfession(Profession.builder);
     final scribes = _countProfession(Profession.scribe);
 
-    // Produção base por profissão
     res.food += 2.0 + farmers * 3.0;
     res.wood += 1.0 + builders * 2.0;
     res.stone += 0.5 + builders * 1.0;
     res.knowledge += 0.2 + scribes * 1.5;
 
-    // Produção de edifícios
     for (final building in citadel.buildings) {
       _applyBuildingProduction(building, res);
     }
+
+    _applyGlobalModifiers(citadel.resources);
+
+    // Agora aplica o soft cap
+    citadel.resources.food = _softCap(citadel.resources.food, 500);
+    citadel.resources.wood = _softCap(citadel.resources.wood, 400);
+    citadel.resources.stone = _softCap(citadel.resources.stone, 400);
+    citadel.resources.iron = _softCap(citadel.resources.iron, 300);
+    citadel.resources.knowledge = _softCap(citadel.resources.knowledge, 250);
+  }
+
+  double _expProduction({
+    required int level,
+    required double base,
+    double growth = 1.6,
+  }) {
+    return base * pow(growth, level - 1);
   }
 
   void _applyBuildingProduction(Building building, Resources res) {
-    final t = building.tier.clamp(0, 3);
+    final level = building.level;
+    final tierBonus = 1 + (building.tier * 0.15);
+    final kitchenCount = citadel.countBuildings(BuildingType.kitchen);
+    final farmSynergy = 1 + (kitchenCount * 0.12);
+    final population = aliveNpcs.length;
+
     switch (building.type) {
+      // 🌾 FARM
       case BuildingType.farm:
-        res.food += [5.0, 12.0, 25.0, 25.0][t];
+        final farmers = _countProfession(Profession.farmer);
+        final effectiveFarmers = max(1, farmers); // Garante pelo menos 1
+        final baseProduction = _expProduction(
+          level: level,
+          base: 5,
+          growth: 1.7,
+        );
+        final populationBonus = 1 + (population * 0.02);
+
+        res.food +=
+            effectiveFarmers *
+            baseProduction *
+            farmSynergy *
+            tierBonus *
+            populationBonus;
         break;
+
+      // 🍲 KITCHEN
       case BuildingType.kitchen:
         final chefs = _countProfession(Profession.chef);
-        res.food += chefs * [3.0, 8.0, 15.0, 15.0][t];
+
+        final productionPerChef = _expProduction(
+          level: level,
+          base: 3,
+          growth: 1.6,
+        );
+
+        final effectiveChefs = max(1, chefs);
+
+        res.food += effectiveChefs * productionPerChef * tierBonus;
         break;
+
+      // ⚒ WORKSHOP
       case BuildingType.workshop:
-        if (t == 0) {
-          res.iron += 1.0;
-        } else if (t == 1) {
-          res.iron += 3.0;
-          res.wood += 2.0;
-        } else {
-          res.iron += 6.0;
-          res.wood += 5.0;
-        }
+        final ironProduction = _expProduction(
+          level: level,
+          base: 1,
+          growth: 2.0,
+        );
+
+        final woodProduction = _expProduction(
+          level: level,
+          base: 0.5,
+          growth: 1.8,
+        );
+
+        res.iron += ironProduction * tierBonus;
+        res.wood += woodProduction * tierBonus;
         break;
+
+      // 🪵 WOODWORKING
+      case BuildingType.woodworking:
+        final woodProduction = _expProduction(
+          level: level,
+          base: 2,
+          growth: 1.9,
+        );
+
+        final moraleBonus = _expProduction(
+          level: level,
+          base: 0.5,
+          growth: 1.5,
+        );
+
+        res.wood += woodProduction * tierBonus;
+        res.morale += moraleBonus;
+        break;
+
+      // 🔨 FORGE
       case BuildingType.forge:
-        res.iron += [2.0, 5.0, 10.0, 10.0][t];
+        final ironProduction = _expProduction(
+          level: level,
+          base: 2,
+          growth: 1.8,
+        );
+
+        res.iron += ironProduction * tierBonus;
         break;
+
+      // 📚 LIBRARY
       case BuildingType.library:
-        res.knowledge += 3.0;
+        final knowledgeProduction = _expProduction(
+          level: level,
+          base: 2,
+          growth: 1.6,
+        );
+
+        res.knowledge += knowledgeProduction * tierBonus;
         break;
+
+      // ⛪ TEMPLE
       case BuildingType.temple:
-        res.morale += 2.0;
+        final moraleBoost = _expProduction(
+          level: level,
+          base: 1.5,
+          growth: 1.5,
+        );
+
+        res.morale += moraleBoost;
+
         for (final npc in aliveNpcs) {
           npc.attributes.mentalStability =
-              (npc.attributes.mentalStability + 0.5).clamp(0, 100);
+              (npc.attributes.mentalStability + (0.3 * level)).clamp(0, 100);
         }
         break;
+
+      // 🔥 FIREPIT
       case BuildingType.firepit:
-        res.morale += [1.0, 2.0, 3.0, 5.0][t];
+        final moraleBoost = _expProduction(level: level, base: 1, growth: 1.7);
+
+        res.morale += moraleBoost;
         break;
+
       default:
         break;
     }
@@ -328,7 +454,6 @@ class GameEngine {
       if (citadel.hasBuilding(BuildingType.temple)) recovery += 10.0;
       if (_hasLivingPartner(npc)) recovery += 2.0;
       if (npc.groupId != null) recovery += 1.0;
-      // Expedição hoje → apenas 30% de recuperação
       if (npc.lastExpeditionDay == state.currentDay) recovery *= 0.3;
 
       npc.fatigue = (npc.fatigue - recovery).clamp(0.0, 100.0);
@@ -341,7 +466,6 @@ class GameEngine {
       npc.attributes.mentalStability -= 5;
       npc.loyalty -= 1;
       npc.profession = Profession.idle;
-      // 8% chance de colapso físico permanente
       if (_rng.nextDouble() < 0.08) {
         npc.attributes.endurance -= 0.5;
         npc.traumas.add(
@@ -401,34 +525,51 @@ class GameEngine {
     b.relationships.add(
       Relationship(targetId: a.id, type: 'amigo', affinity: affinity),
     );
-    // Mesmo grupo acelera aproximação
     if (a.groupId != null && a.groupId == b.groupId) {
-      a.relationships.last.affinity += 0.1;
-      b.relationships.last.affinity += 0.1;
+      final lastIndexA = a.relationships.length - 1;
+      final lastIndexB = b.relationships.length - 1;
+      a.relationships[lastIndexA] = a.relationships[lastIndexA].copyWith(
+        affinity: a.relationships[lastIndexA].affinity + 0.1,
+      );
+      b.relationships[lastIndexB] = b.relationships[lastIndexB].copyWith(
+        affinity: b.relationships[lastIndexB].affinity + 0.1,
+      );
     }
   }
 
   void _evolveRelationship(Npc a, Npc b, Relationship rel) {
-    rel.affinity = (rel.affinity + _rng.nextDouble() * 0.3 - 0.05).clamp(
+    final indexInA = a.relationships.indexWhere((r) => r.targetId == b.id);
+    if (indexInA == -1) return;
+
+    final newAffinity = (rel.affinity + _rng.nextDouble() * 0.3 - 0.05).clamp(
       -1.0,
       1.0,
     );
+    a.relationships[indexInA] = a.relationships[indexInA].copyWith(
+      affinity: newAffinity,
+    );
 
-    // Threshold para formar casal (reduzido com moral alta)
     final threshold = citadel.resources.morale > 85
         ? 0.55
         : citadel.resources.morale > 70
         ? 0.6
         : 0.7;
 
-    if (rel.affinity > threshold &&
-        a.partnerId == null &&
-        b.partnerId == null) {
+    if (newAffinity > threshold && a.partnerId == null && b.partnerId == null) {
       a.partnerId = b.id;
       b.partnerId = a.id;
-      rel.type = 'parceiro';
-      b.relationships.firstWhereOrNull((r) => r.targetId == a.id)?.type =
-          'parceiro';
+
+      a.relationships[indexInA] = a.relationships[indexInA].copyWith(
+        type: 'parceiro',
+      );
+
+      final indexInB = b.relationships.indexWhere((r) => r.targetId == a.id);
+      if (indexInB != -1) {
+        b.relationships[indexInB] = b.relationships[indexInB].copyWith(
+          type: 'parceiro',
+        );
+      }
+
       _addEvent(
         GameEventType.romance,
         'Novo Vinculo',
@@ -555,11 +696,8 @@ class GameEngine {
   // OCIOSIDADE
   // ─────────────────────────────────────────────
 
-  /// Processa penalidades progressivas para NPCs ociosos.
-  /// NPCs idle por muito tempo sofrem consequências naturais.
   void _processIdleness() {
     for (final npc in aliveNpcs) {
-      // Crianças e adolescentes não contam como ociosos
       final stage = npc.growthStage(state.currentDay);
       if (stage == GrowthStage.baby ||
           stage == GrowthStage.child ||
@@ -568,7 +706,6 @@ class GameEngine {
         continue;
       }
 
-      // Atualiza contador de dias ociosos
       if (npc.profession == Profession.idle) {
         npc.daysIdle++;
       } else {
@@ -576,7 +713,6 @@ class GameEngine {
         continue;
       }
 
-      // Penalidades progressivas baseadas em tempo ocioso
       if (npc.daysIdle >= 7) {
         _applyIdlenessPenalties(npc);
       }
@@ -586,7 +722,6 @@ class GameEngine {
   void _applyIdlenessPenalties(Npc npc) {
     final weeksIdle = npc.daysIdle ~/ 7;
 
-    // Penalidade de moral (ociosos se sentem inúteis)
     if (npc.traits.contains(PersonalityTrait.ambitious) ||
         npc.traits.contains(PersonalityTrait.leader)) {
       npc.attributes.mentalStability -= 0.5 * weeksIdle;
@@ -594,21 +729,15 @@ class GameEngine {
       npc.attributes.mentalStability -= 0.2 * weeksIdle;
     }
 
-    // Redução de lealdade (sentem que não são valorizados)
     npc.loyalty -= 0.3 * weeksIdle;
 
-    // Preguiçosos não sofrem tanto
-    if (npc.traits.contains(PersonalityTrait.lazy)) {
-      return;
-    }
+    if (npc.traits.contains(PersonalityTrait.lazy)) return;
 
-    // Deterioração de atributos físicos por inatividade
     if (npc.daysIdle >= 14) {
       npc.attributes.strength -= 0.05;
       npc.attributes.endurance -= 0.05;
     }
 
-    // Eventos especiais de ociosidade prolongada
     if (npc.daysIdle == 21 && _rng.nextDouble() < 0.6) {
       _triggerIdlenessEvent(npc);
     }
@@ -616,9 +745,8 @@ class GameEngine {
 
   void _triggerIdlenessEvent(Npc npc) {
     final roll = _rng.nextInt(3);
-
     switch (roll) {
-      case 0: // Reclamação pública
+      case 0:
         citadel.resources.morale -= 2;
         npc.fame -= 3;
         _addEvent(
@@ -629,9 +757,7 @@ class GameEngine {
           involvedIds: [npc.id],
         );
         break;
-
-      case 1: // Aumento de risco de traição
-        npc.betrayalRisk += 5;
+      case 1:
         npc.loyalty -= 5;
         _addEvent(
           GameEventType.mentalBreak,
@@ -641,12 +767,8 @@ class GameEngine {
           involvedIds: [npc.id],
         );
         break;
-
-      case 2: // Deterioração mental
+      case 2:
         npc.attributes.mentalStability -= 5;
-        if (npc.attributes.mentalStability < 40) {
-          npc.mentalCondition = MentalCondition.depressed;
-        }
         _addEvent(
           GameEventType.mentalBreak,
           'Crise de Proposito',
@@ -662,30 +784,23 @@ class GameEngine {
   // ESCOLHA AUTÔNOMA DE PROFISSÕES
   // ─────────────────────────────────────────────
 
-  /// NPCs ociosos adultos escolhem profissões autonomamente baseado em
-  /// suas características, personalidade e necessidades da cidadela.
   void _processAutonomousProfessionChoice() {
-    // Roda a cada 3 dias para dar tempo de pensar
     if (state.currentDay % 3 != 0) return;
 
     for (final npc in aliveNpcs) {
-      // Apenas adultos ociosos podem escolher profissão
       final stage = npc.growthStage(state.currentDay);
       if (stage != GrowthStage.adult || npc.profession != Profession.idle) {
         continue;
       }
 
-      // Chance de escolher baseada em personalidade e tempo ocioso
       final choiceChance = _calculateProfessionChoiceChance(npc);
       if (_rng.nextDouble() > choiceChance) continue;
 
-      // Escolhe profissão baseada em necessidades e aptidões
       final chosen = _chooseProfessionFor(npc);
       if (chosen != null && chosen != Profession.idle) {
         npc.profession = chosen;
         npc.daysIdle = 0;
-        npc.loyalty += 2; // Pequeno boost por tomar iniciativa
-
+        npc.loyalty += 2;
         _addEvent(
           GameEventType.system,
           'Nova Profissao',
@@ -697,45 +812,26 @@ class GameEngine {
   }
 
   double _calculateProfessionChoiceChance(Npc npc) {
-    double baseChance = 0.15; // 15% base a cada 3 dias
-
-    // Ambiciosos/líderes escolhem mais rápido
+    double baseChance = 0.15;
     if (npc.traits.contains(PersonalityTrait.ambitious)) baseChance += 0.15;
     if (npc.traits.contains(PersonalityTrait.leader)) baseChance += 0.10;
-
-    // Preguiçosos resistem
     if (npc.traits.contains(PersonalityTrait.lazy)) baseChance -= 0.20;
-
-    // Leais querem ajudar
     if (npc.traits.contains(PersonalityTrait.loyal)) baseChance += 0.10;
-
-    // Tempo ocioso aumenta pressão
     if (npc.daysIdle >= 14) baseChance += 0.15;
     if (npc.daysIdle >= 21) baseChance += 0.25;
-
-    // Moral baixa reduz iniciativa
     if (citadel.resources.morale < 40) baseChance -= 0.10;
-
     return baseChance.clamp(0.0, 0.8);
   }
 
   Profession? _chooseProfessionFor(Npc npc) {
-    // Analisa necessidades da cidadela
     final needs = _analyzeCitadelNeeds();
-
-    // Cria lista de profissões candidatas com scores
     final candidates = <Profession, double>{};
-
     for (final profession in Profession.values) {
       if (profession == Profession.idle) continue;
-
       final score = _calculateProfessionScore(npc, profession, needs);
       if (score > 0) candidates[profession] = score;
     }
-
     if (candidates.isEmpty) return null;
-
-    // Escolhe baseado em probabilidades ponderadas
     return _weightedRandomChoice(candidates);
   }
 
@@ -745,7 +841,6 @@ class GameEngine {
     final guards = _countProfession(Profession.guard);
     final builders = _countProfession(Profession.builder);
     final doctors = _countProfession(Profession.doctor);
-
     return {
       'food': population > 0 ? 1.0 - (farmers / (population * 0.3)) : 1.0,
       'defense': population > 0 ? 1.0 - (guards / (population * 0.2)) : 1.0,
@@ -761,14 +856,9 @@ class GameEngine {
     Profession profession,
     Map<String, double> needs,
   ) {
-    double score = 0.5; // Score base
+    double score = 0.5;
+    if (_professionFromOrigin(npc.origin) == profession) score += 0.4;
 
-    // Compatibilidade com origem
-    if (_professionFromOrigin(npc.origin) == profession) {
-      score += 0.4;
-    }
-
-    // Compatibilidade com atributos
     switch (profession) {
       case Profession.farmer:
         score += npc.attributes.endurance / 20;
@@ -808,7 +898,6 @@ class GameEngine {
         break;
     }
 
-    // Personalidade afeta escolhas
     if (npc.traits.contains(PersonalityTrait.lazy) &&
         [
           Profession.guard,
@@ -824,12 +913,10 @@ class GameEngine {
   T _weightedRandomChoice<T>(Map<T, double> weights) {
     final totalWeight = weights.values.reduce((a, b) => a + b);
     var random = _rng.nextDouble() * totalWeight;
-
     for (final entry in weights.entries) {
       random -= entry.value;
       if (random <= 0) return entry.key;
     }
-
     return weights.keys.first;
   }
 
@@ -837,27 +924,24 @@ class GameEngine {
   // TRAIÇÃO
   // ─────────────────────────────────────────────
 
-  /// Checagem semanal de possíveis traições
   void _processBetrayalAttempts() {
     if (state.currentDay % 7 != 0) return;
-
-    for (final npc in aliveNpcs) {
-      if (npc.calculatedBetrayalRisk < 30) continue;
-      if (_rng.nextDouble() * 100 > npc.calculatedBetrayalRisk) continue;
-      _executeBetrayal(npc);
+    for (int i = 0; i < npcs.length; i++) {
+      if (!npcs[i].alive) continue;
+      if (npcs[i].betrayalRisk < 30) continue;
+      if (_rng.nextDouble() * 100 > npcs[i].betrayalRisk) continue;
+      npcs[i] = _executeBetrayal(npcs[i]);
     }
   }
 
-  void _executeBetrayal(Npc npc) {
+  Npc _executeBetrayal(Npc npc) {
     switch (_rng.nextInt(4)) {
-      case 0: // Roubo
+      case 0:
         final stolen = 5.0 + _rng.nextDouble() * 15;
         citadel.resources.food = (citadel.resources.food - stolen).clamp(
           0,
           9999,
         );
-        npc.fame -= 10;
-        npc.loyalty -= 5;
         _addPsychologicalMarksToChildren(
           'Testemunhou traicao: roubo de comida',
         );
@@ -868,11 +952,11 @@ class GameEngine {
           involvedIds: [npc.id],
           isMajor: true,
         );
-        break;
-      case 1: // Sabotagem
+        return npc.copyWith(fame: npc.fame - 10, loyalty: npc.loyalty - 5);
+
+      case 1:
         if (citadel.resources.morale > 20) {
           citadel.resources.morale -= 8;
-          npc.fame -= 8;
           _addEvent(
             GameEventType.betrayalAttempt,
             'Sabotagem!',
@@ -880,35 +964,43 @@ class GameEngine {
             involvedIds: [npc.id],
             isMajor: true,
           );
+          return npc.copyWith(fame: npc.fame - 8);
         }
-        break;
-      case 2: // Manipulação
+        return npc;
+
+      case 2:
         final targets = aliveNpcs
             .where((n) => n.id != npc.id && n.loyalty < 60)
             .toList();
         if (targets.isNotEmpty) {
           final target = targets[_rng.nextInt(targets.length)];
-          target.loyalty -= 5;
-          npc.fame -= 5;
+          final targetIndex = npcs.indexWhere((n) => n.id == target.id);
+          if (targetIndex != -1) {
+            npcs[targetIndex] = npcs[targetIndex].copyWith(
+              loyalty: npcs[targetIndex].loyalty - 5,
+            );
+          }
           _addEvent(
             GameEventType.politicalEvent,
             'Manipulacao',
             '${npc.name} espalhando rumores para ${target.name}.',
             involvedIds: [npc.id, target.id],
           );
+          return npc.copyWith(fame: npc.fame - 5);
         }
-        break;
-      case 3: // Assassinato (apenas assassinos, 30% chance)
-        if (npc.origin != NpcOrigin.assassin || _rng.nextDouble() >= 0.3) break;
+        return npc;
+
+      case 3:
+        if (npc.origin != NpcOrigin.assassin || _rng.nextDouble() >= 0.3) {
+          return npc;
+        }
         final targets = aliveNpcs
             .where((n) => n.id != npc.id && n.fame > 15)
             .toList();
-        if (targets.isEmpty) break;
+        if (targets.isEmpty) return npc;
         final target = targets[_rng.nextInt(targets.length)];
         if (_rng.nextDouble() < 0.4) {
           _killNpc(target, 'Assassinado por ${npc.name}');
-          npc.killCount++;
-          npc.fame -= 30;
           _addPsychologicalMarksToChildren(
             'Testemunhou assassinato - ${target.name} morto',
             exceptIds: [target.id],
@@ -920,9 +1012,11 @@ class GameEngine {
             involvedIds: [npc.id, target.id],
             isMajor: true,
           );
+          return npc.copyWith(
+            killCount: npc.killCount + 1,
+            fame: npc.fame - 30,
+          );
         } else {
-          npc.fame -= 15;
-          npc.isSuspicious = true;
           _addEvent(
             GameEventType.betrayalAttempt,
             'Tentativa de Assassinato Frustrada',
@@ -930,15 +1024,16 @@ class GameEngine {
             involvedIds: [npc.id, target.id],
             isMajor: true,
           );
+          return npc.copyWith(fame: npc.fame - 15, isSuspicious: true);
         }
     }
+    return npc;
   }
 
   // ─────────────────────────────────────────────
   // TREINO AUTÔNOMO
   // ─────────────────────────────────────────────
 
-  /// A cada 5 dias, NPCs de combate podem treinar espontaneamente
   void _processAutonomousTraining() {
     if (state.currentDay % 5 != 0 || clearedFloors.isEmpty) return;
 
@@ -962,7 +1057,6 @@ class GameEngine {
     }
   }
 
-  /// Aplica ganhos de treino para um NPC em um andar
   void _trainNpcOnFloor(Npc npc, TowerFloor floor, {double fatigueGain = 0}) {
     npc.fatigue = (npc.fatigue + fatigueGain).clamp(0.0, 100.0);
     final gain = 0.05 + _rng.nextDouble() * 0.15;
@@ -988,7 +1082,6 @@ class GameEngine {
         npc.attributes.agility += gain * 0.5;
     }
 
-    // Risco de acidente (2%)
     if (_rng.nextDouble() < 0.02) {
       npc.attributes.endurance -= 0.3;
       npc.traumas.add(
@@ -1002,7 +1095,6 @@ class GameEngine {
       );
     }
 
-    // 3% de chance de reativar ameaça
     if (_rng.nextDouble() < 0.03) {
       floor.timesReexplored++;
       _addEvent(
@@ -1018,7 +1110,6 @@ class GameEngine {
   // RE-EXPLORAÇÃO AUTOMÁTICA
   // ─────────────────────────────────────────────
 
-  /// A cada 14 dias, 40% de chance de re-explorar automaticamente
   void _processAutoReexploration() {
     if (state.currentDay % 14 != 0 || clearedFloors.isEmpty) return;
     if (_rng.nextDouble() > 0.4) return;
@@ -1047,13 +1138,11 @@ class GameEngine {
   // SISTEMA DE EXPEDIÇÃO HARDCORE
   // ─────────────────────────────────────────────
 
-  /// Custo de comida por NPC em expedição para novo andar (tier 1: 4, tier 5: 8, tier 10: 13)
   double expeditionCostPerNpc(int floorNumber) {
     final tier = ((floorNumber - 1) ~/ 10) + 1;
     return 3.0 + tier * 1.0;
   }
 
-  /// Custo de comida por NPC em re-exploração (tier 1: 2.6, tier 10: 8)
   double reexploreCostPerNpc(int floorNumber) {
     final tier = ((floorNumber - 1) ~/ 10) + 1;
     return 2.0 + tier * 0.6;
@@ -1085,7 +1174,6 @@ class GameEngine {
               party.length;
   }
 
-  /// Estimativa de chances de eventos negativos para exibição na UI
   Map<String, double> previewEventChances(
     List<String> partyIds,
     TowerFloor floor,
@@ -1137,7 +1225,6 @@ class GameEngine {
     if (party.length <= 1) return 0.0;
     double synergy = 0.0;
 
-    // Todos do mesmo grupo: bônus por coesão
     final groupIds = party
         .where((n) => n.groupId != null)
         .map((n) => n.groupId!)
@@ -1149,7 +1236,6 @@ class GameEngine {
       synergy += 0.1;
     }
 
-    // Relações entre membros
     int positiveRels = 0, negativeRels = 0;
     for (final a in party) {
       for (final b in party) {
@@ -1164,7 +1250,6 @@ class GameEngine {
     synergy += (positiveRels * 0.03).clamp(0.0, 0.2);
     synergy -= (negativeRels * 0.05).clamp(0.0, 0.3);
 
-    // Traits de sinergia
     final loyal = party
         .where((n) => n.traits.contains(PersonalityTrait.loyal))
         .length;
@@ -1180,10 +1265,9 @@ class GameEngine {
     synergy += loyal * 0.05;
     synergy -= loner * 0.08;
     synergy -= individualist * 0.10;
-    if (leader == 1) synergy += 0.1; // 1 líder é ideal
-    if (leader > 1) synergy -= 0.05; // líderes demais conflitam
+    if (leader == 1) synergy += 0.1;
+    if (leader > 1) synergy -= 0.05;
 
-    // Talento Natural Leader
     if (party.any(
       (n) => n.talentDiscovered && n.hiddenTalent == HiddenTalent.naturalLeader,
     )) {
@@ -1193,29 +1277,23 @@ class GameEngine {
     return synergy.clamp(-0.3, 0.6);
   }
 
-  /// Modificador de recompensa baseado em personalidade individual
   double _personalityRewardMod(Npc npc) {
     double mod = 0.0;
-    // Traits conservadores (menor teto, menor risco)
     if (npc.traits.contains(PersonalityTrait.cautious)) mod -= 0.12;
     if (npc.traits.contains(PersonalityTrait.calm)) mod -= 0.05;
-    // Traits agressivos (maior teto, maior risco)
     if (npc.traits.contains(PersonalityTrait.ambitious)) mod += 0.15;
     if (npc.traits.contains(PersonalityTrait.impulsive)) mod += 0.08;
     if (npc.traits.contains(PersonalityTrait.brave)) mod += 0.05;
-    // Penalidades de eficiência
     if (npc.traits.contains(PersonalityTrait.lazy)) mod -= 0.15;
     if (npc.traits.contains(PersonalityTrait.coward)) mod -= 0.10;
     if (npc.traits.contains(PersonalityTrait.pessimist)) mod -= 0.05;
     if (npc.traits.contains(PersonalityTrait.individualist)) mod -= 0.05;
-    // Bônus estáveis
     if (npc.traits.contains(PersonalityTrait.analytical)) mod += 0.06;
     if (npc.traits.contains(PersonalityTrait.pragmatic)) mod += 0.04;
     if (npc.traits.contains(PersonalityTrait.creative)) mod += 0.03;
     return mod;
   }
 
-  /// Rendimento de coleta baseado em atributos e tipo de andar
   double _attributeYield(Npc npc, FloorType floorType) {
     double yield =
         1.0 +
@@ -1224,11 +1302,10 @@ class GameEngine {
         (npc.attributes.endurance - 5) * 0.025 +
         (npc.attributes.agility - 5) * 0.025 +
         (npc.attributes.luck - 5) * 0.025 -
-        npc.fatigue * 0.004; // Exausto (100) = -40%
+        npc.fatigue * 0.004;
 
     if (npc.traits.contains(PersonalityTrait.lazy)) yield *= 0.80;
 
-    // Bônus por tipo de andar
     switch (floorType) {
       case FloorType.combat:
       case FloorType.gauntlet:
@@ -1272,7 +1349,6 @@ class GameEngine {
       partyIds: partyIds,
     );
 
-    // Custo fixo pago ANTES do resultado
     final costPerNpc = reexploreCostPerNpc(floorNumber);
     final totalCost = party.length * costPerNpc;
     result.foodCost = totalCost;
@@ -1281,7 +1357,6 @@ class GameEngine {
 
     _applyExpeditionFatigue(party, tier, baseFatigue: 15.0);
 
-    // Calculo de recompensa
     final synergy = _calculateGroupSynergy(party);
     for (final entry in floor.farmableResources.entries) {
       double totalYield = 0;
@@ -1291,13 +1366,11 @@ class GameEngine {
             _attributeYield(npc, floor.type) *
             (1.0 + _personalityRewardMod(npc));
       }
-      // Sinergia, variância e diminishing returns
       totalYield *=
           (1.0 + synergy) *
           (0.85 + _rng.nextDouble() * 0.30) *
           (1.0 / (1.0 + floor.timesReexplored * 0.05));
 
-      // 1 NPC sozinho garante retorno mínimo viável
       if (party.length == 1) {
         totalYield = totalYield.clamp(costPerNpc * 0.5, double.infinity);
       }
@@ -1305,13 +1378,9 @@ class GameEngine {
       result.resourcesGained[entry.key] = totalYield;
     }
 
-    // Eventos aleatórios (podem modificar result.resourcesGained)
     final eventLogs = _processExpeditionEvents(party, floor, result);
-
-    // Aplica recursos ao estoque
     _applyResourcesToStock(result.resourcesGained);
 
-    // Ameaça reativada
     final threatChance = 0.05 + (floor.timesReexplored * 0.02);
     if (_rng.nextDouble() < threatChance) {
       for (final npc in party) {
@@ -1349,7 +1418,9 @@ class GameEngine {
       );
     }
 
-    for (final npc in party.where((n) => n.alive)) npc.fame += 1;
+    for (final npc in party.where((n) => n.alive)) {
+      npc.fame += 1;
+    }
     return result;
   }
 
@@ -1363,7 +1434,6 @@ class GameEngine {
     final logs = <String>[];
     final tier = floor.tier;
 
-    // Acidente
     final avgEndurance = _avg(party, (n) => n.attributes.endurance);
     final cautiousCount = party
         .where((n) => n.traits.contains(PersonalityTrait.cautious))
@@ -1395,7 +1465,6 @@ class GameEngine {
       result.expeditionEvents.add('Acidente: ${victim.name}');
     }
 
-    // Doença
     if (_rng.nextDouble() < (0.06 + tier * 0.005)) {
       final alive = party.where((n) => n.alive).toList();
       if (alive.isNotEmpty) {
@@ -1412,7 +1481,6 @@ class GameEngine {
       }
     }
 
-    // Conflito interno
     if (party.length >= 2) {
       final aggressives = party
           .where((n) => n.traits.contains(PersonalityTrait.aggressive))
@@ -1435,7 +1503,6 @@ class GameEngine {
       }
     }
 
-    // Traição
     final traitors = party
         .where(
           (n) =>
@@ -1446,26 +1513,29 @@ class GameEngine {
         )
         .toList();
     for (final traitor in traitors) {
-      if (_rng.nextDouble() >= 0.04 + traitor.calculatedBetrayalRisk * 0.001)
-        continue;
+      if (_rng.nextDouble() >= 0.04 + traitor.betrayalRisk * 0.001) continue;
       final stolenPct = 0.15 + _rng.nextDouble() * 0.25;
       for (final key in result.resourcesGained.keys.toList()) {
         final stolen = (result.resourcesGained[key] ?? 0) * stolenPct;
         result.resourcesGained[key] =
             (result.resourcesGained[key] ?? 0) - stolen;
       }
-      traitor.fame -= 8;
-      traitor.loyalty -= 5;
-      traitor.isSuspicious = true;
+      final traitorIndex = npcs.indexWhere((n) => n.id == traitor.id);
+      if (traitorIndex != -1) {
+        npcs[traitorIndex] = npcs[traitorIndex].copyWith(
+          fame: npcs[traitorIndex].fame - 8,
+          loyalty: npcs[traitorIndex].loyalty - 5,
+          isSuspicious: true,
+        );
+      }
       citadel.resources.morale -= 4;
       logs.add(
         '[TRAICAO] ${traitor.name} roubou ${(stolenPct * 100).toStringAsFixed(0)}% dos recursos!',
       );
       result.expeditionEvents.add('Traicao: ${traitor.name}');
-      break; // Apenas uma traição por expedição
+      break;
     }
 
-    // Evento raro positivo (sem traição ativa)
     if (result.expeditionEvents.none((e) => e.startsWith('Traicao'))) {
       final avgLuck = _avg(
         party.where((n) => n.alive).toList(),
@@ -1481,7 +1551,6 @@ class GameEngine {
         logs.add('[RARO] Descoberta excepcional! Recompensa DOBRADA!');
         result.expeditionEvents.add('Evento raro');
 
-        // Chance de revelar talento
         final candidates = party
             .where(
               (n) =>
@@ -1534,7 +1603,6 @@ class GameEngine {
     final npc = npcs.firstWhere((n) => n.id == s.targetId);
     npc.trainingSuggestionsReceived++;
 
-    // Incapacitado: recusa automática
     if (npc.isIncapacitated) {
       s.response = TrainingResponse.refused;
       s.responseDetail =
@@ -1554,7 +1622,6 @@ class GameEngine {
     final roll = _rng.nextDouble();
 
     if (roll < acceptance) {
-      // Aceita
       s.response = TrainingResponse.accepted;
       s.responseDetail = '${npc.name} aceitou treinar.';
       npc.trainingSuggestionsAccepted++;
@@ -1565,17 +1632,14 @@ class GameEngine {
         trainOnFloor(s.floorNumber, [npc.id]);
       }
     } else if (roll < acceptance + 0.15) {
-      // Negocia
       s.response = TrainingResponse.negotiated;
       s.responseDetail =
           '${npc.name} negociou: "Aceito, mas quero descanso depois."';
       npc.loyalty += 1;
     } else if (roll < acceptance + 0.25) {
-      // Ignora
       s.response = TrainingResponse.ignored;
       s.responseDetail = '${npc.name} ignorou a sugestao.';
     } else {
-      // Recusa
       s.response = TrainingResponse.refused;
       s.responseDetail = '${npc.name} recusou: "${_refusalReason(npc)}"';
       npc.loyalty -= 1;
@@ -1588,7 +1652,6 @@ class GameEngine {
       involvedIds: [npc.id],
     );
 
-    // Resistência ao favoritismo excessivo
     if (npc.trainingSuggestionsReceived > 5 &&
         npc.trainingSuggestionsAccepted <
             npc.trainingSuggestionsReceived * 0.3) {
@@ -1605,12 +1668,15 @@ class GameEngine {
   String _refusalReason(Npc npc) {
     if (npc.isExhausted) return 'Mal consigo ficar de pe. Me deixe descansar.';
     if (npc.fatigue >= 50) return 'Estou cansado demais.';
-    if (npc.traits.contains(PersonalityTrait.coward))
+    if (npc.traits.contains(PersonalityTrait.coward)) {
       return 'E perigoso demais.';
-    if (npc.attributes.mentalStability < 40)
+    }
+    if (npc.attributes.mentalStability < 40) {
       return 'Nao estou em condicoes de treinar.';
-    if (npc.traits.contains(PersonalityTrait.loner))
+    }
+    if (npc.traits.contains(PersonalityTrait.loner)) {
       return 'Prefiro treinar sozinho.';
+    }
     return 'Nao me parece necessario agora.';
   }
 
@@ -1677,7 +1743,6 @@ class GameEngine {
       npc.attributes.endurance += gain * 0.8;
       npc.attributes.agility += gain * 0.5;
       npc.history.add('Treinou no Campo de Treino (Dia ${state.currentDay})');
-      // Risco quase nulo (0.5%)
       if (_rng.nextDouble() < 0.005) {
         npc.attributes.endurance -= 0.2;
         npc.traumas.add('Ferimento leve no Campo de Treino');
@@ -1714,17 +1779,17 @@ class GameEngine {
       isMajor: true,
     );
 
-    for (final npc
-        in npcs.reversed
-            .take(numToSummon)
-            .where((n) => n.origin.isDarkOrigin)) {
-      npc.isSuspicious = true;
-      _addEvent(
-        GameEventType.system,
-        'Alerta: Invocado Suspeito',
-        '${npc.name} (${npc.origin.label}) tem passado sombrio.',
-        involvedIds: [npc.id],
-      );
+    final startIndex = npcs.length - numToSummon;
+    for (int i = startIndex; i < npcs.length; i++) {
+      if (npcs[i].origin.isDarkOrigin) {
+        npcs[i] = npcs[i].copyWith(isSuspicious: true);
+        _addEvent(
+          GameEventType.system,
+          'Alerta: Invocado Suspeito',
+          '${npcs[i].name} (${npcs[i].origin.label}) tem passado sombrio.',
+          involvedIds: [npcs[i].id],
+        );
+      }
     }
   }
 
@@ -1734,8 +1799,9 @@ class GameEngine {
 
   String requestNewSettlers() {
     final daysSince = state.currentDay - state.lastSettlersRequestDay;
-    if (daysSince < 7)
+    if (daysSince < 7) {
       return 'Aguarde ${7 - daysSince} dia(s) para nova solicitacao.';
+    }
     if (citadel.resources.morale < 60) {
       return 'Moral muito baixa (${citadel.resources.morale.toStringAsFixed(0)}/100). Novos moradores nao virarao.';
     }
@@ -1864,7 +1930,7 @@ class GameEngine {
           'Exploradores encontraram suprimentos: +$amount comida',
         );
         break;
-      case 1: // Talento revelado
+      case 1:
         final candidate = aliveNpcs.firstWhereOrNull(
           (n) => !n.talentDiscovered && n.hiddenTalent != HiddenTalent.none,
         );
@@ -1881,7 +1947,9 @@ class GameEngine {
         break;
       case 2:
         citadel.resources.morale += 5;
-        for (final npc in aliveNpcs) npc.loyalty += 1;
+        for (final npc in aliveNpcs) {
+          npc.loyalty += 1;
+        }
         _addEvent(
           GameEventType.celebration,
           'Celebracao',
@@ -1920,7 +1988,7 @@ class GameEngine {
           'Simbolos antigos descobertos nas paredes. +$amount conhecimento.',
         );
         break;
-      case 6: // Fama
+      case 6:
         final famous = aliveNpcs.where((n) => n.fame.abs() > 10).toList();
         if (famous.isNotEmpty) {
           final npc = famous[_rng.nextInt(famous.length)];
@@ -1943,7 +2011,7 @@ class GameEngine {
           }
         }
         break;
-      case 7: // Coesão de grupo
+      case 7:
         if (groups.isNotEmpty) {
           final group = groups[_rng.nextInt(groups.length)];
           group.cohesion = (group.cohesion + 5).clamp(0, 100);
@@ -1968,7 +2036,6 @@ class GameEngine {
         (n) => n.id == npc.partnerId && n.alive,
       );
       if (partner == null) continue;
-      // Processa apenas uma vez por casal
       if (npc.id.compareTo(partner.id) > 0) continue;
 
       final rel = npc.relationships.firstWhereOrNull(
@@ -1991,7 +2058,6 @@ class GameEngine {
   }
 
   void _processActivePregnancy(Npc pregnant, Npc other) {
-    // Atualiza nutrição materna
     final foodPerCapita = citadel.resources.food / max(1, aliveNpcs.length);
     if (foodPerCapita >= 3.0) {
       pregnant.maternalNutrition = min(100, pregnant.maternalNutrition + 5);
@@ -1999,11 +2065,10 @@ class GameEngine {
       pregnant.maternalNutrition = max(0, pregnant.maternalNutrition - 10);
     }
 
-    // Risco de perda
     double riskOfLoss = 0.0;
-    if (pregnant.maternalNutrition < 30)
+    if (pregnant.maternalNutrition < 30) {
       riskOfLoss += 0.25;
-    else if (pregnant.maternalNutrition < 50)
+    } else if (pregnant.maternalNutrition < 50)
       riskOfLoss += 0.10;
     if (pregnant.attributes.mentalStability < 30) riskOfLoss += 0.08;
     if (citadel.resources.morale < 30) riskOfLoss += 0.05;
@@ -2034,7 +2099,6 @@ class GameEngine {
     final daysSince = state.currentDay - pregnant.pregnantSince!;
     if (daysSince < 2) return;
 
-    // Risco de morte no parto
     final deathRisk = pregnant.maternalNutrition < 20
         ? 0.15
         : pregnant.maternalNutrition < 40
@@ -2059,7 +2123,6 @@ class GameEngine {
       return;
     }
 
-    // Nascimento bem-sucedido
     _birthChild(pregnant, other);
   }
 
@@ -2097,7 +2160,9 @@ class GameEngine {
     );
 
     citadel.resources.morale += 5;
-    for (final n in aliveNpcs) n.loyalty += 0.5;
+    for (final n in aliveNpcs) {
+      n.loyalty += 0.5;
+    }
   }
 
   void _tryConceive(Npc a, Npc b) {
@@ -2127,21 +2192,22 @@ class GameEngine {
       double risk = stage == GrowthStage.baby ? 0.08 : 0.03;
 
       final foodPerCapita = citadel.resources.food / max(1, aliveNpcs.length);
-      if (foodPerCapita < 0.5)
+      if (foodPerCapita < 0.5) {
         risk += 0.25;
-      else if (foodPerCapita < 1.0)
+      } else if (foodPerCapita < 1.0)
         risk += 0.10;
-      if (stage == GrowthStage.baby && child.maternalNutrition < 50)
+      if (stage == GrowthStage.baby && child.maternalNutrition < 50) {
         risk += 0.12;
+      }
 
       final sickCount = aliveNpcs
           .where((n) => n.traumas.any((t) => t.contains('doenca')))
           .length;
       risk += min(0.15, sickCount * 0.03);
 
-      if (citadel.resources.morale < 20)
+      if (citadel.resources.morale < 20) {
         risk += 0.08;
-      else if (citadel.resources.morale < 40)
+      } else if (citadel.resources.morale < 40)
         risk += 0.04;
       if (citadel.hasBuilding(BuildingType.infirmary)) risk *= 0.5;
 
@@ -2207,7 +2273,6 @@ class GameEngine {
           involvedIds: [npc.id],
         );
       }
-
       if (daysAlive == 3 && stage == GrowthStage.adolescent) {
         _developPersonalityFromMarks(npc, isFirstTrait: true);
         _addEvent(
@@ -2217,7 +2282,6 @@ class GameEngine {
           involvedIds: [npc.id],
         );
       }
-
       if (daysAlive == 5 && stage == GrowthStage.adult) {
         _developPersonalityFromMarks(npc, isFirstTrait: false);
         final traitNames = npc.traits.map((t) => t.label).join(', ');
@@ -2254,31 +2318,30 @@ class GameEngine {
       trait = isFirstTrait
           ? PersonalityTrait.pessimist
           : PersonalityTrait.compassionate;
-    } else if (hunger >= 2) {
+    } else if (hunger >= 2)
       trait = isFirstTrait
           ? PersonalityTrait.pragmatic
           : PersonalityTrait.ruthless;
-    } else if (combat >= 2) {
+    else if (combat >= 2)
       trait = isFirstTrait
           ? PersonalityTrait.brave
           : PersonalityTrait.aggressive;
-    } else if (betrayal >= 1) {
+    else if (betrayal >= 1)
       trait = isFirstTrait
           ? PersonalityTrait.loner
           : PersonalityTrait.treacherous;
-    } else if (victories >= 2) {
+    else if (victories >= 2)
       trait = isFirstTrait ? PersonalityTrait.optimist : PersonalityTrait.brave;
-    } else if (citadel.resources.morale > 70) {
+    else if (citadel.resources.morale > 70)
       trait = isFirstTrait
           ? PersonalityTrait.optimist
           : PersonalityTrait.compassionate;
-    } else if (citadel.resources.morale < 30) {
+    else if (citadel.resources.morale < 30)
       trait = isFirstTrait
           ? PersonalityTrait.pessimist
           : PersonalityTrait.coward;
-    } else {
+    else
       trait = _inheritedOrRandomTrait(npc);
-    }
 
     if (!npc.traits.contains(trait)) {
       npc.traits.add(trait);
@@ -2296,8 +2359,9 @@ class GameEngine {
         .expand((p) => p.traits)
         .toList();
 
-    if (parentTraits.isNotEmpty)
+    if (parentTraits.isNotEmpty) {
       return parentTraits[_rng.nextInt(parentTraits.length)];
+    }
 
     const neutral = [
       PersonalityTrait.calm,
@@ -2372,12 +2436,11 @@ class GameEngine {
       _addEvent(
         GameEventType.training,
         'Treino Profissional',
-        'NPCs progrediram:\n$details',
+        'NPCs progrediram:\\n $details',
       );
     }
   }
 
-  /// Retorna lista de ganhos do treino ou vazia se não treinou
   List<String> _applyProfessionTraining(Npc npc) {
     if (_rng.nextDouble() >= 0.1) return [];
     final gains = <String>[];
@@ -2388,6 +2451,23 @@ class GameEngine {
         npc.attributes.strength += 0.1;
         npc.attributes.endurance += 0.1;
         gains.addAll(['FOR+0.1', 'RES+0.1']);
+
+        final barracks = citadel.getBuilding(BuildingType.barracks);
+        if (barracks != null) {
+          final level = barracks.level;
+
+          // Garantia de segurança para não estourar array
+          final index = (level - 1).clamp(0, 3);
+
+          final strBonus = [0.3, 0.5, 0.8, 1.0][index];
+          final agiBonus = [0.0, 0.3, 0.5, 0.7][index];
+          npc.attributes.strength += strBonus;
+          gains.add('FOR+$strBonus (Barracks)');
+          if (agiBonus > 0) {
+            npc.attributes.agility += agiBonus;
+            gains.add('AGI+$agiBonus (Barracks)');
+          }
+        }
         break;
       case Profession.scribe:
       case Profession.teacher:
@@ -2420,11 +2500,11 @@ class GameEngine {
       final b = Building(type: type);
       if (b.isUnique && citadel.hasBuilding(type)) return false;
       if (!b.isUnique &&
-          citadel.countBuildings(type) >= citadel.level.maxBuildingCopies)
+          citadel.countBuildings(type) >= citadel.level.maxBuildingCopies) {
         return false;
+      }
       if (citadel.buildings.length >= citadel.level.maxBuildings) return false;
       if (b.requiredTier > currentTier) return false;
-      // Esconde tier 0 se já existe versão evoluída
       if (b.canEvolve) {
         final existing = citadel.buildings
             .where((bd) => bd.type == type)
@@ -2439,17 +2519,18 @@ class GameEngine {
     final b = Building(type: type);
     if (b.isUnique && citadel.hasBuilding(type)) return false;
     if (!b.isUnique &&
-        citadel.countBuildings(type) >= citadel.level.maxBuildingCopies)
+        citadel.countBuildings(type) >= citadel.level.maxBuildingCopies) {
       return false;
+    }
     if (citadel.buildings.length >= citadel.level.maxBuildings) return false;
     if (b.requiredTier > _currentTier) return false;
-    return citadel.resources.canAfford(b.cost);
+    return citadel.resources.canAfford(b.cost.toResources());
   }
 
   bool buildStructure(BuildingType type) {
     if (!canBuild(type)) return false;
     final building = Building(type: type);
-    citadel.resources.spend(building.cost);
+    citadel.resources.spend(building.cost.toResources());
     citadel.buildings.add(building);
     _addEvent(
       GameEventType.construction,
@@ -2468,30 +2549,111 @@ class GameEngine {
   }
 
   bool upgradeBuilding(BuildingType type) {
-    final b = citadel.getBuilding(type);
-    if (b == null || b.level >= b.maxLevel) return false;
-    if (!citadel.resources.canAfford(b.upgradeCost)) return false;
-    citadel.resources.spend(b.upgradeCost);
-    b.level++;
+    final building = citadel.getBuilding(type);
+    if (building == null) return false;
+
+    if (!canUpgradeBuilding(type)) return false;
+
+    // 🔥 EVOLUÇÃO DE TIER COM HERANÇA
+    if (building.level >= building.maxLevel) {
+      building.inheritedBonus += building.levelBonus.round();
+
+      // sobe tier
+      building.tier++;
+
+      // reinicia nível
+      building.level = 1;
+    } else {
+      building.level++;
+    }
+
+    return true;
+  }
+
+  bool canUpgradeAllBuildings(BuildingType type) {
+    final buildings = citadel.buildings.where((b) => b.type == type).toList();
+    if (buildings.isEmpty) return false;
+    final firstLevel = buildings.first.level;
+    if (!buildings.every((b) => b.level == firstLevel)) return false;
+    if (buildings.first.level >= buildings.first.maxLevel) return false;
+    final totalCost = _calculateBulkUpgradeCost(buildings);
+    return citadel.resources.canAfford(totalCost);
+  }
+
+  Resources _calculateBulkUpgradeCost(List<Building> buildings) {
+    if (buildings.isEmpty) return Resources();
+    final count = buildings.length;
+    final singleCost = buildings.first.upgradeCost;
+    return Resources(
+      food: singleCost.food * count,
+      wood: singleCost.wood * count,
+      stone: singleCost.stone * count,
+      iron: singleCost.iron * count,
+      knowledge: singleCost.knowledge * count,
+    );
+  }
+
+  bool upgradeAllBuildings(BuildingType type) {
+    final buildings = citadel.buildings.where((b) => b.type == type).toList();
+    if (buildings.isEmpty) return false;
+
+    final first = buildings.first;
+    if (!buildings.every((b) => b.level == first.level)) return false;
+
+    final totalCost = _calculateBulkUpgradeCost(buildings);
+    if (!citadel.resources.canAfford(totalCost)) return false;
+
+    citadel.resources.spend(totalCost);
+
+    for (final building in buildings) {
+      upgradeBuildingWithInheritance(building);
+    }
+
+    final count = buildings.length;
+    final buildingName = first.name;
+
     _addEvent(
       GameEventType.upgrade,
-      '${b.name} Melhorado!',
-      '${b.name} evoluiu para nivel ${b.level}!',
+      count > 1
+          ? '$count x $buildingName Melhorados!'
+          : '$buildingName Melhorado!',
+      count > 1
+          ? '$count x $buildingName evoluíram!'
+          : '$buildingName evoluiu!',
       isMajor: true,
     );
+
     _processNpcBuildReaction(type, isUpgrade: true);
     return true;
   }
 
+  void upgradeBuildingWithInheritance(Building building) {
+    if (building.level >= building.maxLevel && building.tier < 3) {
+      // Soma o bônus do nível antigo ao inheritedBonus
+      final values = Building.levelValues[building.type];
+      if (values != null && building.level > 1) {
+        building.inheritedBonus +=
+            values[(building.level - 1).clamp(0, values.length - 1)].round();
+      }
+      building.tier++;
+      building.level = 1; // Reset de nível
+    } else if (building.level < building.maxLevel) {
+      building.level++;
+    }
+  }
+
   bool upgradeCitadel() {
     if (!citadel.canUpgrade) return false;
-    if (!citadel.resources.canAfford(citadel.upgradeCost)) return false;
-    if (population < (citadel.nextLevel?.populationRequired ?? 999))
+    if (!citadel.resources.canAfford(citadel.upgradeCost.toResources())) {
       return false;
+    }
+    if (population < (citadel.nextCitadelLevel?.populationRequired ?? 999)) {
+      return false;
+    }
 
-    citadel.resources.spend(citadel.upgradeCost);
+    citadel.resources.spend(citadel.upgradeCost.toResources());
     final oldLabel = citadel.level.label;
-    citadel.level = citadel.nextLevel!;
+    citadel.level = citadel.nextCitadelLevel!;
 
     _addEvent(
       GameEventType.upgrade,
@@ -2500,14 +2662,20 @@ class GameEngine {
       isMajor: true,
     );
 
-    // Evoluir edifícios automaticamente
     final newTier = citadel.level.buildingTier;
     final evolved = <String>[];
     for (final building in citadel.buildings.where(
       (b) => b.canEvolve && b.tier < newTier,
     )) {
       final oldName = building.name;
+      // MIGRAÇÃO DE BONUS: soma bônus do nível antigo
+      final values = Building.levelValues[building.type];
+      if (values != null && building.level > 1) {
+        building.inheritedBonus +=
+            values[(building.level - 1).clamp(0, values.length - 1)].round();
+      }
       building.tier = newTier;
+      building.level = 1; // reset de nível
       if (oldName != building.name) evolved.add('$oldName → ${building.name}');
     }
     if (evolved.isNotEmpty) {
@@ -2518,15 +2686,18 @@ class GameEngine {
       );
     }
 
-    for (final npc in aliveNpcs) npc.loyalty += 3;
+    for (final npc in aliveNpcs) {
+      npc.loyalty += 3;
+    }
     return true;
   }
 
   bool canUpgradeStorage() {
     final next = citadel.storageLevel.nextLevel;
     if (next == null) return false;
-    if (!citadel.resources.canAfford(citadel.storageLevel.upgradeCost))
+    if (!citadel.resources.canAfford(citadel.storageLevel.upgradeCost)) {
       return false;
+    }
     return _currentTier >= next.requiredTier;
   }
 
@@ -2549,11 +2720,71 @@ class GameEngine {
       ((state.highestFloorCleared) ~/ 10) +
       (state.highestFloorCleared % 10 > 0 ? 1 : 0);
 
-  /// Reações dos NPCs a construções
   void _processNpcBuildReaction(BuildingType type, {bool isUpgrade = false}) {
     final action = isUpgrade ? 'melhoria' : 'construcao';
     switch (type) {
       case BuildingType.barracks:
+        final militants = aliveNpcs
+            .where(
+              (n) =>
+                  n.profession == Profession.guard ||
+                  n.profession == Profession.explorer ||
+                  n.profession == Profession.trainer,
+            )
+            .toList();
+        final lowMorale = citadel.resources.morale < 40;
+        final militaryStrong = militants.length > 6;
+        final hasThreats = aliveNpcs.any((n) => n.isSuspicious);
+        int happyCount = 0, unhappyCount = 0;
+
+        for (final npc in militants) {
+          if (lowMorale && !hasThreats) {
+            npc.loyalty -= 2;
+            unhappyCount++;
+          } else if (militaryStrong) {
+            npc.loyalty += 5;
+            npc.fame += 1;
+            happyCount++;
+          } else if (hasThreats) {
+            npc.loyalty += 4;
+            happyCount++;
+          } else {
+            npc.loyalty += 2;
+            happyCount++;
+          }
+        }
+        for (final npc in aliveNpcs.where(
+          (n) => n.traits.contains(PersonalityTrait.coward),
+        )) {
+          npc.loyalty -= 1;
+          unhappyCount++;
+        }
+        if (unhappyCount > happyCount) {
+          _addEvent(
+            GameEventType.politicalEvent,
+            'Barracks ${isUpgrade ? "Melhorado" : "Construido"} - Divisão',
+            'A ${isUpgrade ? "melhoria" : "construção"} divide opiniões. ${lowMorale ? "Muitos questionam: 'Armas não nos alimentam!'" : "Alguns temem a militarização."}',
+          );
+        } else if (militaryStrong) {
+          _addEvent(
+            GameEventType.politicalEvent,
+            'Orgulho Militar!',
+            'Com ${militants.length} combatentes, a força militar celebra!',
+          );
+        } else if (hasThreats) {
+          _addEvent(
+            GameEventType.politicalEvent,
+            'Segurança Reforçada',
+            'Diante das ameaças, a ${isUpgrade ? "melhoria" : "construção"} traz alívio.',
+          );
+        } else {
+          _addEvent(
+            GameEventType.politicalEvent,
+            'Barracks ${isUpgrade ? "Melhorado" : "Construido"}',
+            'Guardas e exploradores se sentem mais valorizados.',
+          );
+        }
+        break;
       case BuildingType.trainingField:
         for (final npc in aliveNpcs.where(
           (n) =>
@@ -2575,7 +2806,9 @@ class GameEngine {
         break;
       case BuildingType.temple:
         citadel.resources.morale += 5;
-        for (final npc in aliveNpcs) npc.loyalty += 1;
+        for (final npc in aliveNpcs) {
+          npc.loyalty += 1;
+        }
         _addEvent(
           GameEventType.celebration,
           'Fe Renovada',
@@ -2584,16 +2817,17 @@ class GameEngine {
         break;
       case BuildingType.tavern:
         citadel.resources.morale += 3;
-        for (final npc in aliveNpcs.where(
-          (n) => n.origin.isDarkOrigin && !n.isSuspicious,
-        )) {
-          if (_rng.nextDouble() < 0.3) {
-            npc.isSuspicious = true;
+        for (int i = 0; i < npcs.length; i++) {
+          if (npcs[i].alive &&
+              npcs[i].origin.isDarkOrigin &&
+              !npcs[i].isSuspicious &&
+              _rng.nextDouble() < 0.3) {
+            npcs[i] = npcs[i].copyWith(isSuspicious: true);
             _addEvent(
               GameEventType.system,
               'Fofoca na Taverna',
-              'Rumores indicam que ${npc.name} tem passado sombrio...',
-              involvedIds: [npc.id],
+              'Rumores indicam que ${npcs[i].name} tem passado sombrio...',
+              involvedIds: [npcs[i].id],
             );
           }
         }
@@ -2617,7 +2851,9 @@ class GameEngine {
         );
         break;
       case BuildingType.councilHall:
-        for (final npc in aliveNpcs) npc.loyalty += 1;
+        for (final npc in aliveNpcs) {
+          npc.loyalty += 1;
+        }
         _addEvent(
           GameEventType.politicalEvent,
           'Democracia Emergente',
@@ -2639,7 +2875,9 @@ class GameEngine {
       case BuildingType.farm:
       case BuildingType.kitchen:
         if (citadel.resources.food < population * 5) {
-          for (final npc in aliveNpcs) npc.loyalty += 1;
+          for (final npc in aliveNpcs) {
+            npc.loyalty += 1;
+          }
           _addEvent(
             GameEventType.celebration,
             'Comida Garantida',
@@ -2679,6 +2917,20 @@ class GameEngine {
     }
   }
 
+  void migrateOldSave(Citadel citadel) {
+    for (final building in citadel.buildings) {
+      if (building.tier > 1 && building.inheritedBonus == 0) {
+        final values = Building.levelValues[building.type];
+        if (values != null && building.level > 1) {
+          building.inheritedBonus +=
+              values[(building.level - 1).clamp(0, values.length - 1)].round();
+        }
+        // Opcional: resetar nível para 1 se quiser
+        // building.level = 1;
+      }
+    }
+  }
+
   // ─────────────────────────────────────────────
   // ARENA & TAVERNA
   // ─────────────────────────────────────────────
@@ -2708,7 +2960,6 @@ class GameEngine {
     winner.fame += 2;
     winner.attributes.strength += 0.2;
     loser.attributes.endurance += 0.1;
-
     _addEvent(
       GameEventType.combat,
       'Duelo na Arena',
@@ -2718,17 +2969,22 @@ class GameEngine {
   }
 
   void _processTavernEvents() {
-    if (!citadel.hasBuilding(BuildingType.tavern) || state.currentDay % 5 != 0)
+    if (!citadel.hasBuilding(BuildingType.tavern) ||
+        state.currentDay % 5 != 0) {
       return;
-
-    // Revelar traidor via boato (10%)
-    if (_rng.nextDouble() < 0.1) {
+    }
+    double baseChance = 0.1;
+    if (citadel.hasBuilding(BuildingType.watchtower)) baseChance += 0.15;
+    if (_rng.nextDouble() < baseChance) {
       final hidden = aliveNpcs
           .where((n) => n.origin.isDarkOrigin && !n.isSuspicious)
           .toList();
       if (hidden.isNotEmpty) {
         final npc = hidden[_rng.nextInt(hidden.length)];
-        npc.isSuspicious = true;
+        final npcIndex = npcs.indexWhere((n) => n.id == npc.id);
+        if (npcIndex != -1) {
+          npcs[npcIndex] = npcs[npcIndex].copyWith(isSuspicious: true);
+        }
         _addEvent(
           GameEventType.system,
           'Boato na Taverna',
@@ -2738,12 +2994,15 @@ class GameEngine {
       }
     }
 
-    // Fortalecer relação (20%)
     if (_rng.nextDouble() < 0.2 && aliveNpcs.length >= 2) {
       final a = aliveNpcs[_rng.nextInt(aliveNpcs.length)];
       final b = _pickOther(aliveNpcs, a);
-      a.relationships.firstWhereOrNull((r) => r.targetId == b.id)?.affinity +=
-          0.1;
+      final relIndex = a.relationships.indexWhere((r) => r.targetId == b.id);
+      if (relIndex != -1) {
+        a.relationships[relIndex] = a.relationships[relIndex].copyWith(
+          affinity: a.relationships[relIndex].affinity + 0.1,
+        );
+      }
     }
   }
 
@@ -2759,7 +3018,7 @@ class GameEngine {
         partyIds: partyIds,
         completed: true,
         victory: false,
-        log: ['Nao ha mais andares para explorar.'],
+        log: ['Não há mais andares para explorar.'],
       );
     }
 
@@ -2783,9 +3042,12 @@ class GameEngine {
 
     double partyPower = 0;
     for (final npc in party) {
-      double power = npc.attributes.combatPower;
-      if (npc.talentDiscovered && npc.hiddenTalent == HiddenTalent.combatGenius)
+      // Usa poder de combate real com equipamentos
+      double power = npc.effectiveCombatPowerWithGear(_inventory);
+      if (npc.talentDiscovered &&
+          npc.hiddenTalent == HiddenTalent.combatGenius) {
         power *= 1.5;
+      }
       if (npc.traits.contains(PersonalityTrait.brave)) power *= 1.1;
       if (npc.traits.contains(PersonalityTrait.coward)) power *= 0.85;
       partyPower += power;
@@ -2802,6 +3064,13 @@ class GameEngine {
         ? floor.scaledMortality * 0.85
         : floor.scaledMortality;
 
+    // Aplica bônus da enfermaria
+    final infirmaryBonus = citadel.buildings
+        .where((b) => b.type == BuildingType.infirmary)
+        .fold(0.0, (sum, b) => sum + b.bonus);
+
+    final mortalityWithInfirmary = adjustedMortality * (1 - infirmaryBonus);
+
     challenge.log.addAll([
       '',
       'Poder total: ${partyPower.toStringAsFixed(1)} vs ${floor.scaledDifficulty.toStringAsFixed(1)}',
@@ -2811,12 +3080,11 @@ class GameEngine {
 
     final success = _rng.nextDouble() < successChance;
     if (success) {
-      _resolveVictory(challenge, party, floor, adjustedMortality);
+      _resolveVictory(challenge, party, floor, mortalityWithInfirmary);
     } else {
-      _resolveDefeat(challenge, party, floor, adjustedMortality);
+      _resolveDefeat(challenge, party, floor, mortalityWithInfirmary);
     }
 
-    // Healing Touch pós-batalha
     if (party.any(
       (n) =>
           n.alive &&
@@ -2846,7 +3114,7 @@ class GameEngine {
   ) {
     challenge.victory = true;
     challenge.moraleImpact = 5.0;
-    challenge.log.add('>> VITORIA! O grupo superou o desafio.');
+    challenge.log.add('>> VITÓRIA! O grupo superou o desafio.');
 
     for (final npc in party) {
       if (_rng.nextDouble() < mortality * 0.5) {
@@ -2872,8 +3140,9 @@ class GameEngine {
     floor.cleared = true;
     floor.timesCleared++;
     state.highestFloorCleared = floor.number;
-    if (floor.number > state.highestFloorReached)
+    if (floor.number > state.highestFloorReached) {
       state.highestFloorReached = floor.number;
+    }
 
     _applyFloorRewards(floor);
     _addEvent(
@@ -2893,13 +3162,13 @@ class GameEngine {
   ) {
     challenge.victory = false;
     challenge.moraleImpact = -8.0;
-    challenge.log.add('>> DERROTA. O grupo foi forcado a recuar.');
+    challenge.log.add('>> DERROTA. O grupo foi forçado a recuar.');
 
     for (final npc in party) {
       if (_rng.nextDouble() < mortality) {
         _killNpc(npc, 'Morreu no Andar ${floor.number}');
         challenge.casualties.add(npc.id);
-        challenge.log.add('  [X] ${npc.name} nao sobreviveu.');
+        challenge.log.add('  [X] ${npc.name} não sobreviveu.');
       } else {
         npc.attributes.mentalStability -= 5;
         npc.attributes.endurance -= 0.3;
@@ -2935,24 +3204,22 @@ class GameEngine {
       );
     }
 
-    // Acidente (3%)
     if (_rng.nextDouble() < 0.03) {
       final victim = party[_rng.nextInt(party.length)];
       victim.attributes.endurance -= 0.5;
       challenge.log.addAll(['', '  [!] ${victim.name} sofreu ferimento leve.']);
     }
 
-    // Ameaça reativada (4%+)
     if (_rng.nextDouble() < 0.04 + (floor.timesReexplored * 0.01)) {
-      challenge.log.addAll(['', '  [!!] Ameaca oculta reativada!']);
+      challenge.log.addAll(['', '  [!!] Ameaça oculta reativada!']);
       final victim = party[_rng.nextInt(party.length)];
       if (_rng.nextDouble() < 0.15) {
         _killNpc(
           victim,
-          'Morreu em ameaca durante treino no Andar ${floor.number}',
+          'Morreu em ameaça durante treino no Andar ${floor.number}',
         );
         challenge.casualties.add(victim.id);
-        challenge.log.add('  [X] ${victim.name} nao sobreviveu!');
+        challenge.log.add('  [X] ${victim.name} não sobreviveu!');
       } else {
         victim.attributes.endurance -= 1;
         victim.attributes.mentalStability -= 5;
@@ -2995,6 +3262,133 @@ class GameEngine {
   }
 
   // ─────────────────────────────────────────────
+  // EQUIPAMENTOS [FASE 1]
+  // ─────────────────────────────────────────────
+
+  /// Equipa um item em um NPC
+  EquipResult equipItem(String npcId, String equipmentId) {
+    return _equipmentService.equip(
+      npcId: npcId,
+      equipmentId: equipmentId,
+      npcs: npcs,
+      inventory: _inventory,
+    );
+  }
+
+  /// Desequipa o slot indicado de um NPC
+  UnequipResult unequipItem(String npcId, EquipmentSlot slot) {
+    return _equipmentService.unequip(
+      npcId: npcId,
+      slot: slot,
+      npcs: npcs,
+      inventory: _inventory,
+    );
+  }
+
+  /// Crafta um equipamento na Forja
+  (CraftResult, Equipment?) craftEquipment(
+    EquipmentSlot slot,
+    EquipmentRarity rarity,
+  ) {
+    final (result, eq) = _equipmentService.craft(
+      slot: slot,
+      rarity: rarity,
+      citadel: citadel,
+      currentDay: state.currentDay,
+    );
+    if (result == CraftResult.success && eq != null) {
+      _inventory.add(eq);
+      _addEvent(
+        GameEventType.discovery,
+        'Item Craftado!',
+        '${eq.name} — ${eq.bonusSummary}',
+      );
+    }
+    return (result, eq);
+  }
+
+  /// Equipamentos disponíveis para um slot específico (não equipados)
+  List<Equipment> availableEquipmentForSlot(EquipmentSlot slot) =>
+      _equipmentService.availableForSlot(slot, _inventory);
+
+  /// Equipamentos atualmente equipados em um NPC
+  List<Equipment> equippedOn(String npcId) =>
+      _equipmentService.equippedOn(npcId, _inventory);
+
+  /// Verifica se há recursos para craftar na raridade indicada
+  bool canCraftEquipment(EquipmentRarity rarity) =>
+      _equipmentService.canCraft(rarity, citadel.resources);
+
+  /// Drop de equipamento ao conquistar andar [chamado em _applyFloorRewards]
+  void _rollEquipmentDrop(int floorNumber, int tier) {
+    final dropped = _equipmentService.rollDrop(
+      floorNumber: floorNumber,
+      tier: tier,
+      currentDay: state.currentDay,
+    );
+    if (dropped == null) return;
+
+    _inventory.add(dropped);
+
+    final isMajor = dropped.rarity.index >= EquipmentRarity.epic.index;
+    _addEvent(
+      GameEventType.discovery,
+      'Item Encontrado!',
+      '[${dropped.rarity.label}] ${dropped.name} — ${dropped.bonusSummary}',
+      isMajor: isMajor,
+    );
+  }
+
+  /// Auto-equipamento: NPCs equipam automaticamente o melhor item disponível
+  void autoEquipAllNpcs() {
+    for (final npc in aliveNpcs) {
+      for (final slot in EquipmentSlot.values) {
+        // Se já está equipado, pula
+        if (npc.hasEquipment(slot)) continue;
+        // Filtra itens disponíveis para o slot
+        final available = _inventory
+            .where((e) => e.slot == slot && !e.isEquipped)
+            .toList();
+        if (available.isEmpty) continue;
+        // Seleciona o melhor item (maior raridade, depois maior bônus principal)
+        available.sort((a, b) {
+          final rarityDiff = b.rarity.index.compareTo(a.rarity.index);
+          if (rarityDiff != 0) return rarityDiff;
+          // Prioriza bônus principal conforme profissão
+          final mainStat = _mainStatForProfession(npc.profession, slot);
+          final bonusA = a.statBonus[mainStat] ?? 0;
+          final bonusB = b.statBonus[mainStat] ?? 0;
+          return bonusB.compareTo(bonusA);
+        });
+        final best = available.first;
+        equipItem(npc.id, best.id);
+      }
+    }
+  }
+
+  /// Retorna o atributo principal para a profissão e slot
+  String _mainStatForProfession(Profession prof, EquipmentSlot slot) {
+    switch (slot) {
+      case EquipmentSlot.weapon:
+        return switch (prof) {
+          Profession.guard => 'strength',
+          Profession.explorer => 'agility',
+          Profession.scribe => 'intelligence',
+          Profession.trainer => 'strength',
+          Profession.scout => 'agility',
+          Profession.teacher => 'intelligence',
+          Profession.farmer => 'endurance',
+          Profession.builder => 'strength',
+          _ => 'strength',
+        };
+      case EquipmentSlot.armor:
+        return 'endurance';
+      case EquipmentSlot.accessory:
+        return 'luck';
+    }
+  }
+
+  // ─────────────────────────────────────────────
   // GRUPOS
   // ─────────────────────────────────────────────
 
@@ -3006,7 +3400,6 @@ class GameEngine {
       role: role,
     );
 
-    // Líder = maior combatPower + carisma
     if (memberIds.isNotEmpty) {
       final members = memberIds
           .map((id) => npcs.firstWhereOrNull((n) => n.id == id))
@@ -3042,7 +3435,6 @@ class GameEngine {
   void disbandGroup(String groupId) {
     final group = groups.firstWhereOrNull((g) => g.id == groupId);
     if (group == null) return;
-
     for (final id in group.memberIds) {
       npcs.firstWhereOrNull((n) => n.id == id)?.groupId = null;
     }
@@ -3059,7 +3451,6 @@ class GameEngine {
     final group = groups.firstWhereOrNull((g) => g.id == groupId);
     final npc = npcs.firstWhereOrNull((n) => n.id == npcId);
     if (group == null || npc == null) return;
-
     if (npc.groupId != null) {
       groups
           .firstWhereOrNull((g) => g.id == npc.groupId)
@@ -3099,7 +3490,6 @@ class GameEngine {
     final mult = tier.toDouble();
 
     if (n % 10 == 0) {
-      // Boss floor
       res.food += 30 * mult;
       res.wood += 30 * mult;
       res.stone += 30 * mult;
@@ -3129,11 +3519,11 @@ class GameEngine {
         'Recompensas massivas! A cidadela evolui!',
         isMajor: true,
       );
+      _rollEquipmentDrop(n, tier); // ← [FASE 1] drop garantido em boss
       return;
     }
 
     if (n % 5 == 0) {
-      // Elite floor
       final m = tier * 0.7;
       res.food += 15 * m;
       res.wood += 10 * m;
@@ -3141,10 +3531,10 @@ class GameEngine {
       res.iron += 10 * m;
       res.knowledge += 15 * m;
       res.morale += 5;
+      _rollEquipmentDrop(n, tier); // ← [FASE 1] drop em elite
       return;
     }
 
-    // Andar normal
     final base = 1.0 + (tier - 1) * 0.5;
     switch (floor.type) {
       case FloorType.combat:
@@ -3181,6 +3571,7 @@ class GameEngine {
         break;
     }
     res.morale += 1 + tier * 0.5;
+    _rollEquipmentDrop(n, tier); // ← [FASE 1] drop em andar normal
   }
 
   void _tryRevealTalentFromMystery() {
@@ -3211,7 +3602,13 @@ class GameEngine {
     npc.history.add('Morreu: $cause (Dia ${state.currentDay})');
     state.totalDeaths++;
 
-    // Remove do grupo e elege novo líder se necessário
+    // ── Desequipa ao morrer [FASE 1] ──────────
+    _equipmentService.unequipAll(
+      npcId: npc.id,
+      npcs: npcs,
+      inventory: _inventory,
+    );
+
     if (npc.groupId != null) {
       final group = groups.firstWhereOrNull((g) => g.id == npc.groupId);
       if (group != null) {
@@ -3235,7 +3632,6 @@ class GameEngine {
       }
     }
 
-    // Impacto no parceiro
     if (npc.partnerId != null) {
       final partner = npcs.firstWhereOrNull((n) => n.id == npc.partnerId);
       if (partner != null) {
@@ -3246,7 +3642,6 @@ class GameEngine {
       }
     }
 
-    // Impacto nos filhos
     for (final childId in npc.childrenIds) {
       final child = npcs.firstWhereOrNull((n) => n.id == childId && n.alive);
       if (child != null) {
@@ -3257,13 +3652,13 @@ class GameEngine {
       }
     }
 
-    // Impacto em quem o conhecia
     for (final other in aliveNpcs) {
       final rel = other.relationships.firstWhereOrNull(
         (r) => r.targetId == npc.id,
       );
-      if (rel != null && rel.affinity > 0.3)
+      if (rel != null && rel.affinity > 0.3) {
         other.attributes.mentalStability -= 3;
+      }
     }
 
     citadel.resources.morale -= 5;
@@ -3272,8 +3667,7 @@ class GameEngine {
       _addEvent(
         GameEventType.death,
         'Queda de ${npc.name}',
-        '${npc.name} (${npc.origin.label}, G${npc.generation}) morreu. $cause. '
-            'Fama: ${npc.fame.toStringAsFixed(0)}.',
+        '${npc.name} (${npc.origin.label}, G${npc.generation}) morreu. $cause. Fama: ${npc.fame.toStringAsFixed(0)}.',
         involvedIds: [npc.id],
         isMajor: true,
       );
@@ -3286,11 +3680,9 @@ class GameEngine {
 
   int _countProfession(Profession p) =>
       aliveNpcs.where((n) => n.profession == p).length;
-
   bool _hasLivingPartner(Npc npc) =>
       npc.partnerId != null &&
       npcs.any((n) => n.id == npc.partnerId && n.alive);
-
   Npc _pickOther(List<Npc> list, Npc exclude) {
     Npc other;
     do {
@@ -3303,7 +3695,6 @@ class GameEngine {
       .map((id) => npcs.firstWhereOrNull((n) => n.id == id && n.alive))
       .whereType<Npc>()
       .toList();
-
   double _avg(List<Npc> npcs, double Function(Npc) selector) {
     if (npcs.isEmpty) return 0.0;
     return npcs.map(selector).reduce((a, b) => a + b) / npcs.length;
@@ -3387,6 +3778,8 @@ class GameEngine {
     'trainingSuggestions': trainingSuggestions.map((s) => s.toJson()).toList(),
     'groupIdCounter': _groupIdCounter,
     'suggestionIdCounter': _suggestionIdCounter,
+    // ── Equipamentos [FASE 1] ──
+    'inventory': _inventory.map((e) => e.toJson()).toList(),
   };
 
   void loadFromJson(Map<String, dynamic> json) {
@@ -3413,13 +3806,19 @@ class GameEngine {
         [];
     _groupIdCounter = json['groupIdCounter'] as int? ?? 0;
     _suggestionIdCounter = json['suggestionIdCounter'] as int? ?? 0;
+    // ── Equipamentos [FASE 1] ── null = inventário vazio (compatível com saves antigos) ✓
+    final rawInv = json['inventory'] as List<dynamic>? ?? [];
+    _inventory
+      ..clear()
+      ..addAll(
+        rawInv.map((e) => Equipment.fromJson(e as Map<String, dynamic>)),
+      );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SISTEMA DE FORTALECIMENTO PASSIVO
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Treinamento passivo baseado em edifícios construídos
   void _processPassiveEnvironmentalTraining() {
     final aliveAdults = npcs
         .where((n) => n.alive && n.canTrain(state.currentDay))
@@ -3427,26 +3826,16 @@ class GameEngine {
     if (aliveAdults.isEmpty) return;
 
     final buildings = citadel.buildings;
-
-    // Academia/Campo de Treino: +0.05 FOR/AGI por dia
     final hasTrainingGround = buildings.any(
       (b) =>
           b.type == BuildingType.trainingField ||
           b.type == BuildingType.barracks,
     );
-
-    // Biblioteca/Escola: +0.05 INT por dia
     final hasLibrary = buildings.any(
       (b) => b.type == BuildingType.library || b.type == BuildingType.school,
     );
-
-    // Enfermaria/Hospital: +0.05 RES por dia
     final hasInfirmary = buildings.any((b) => b.type == BuildingType.infirmary);
-
-    // Templo: +0.05 mentalStability e +0.05 charisma por dia
     final hasTemple = buildings.any((b) => b.type == BuildingType.temple);
-
-    // Arena: +0.1 FOR/AGI/RES para guerreiros específicos
     final hasArena = buildings.any((b) => b.type == BuildingType.arena);
 
     final rng = Random(state.currentDay * 97);
@@ -3456,7 +3845,6 @@ class GameEngine {
       bool improved = false;
       final gains = <String>[];
 
-      // Academia: todos ganham força/agilidade
       if (hasTrainingGround && rng.nextDouble() < 0.3) {
         npc.attributes.strength = (npc.attributes.strength + 0.05).clamp(1, 20);
         npc.attributes.agility = (npc.attributes.agility + 0.05).clamp(1, 20);
@@ -3464,7 +3852,6 @@ class GameEngine {
         improved = true;
       }
 
-      // Biblioteca: passivos ganham inteligência
       if (hasLibrary &&
           (npc.profession == Profession.scribe ||
               npc.profession == Profession.teacher ||
@@ -3476,7 +3863,6 @@ class GameEngine {
         improved = true;
       }
 
-      // Enfermaria: todos ganham resistência lentamente
       if (hasInfirmary && rng.nextDouble() < 0.2) {
         npc.attributes.endurance = (npc.attributes.endurance + 0.05).clamp(
           1,
@@ -3486,7 +3872,6 @@ class GameEngine {
         improved = true;
       }
 
-      // Templo: melhora saúde mental e carisma
       if (hasTemple && rng.nextDouble() < 0.15) {
         npc.attributes.mentalStability = (npc.attributes.mentalStability + 0.5)
             .clamp(1, 100);
@@ -3495,7 +3880,6 @@ class GameEngine {
         improved = true;
       }
 
-      // Arena: guerreiros/exploradores ganham bônus maior
       if (hasArena &&
           (npc.profession == Profession.guard ||
               npc.profession == Profession.explorer ||
@@ -3511,9 +3895,7 @@ class GameEngine {
         improved = true;
       }
 
-      if (improved) {
-        trained.add('${npc.name} (${gains.join(', ')})');
-      }
+      if (improved) trained.add('${npc.name} (${gains.join(', ')})');
     }
 
     if (trained.isNotEmpty) {
@@ -3530,14 +3912,12 @@ class GameEngine {
     }
   }
 
-  /// Crescimento por sobrevivência - eventos críticos fortalecem NPCs
   void _processSurvivalGrowth() {
     final aliveNpcs = npcs.where((n) => n.alive).toList();
     if (aliveNpcs.isEmpty) return;
 
     final rng = Random(state.currentDay * 103);
 
-    // Sobreviventes de longo prazo ganham resistência mental
     for (final npc in aliveNpcs) {
       if (npc.daysSurvived >= 50 && npc.daysSurvived % 50 == 0) {
         npc.attributes.mentalStability = (npc.attributes.mentalStability + 2)
@@ -3547,7 +3927,6 @@ class GameEngine {
           20,
         );
         npc.history.add('Sobrevivente veterano - ganhou resistência');
-
         events.add(
           GameEvent(
             id: 'vet_${npc.id}_${state.currentDay}',
@@ -3560,11 +3939,9 @@ class GameEngine {
         );
       }
 
-      // Traumas acumulados podem gerar crescimento pós-traumático (25% chance)
       if (npc.traumas.length >= 3 &&
           npc.attributes.mentalStability > 40 &&
           rng.nextDouble() < 0.25) {
-        // Crescimento pós-traumático
         npc.attributes.mentalStability = (npc.attributes.mentalStability + 5)
             .clamp(1, 100);
         npc.attributes.endurance = (npc.attributes.endurance + 0.3).clamp(
@@ -3572,9 +3949,8 @@ class GameEngine {
           20,
         );
         npc.traits.add(PersonalityTrait.pragmatic);
-        npc.traumas.clear(); // Superou os traumas
+        npc.traumas.clear();
         npc.history.add('Superou traumas do passado - ficou mais forte');
-
         events.add(
           GameEvent(
             id: 'ptg_${npc.id}_${state.currentDay}',
@@ -3586,7 +3962,6 @@ class GameEngine {
         );
       }
 
-      // Sobreviver a fadiga extrema desenvolve endurance
       if (npc.fatigue >= 85 && rng.nextDouble() < 0.15) {
         npc.attributes.endurance = (npc.attributes.endurance + 0.15).clamp(
           1,
@@ -3595,13 +3970,11 @@ class GameEngine {
         npc.history.add('Sobreviveu à exaustão - resistência melhorada');
       }
 
-      // Combatentes veteranos (10+ andares) ganham atributos de combate
       if (npc.floorsCleared >= 10 && npc.floorsCleared % 10 == 0) {
         npc.attributes.strength = (npc.attributes.strength + 0.3).clamp(1, 20);
         npc.attributes.agility = (npc.attributes.agility + 0.25).clamp(1, 20);
         npc.attributes.luck = (npc.attributes.luck + 0.1).clamp(1, 20);
         npc.history.add('Veterano de ${npc.floorsCleared} andares');
-
         events.add(
           GameEvent(
             id: 'tower_vet_${npc.id}_${state.currentDay}',
@@ -3616,10 +3989,9 @@ class GameEngine {
     }
   }
 
-  /// Bônus de moral alta - população feliz cresce mais forte
   void _processMoraleBonus() {
     final moral = citadel.resources.morale;
-    if (moral < 70) return; // Só funciona com moral alta
+    if (moral < 70) return;
 
     final aliveNpcs = npcs
         .where((n) => n.alive && n.canTrain(state.currentDay))
@@ -3627,18 +3999,13 @@ class GameEngine {
     if (aliveNpcs.isEmpty) return;
 
     final rng = Random(state.currentDay * 109);
-    final growthRate = ((moral - 70) / 30).clamp(
-      0,
-      1,
-    ); // 0-1 baseado em moral 70-100
+    final growthRate = ((moral - 70) / 30).clamp(0, 1);
     final trained = <String>[];
 
     for (final npc in aliveNpcs) {
       if (rng.nextDouble() < growthRate * 0.3) {
-        // Moral alta aumenta chance de treino bem-sucedido
         final attr = rng.nextInt(5);
         double gain = 0.05 + (growthRate * 0.05);
-
         switch (attr) {
           case 0:
             npc.attributes.strength = (npc.attributes.strength + gain).clamp(
@@ -3686,7 +4053,6 @@ class GameEngine {
     }
   }
 
-  /// Descoberta proativa de talentos ocultos
   void _processTalentDiscovery() {
     final undiscovered = npcs
         .where(
@@ -3697,23 +4063,18 @@ class GameEngine {
               n.canTrain(state.currentDay),
         )
         .toList();
-
     if (undiscovered.isEmpty) return;
 
     final rng = Random(state.currentDay * 113);
 
     for (final npc in undiscovered) {
-      double discoveryChance = 0.02; // 2% base por dia
-
-      // Fatores que aumentam descoberta
+      double discoveryChance = 0.02;
       if (npc.floorsCleared >= 5) discoveryChance += 0.03;
       if (npc.daysSurvived >= 30) discoveryChance += 0.02;
       if (npc.killCount >= 10) discoveryChance += 0.03;
       if (npc.attributes.luck > 8) discoveryChance += 0.02;
       if (citadel.resources.morale > 80) discoveryChance += 0.02;
       if (npc.profession != Profession.idle) discoveryChance += 0.02;
-
-      // Arena, Biblioteca e Templo aumentam descoberta
       if (citadel.buildings.any((b) => b.type == BuildingType.arena)) {
         discoveryChance += 0.03;
       }
@@ -3728,10 +4089,7 @@ class GameEngine {
         npc.talentDiscovered = true;
         npc.fame += 5;
         npc.history.add('Talento descoberto: ${npc.hiddenTalent.label}');
-
-        // Talento descoberto dá boost imediato
         _applyTalentDiscoveryBonus(npc);
-
         events.add(
           GameEvent(
             id: 'talent_disc_${npc.id}_${state.currentDay}',
@@ -3742,43 +4100,69 @@ class GameEngine {
                 '${npc.name} revelou seu talento: ${npc.hiddenTalent.label}\\n${npc.hiddenTalent.description}',
           ),
         );
-
         citadel.resources.morale = (citadel.resources.morale + 2).clamp(0, 100);
       }
     }
   }
 
-  /// Aplica bônus imediato quando talento é descoberto
   void _applyTalentDiscoveryBonus(Npc npc) {
     switch (npc.hiddenTalent) {
+      case HiddenTalent.hollyWarrior:
+        npc.attributes.strength += 4;
+        npc.attributes.endurance += 1.5;
+        npc.attributes.charisma += 1.5;
+        break;
       case HiddenTalent.combatGenius:
         npc.attributes.strength += 2;
         npc.attributes.agility += 2;
+        npc.attributes.combatPowerMultiplier = 1.5; // 50% poder de combate
+        break;
       case HiddenTalent.healingTouch:
         npc.attributes.intelligence += 1.5;
         npc.attributes.charisma += 1;
+        npc.attributes.canHealAfterBattle = true; // cura aliados após batalha
+        break;
       case HiddenTalent.strategicMind:
         npc.attributes.intelligence += 3;
+        npc.attributes.groupMortalityReduction =
+            0.15; // reduz mortalidade do grupo em 15%
+        break;
       case HiddenTalent.naturalLeader:
         npc.attributes.charisma += 3;
         npc.loyalty += 10;
+        npc.attributes.groupMoraleBonus = 0.2; // +20% moral do grupo
+        npc.attributes.groupSynergyBonus = 0.15; // +15% sinergia
+        break;
       case HiddenTalent.ironWill:
         npc.attributes.mentalStability += 15;
         npc.attributes.endurance += 2;
+        npc.attributes.immuneToSanityLoss = true;
+        break;
       case HiddenTalent.forgemaster:
         npc.attributes.strength += 1.5;
         npc.attributes.intelligence += 1.5;
+        npc.attributes.equipmentBonusMultiplier =
+            2.0; // equipamentos 2x eficientes
+        break;
       case HiddenTalent.shadowWalker:
         npc.attributes.agility += 3;
         npc.attributes.luck += 1.5;
+        npc.attributes.canEvadeCombat = true;
+        break;
       case HiddenTalent.herbalist:
         npc.attributes.intelligence += 2;
+        npc.attributes.canCraftMedicine = true;
+        break;
       case HiddenTalent.beastWhisperer:
         npc.attributes.charisma += 2;
         npc.attributes.luck += 1;
+        npc.attributes.canTameCreatures = true;
+        break;
       case HiddenTalent.runeReader:
         npc.attributes.intelligence += 2.5;
         npc.attributes.luck += 1.5;
+        npc.attributes.canRevealSecrets = true;
+        break;
       default:
         break;
     }
