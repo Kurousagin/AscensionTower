@@ -1,3 +1,5 @@
+import 'package:tower_ascension/models/floor_faction.dart';
+
 enum GameEventType {
   combat,
   death,
@@ -23,7 +25,7 @@ enum GameEventType {
   emergencySummon,
   floorReexplore,
   loyaltyChange,
-  politicalEvent,
+  politicalEvent, recruitment,
 }
 
 extension GameEventTypeExt on GameEventType {
@@ -77,6 +79,8 @@ extension GameEventTypeExt on GameEventType {
         return 'Lealdade';
       case GameEventType.politicalEvent:
         return 'Politica Interna';
+      case GameEventType.recruitment:
+        return 'Recrutamento';
     }
   }
 
@@ -130,6 +134,8 @@ extension GameEventTypeExt on GameEventType {
         return '#AABB88';
       case GameEventType.politicalEvent:
         return '#DDAA66';
+      case GameEventType.recruitment:
+        return '#66DD88';
     }
   }
 }
@@ -196,6 +202,7 @@ class GameState {
   bool gameOver;
   String gameOverReason;
   int lastSettlersRequestDay; // Ultimo dia que solicitou moradores
+  final Map<String, FactionRelation> factionRelations = {};
 
   /// Tempo acumulado na Torre em segundos (tempo in-game total dentro do dia atual).
   /// Quando >= 86400 (24h in-game), um dia completo e processado.
@@ -270,22 +277,37 @@ class GameState {
     'lastSettlersRequestDay': lastSettlersRequestDay,
     'gameSeconds': gameSeconds,
     'lastRealTimestamp': lastRealTimestamp,
+    'factionRelations': factionRelations.map((k, v) => MapEntry(k, v.toJson())),
   };
 
-  factory GameState.fromJson(Map<String, dynamic> json) => GameState(
-    currentDay: json['currentDay'] as int? ?? 1,
-    highestFloorCleared: json['highestFloorCleared'] as int? ?? 0,
-    highestFloorReached: json['highestFloorReached'] as int? ?? 0,
-    totalDeaths: json['totalDeaths'] as int? ?? 0,
-    totalBirths: json['totalBirths'] as int? ?? 0,
-    npcIdCounter: json['npcIdCounter'] as int? ?? 0,
-    eventIdCounter: json['eventIdCounter'] as int? ?? 0,
-    gameOver: json['gameOver'] as bool? ?? false,
-    gameOverReason: json['gameOverReason'] as String? ?? '',
-    lastSettlersRequestDay: json['lastSettlersRequestDay'] as int? ?? 0,
-    gameSeconds:
-        (json['gameSeconds'] as num?)?.toDouble() ??
-        ((json['inGameHoursAccumulated'] as num?)?.toDouble() ?? 0.0) * 3600.0,
-    lastRealTimestamp: json['lastRealTimestamp'] as int?,
-  );
+  factory GameState.fromJson(Map<String, dynamic> json) {
+    final state = GameState(
+      currentDay: json['currentDay'] as int? ?? 1,
+      highestFloorCleared: json['highestFloorCleared'] as int? ?? 0,
+      highestFloorReached: json['highestFloorReached'] as int? ?? 0,
+      totalDeaths: json['totalDeaths'] as int? ?? 0,
+      totalBirths: json['totalBirths'] as int? ?? 0,
+      npcIdCounter: json['npcIdCounter'] as int? ?? 0,
+      eventIdCounter: json['eventIdCounter'] as int? ?? 0,
+      gameOver: json['gameOver'] as bool? ?? false,
+      gameOverReason: json['gameOverReason'] as String? ?? '',
+      lastSettlersRequestDay: json['lastSettlersRequestDay'] as int? ?? 0,
+      gameSeconds:
+          (json['gameSeconds'] as num?)?.toDouble() ??
+          ((json['inGameHoursAccumulated'] as num?)?.toDouble() ?? 0.0) *
+              3600.0,
+      lastRealTimestamp: json['lastRealTimestamp'] as int?,
+    );
+
+    // factionRelations — compatível com saves antigos (campo ausente → {})
+    final rawFactions = json['factionRelations'] as Map<String, dynamic>? ?? {};
+    state.factionRelations.addAll(
+      rawFactions.map(
+        (k, v) =>
+            MapEntry(k, FactionRelation.fromJson(v as Map<String, dynamic>)),
+      ),
+    );
+
+    return state;
+  }
 }

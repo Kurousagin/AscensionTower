@@ -228,8 +228,41 @@ class _NpcListScreenState extends State<NpcListScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                // ── Parceiro no cabeçalho do card ──
+                if (npc.partnerId != null)
+                  Builder(builder: (_) {
+                    final partner = gp.allNpcs
+                        .where((n) => n.id == npc.partnerId)
+                        .firstOrNull;
+                    if (partner == null) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            partner.alive
+                                ? Icons.favorite
+                                : Icons.heart_broken,
+                            size: 10,
+                            color: partner.alive
+                                ? AppTheme.pink
+                                : AppTheme.textDim,
+                          ),
+                          const SizedBox(width: 3),
+                          TerminalText(
+                            partner.name.split(' ').first, // só primeiro nome
+                            fontSize: 9,
+                            color: partner.alive
+                                ? AppTheme.pink
+                                : AppTheme.textDim,
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
                 TerminalText(
-                  npc.alive ? 'Geracao ${npc.generation}' : 'MORTO',
+                  npc.alive ? 'G${npc.generation}' : 'MORTO',
                   fontSize: 9,
                   color: npc.alive ? AppTheme.textDim : AppTheme.red,
                 ),
@@ -255,6 +288,13 @@ class _NpcListScreenState extends State<NpcListScreen> {
                   fontSize: 9,
                   color: AppTheme.textDim,
                 ),
+                // Filhos no card (compacto)
+                if (npc.childrenIds.isNotEmpty)
+                  TerminalText(
+                    '${npc.childrenIds.length} filho(s)',
+                    fontSize: 9,
+                    color: AppTheme.green.withValues(alpha: 0.8),
+                  ),
               ],
             ),
             const SizedBox(height: 3),
@@ -592,22 +632,58 @@ class _NpcListScreenState extends State<NpcListScreen> {
                   fontSize: 9,
                   color: AppTheme.red,
                 ),
+              // ── Parceiro (detalhado no modal) ──
               if (npc.partnerId != null)
                 Builder(
                   builder: (_) {
                     final partner = gp.allNpcs
                         .where((n) => n.id == npc.partnerId)
                         .firstOrNull;
-                    return TerminalText(
-                      'Parceiro(a): ${partner?.name ?? "Desconhecido"}',
-                      fontSize: 9,
-                      color: AppTheme.pink,
+                    if (partner == null) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              partner.alive
+                                  ? Icons.favorite
+                                  : Icons.heart_broken,
+                              size: 11,
+                              color: partner.alive
+                                  ? AppTheme.pink
+                                  : AppTheme.textDim,
+                            ),
+                            const SizedBox(width: 4),
+                            TerminalText(
+                              'Parceiro(a): ${partner.name}',
+                              fontSize: 9,
+                              color: partner.alive
+                                  ? AppTheme.pink
+                                  : AppTheme.textDim,
+                            ),
+                            if (!partner.alive)
+                              TerminalText(
+                                ' [falecido(a)]',
+                                fontSize: 9,
+                                color: AppTheme.red,
+                              ),
+                          ],
+                        ),
+                        if (npc.childrenIds.isNotEmpty)
+                          TerminalText(
+                            '${npc.childrenIds.length} filho(s) juntos',
+                            fontSize: 9,
+                            color: AppTheme.green,
+                          ),
+                      ],
                     );
                   },
                 ),
-              if (npc.childrenIds.isNotEmpty)
+              // Mostra filhos se não tem parceiro mas tem filhos
+              if (npc.partnerId == null && npc.childrenIds.isNotEmpty)
                 TerminalText(
-                  'Filhos: ${npc.childrenIds.length}',
+                  '${npc.childrenIds.length} filho(s)',
                   fontSize: 9,
                   color: AppTheme.green,
                 ),
@@ -617,13 +693,6 @@ class _NpcListScreenState extends State<NpcListScreen> {
                   (t) => TerminalText('- $t', fontSize: 9, color: AppTheme.red),
                 ),
               ],
-              if (npc.traumas.isNotEmpty) ...[
-                const CyanDivider(label: 'TRAUMAS'),
-                ...npc.traumas.map(
-                  (t) => TerminalText('- $t', fontSize: 9, color: AppTheme.red),
-                ),
-              ],
-              // Exibe equipamentos equipados
               if (gp.equippedOn(npc.id).isNotEmpty) ...[
                 const CyanDivider(label: 'EQUIPAMENTOS'),
                 ...gp

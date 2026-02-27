@@ -7,14 +7,16 @@ import 'screens/dashboard_screen.dart';
 import 'screens/npc_list_screen.dart';
 import 'screens/citadel_screen.dart';
 import 'screens/tower_screen.dart';
-import 'screens/event_log_screen.dart';
+import 'screens/citadel_ledger_screen.dart';
 import 'screens/codex_screen.dart';
 import 'screens/groups_screen.dart';
 import 'widgets/theme.dart';
+import 'widgets/event_toast.dart';
+import 'screens/prison_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-    await Hive.initFlutter();
+  await Hive.initFlutter();
   await Hive.openBox('tower_saves');
   runApp(const TowerApp());
 }
@@ -30,7 +32,7 @@ class TowerApp extends StatelessWidget {
         title: 'Tower Ascension',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
-        home: const AppShell(),
+        home: EventToastOverlay(child: const AppShell()),
       ),
     );
   }
@@ -45,7 +47,46 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   bool _inGame = false;
-  int _currentTab = 0;
+  int _currentScreen = 0;
+  int? _expandedGroup; // qual grupo está expandido
+
+  // ── Definição de grupos ──────────────────────
+  static const _groups = [
+    _NavGroup(
+      icon: Icons.remove_red_eye_outlined,
+      label: 'Base',
+      screens: [_NavItem(0, 'OBSERVATORIO', Icons.remove_red_eye_outlined)],
+    ),
+    _NavGroup(
+      icon: Icons.cell_tower,
+      label: 'Torre',
+      screens: [
+        _NavItem(1, 'A TORRE', Icons.cell_tower),
+        _NavItem(4, 'ESQUADROES', Icons.groups_outlined),
+      ],
+    ),
+    _NavGroup(
+      icon: Icons.castle_outlined,
+      label: 'Cidadela',
+      screens: [
+        _NavItem(2, 'CIDADELA', Icons.castle_outlined),
+        _NavItem(5, 'REGISTROS', Icons.article_outlined),
+      ],
+    ),
+    _NavGroup(
+      icon: Icons.people_outline,
+      label: 'Povo',
+      screens: [
+        _NavItem(3, 'HABITANTES', Icons.people_outline),
+        _NavItem(6, 'JUSTICA', Icons.gavel),
+      ],
+    ),
+    _NavGroup(
+      icon: Icons.menu_book_outlined,
+      label: 'Codex',
+      screens: [_NavItem(7, 'CODEX', Icons.menu_book_outlined)],
+    ),
+  ];
 
   final List<Widget> _screens = const [
     DashboardScreen(),
@@ -53,20 +94,46 @@ class _AppShellState extends State<AppShell> {
     CitadelScreen(),
     NpcListScreen(),
     GroupsScreen(),
-    EventLogScreen(),
+    CitadelLedgerScreen(),
+    PrisonScreen(),
     CodexScreen(),
-    // EquipmentScreen não está como aba, mas pode ser acessada via botão
   ];
 
-  final List<String> _titles = [
+  static const _titles = [
     'OBSERVATORIO',
     'A TORRE',
     'CIDADELA',
     'HABITANTES',
     'ESQUADROES',
     'REGISTROS',
+    'JUSTICA',
     'CODEX',
   ];
+
+  // Qual grupo contém a tela atual
+  int _groupOf(int screenIndex) {
+    for (int i = 0; i < _groups.length; i++) {
+      if (_groups[i].screens.any((s) => s.index == screenIndex)) return i;
+    }
+    return 0;
+  }
+
+  void _onGroupTap(int groupIdx) {
+    final group = _groups[groupIdx];
+    if (group.screens.length == 1) {
+      // Grupo sem sub-itens: navega direto
+      setState(() {
+        _currentScreen = group.screens.first.index;
+        _expandedGroup = null;
+      });
+    } else if (_expandedGroup == groupIdx) {
+      // Já expandido: fecha
+      setState(() => _expandedGroup = null);
+    } else {
+      // Expande
+      setState(() => _expandedGroup = groupIdx);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +186,7 @@ class _AppShellState extends State<AppShell> {
         ),
         title: Row(
           children: [
-            Text(_titles[_currentTab]),
+            Text(_titles[_currentScreen]),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -139,45 +206,233 @@ class _AppShellState extends State<AppShell> {
           ],
         ),
       ),
-      body: SafeArea(child: _screens[_currentTab]),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: AppTheme.border)),
+      body: GestureDetector(
+        // Toque no body fecha o menu expandido
+        onTap: () {
+          if (_expandedGroup != null) setState(() => _expandedGroup = null);
+        },
+        behavior: HitTestBehavior.translucent,
+        child: SafeArea(child: _screens[_currentScreen]),
+      ),
+      bottomNavigationBar: _ExpandableNavBar(
+        groups: _groups,
+        currentScreen: _currentScreen,
+        expandedGroup: _expandedGroup,
+        onGroupTap: _onGroupTap,
+        onSubItemTap: (screenIdx) {
+          setState(() {
+            _currentScreen = screenIdx;
+            _expandedGroup = null;
+          });
+        },
+        groupOf: _groupOf,
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// DATA CLASSES
+// ─────────────────────────────────────────────
+
+class _NavItem {
+  final int index;
+  final String label;
+  final IconData icon;
+  const _NavItem(this.index, this.label, this.icon);
+}
+
+class _NavGroup {
+  final IconData icon;
+  final String label;
+  final List<_NavItem> screens;
+  const _NavGroup({
+    required this.icon,
+    required this.label,
+    required this.screens,
+  });
+}
+
+// ─────────────────────────────────────────────
+// WIDGET DA NAV BAR
+// ─────────────────────────────────────────────
+
+class _ExpandableNavBar extends StatelessWidget {
+  final List<_NavGroup> groups;
+  final int currentScreen;
+  final int? expandedGroup;
+  final void Function(int) onGroupTap;
+  final void Function(int) onSubItemTap;
+  final int Function(int) groupOf;
+
+  const _ExpandableNavBar({
+    required this.groups,
+    required this.currentScreen,
+    required this.expandedGroup,
+    required this.onGroupTap,
+    required this.onSubItemTap,
+    required this.groupOf,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: AppTheme.border)),
+        color: AppTheme.bgCard,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Sub-menu expansível
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            child: expandedGroup != null
+                ? _buildSubMenu(groups[expandedGroup!])
+                : const SizedBox.shrink(),
+          ),
+          // Barra principal
+          SafeArea(
+            top: false,
+            child: SizedBox(
+              height: 56,
+              child: Row(
+                children: List.generate(groups.length, (i) {
+                  final group = groups[i];
+                  final isActive = groupOf(currentScreen) == i;
+                  final isExpanded = expandedGroup == i;
+                  final hasSubItems = group.screens.length > 1;
+
+                  return Expanded(
+                    child: InkWell(
+                      onTap: () => onGroupTap(i),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Icon(
+                                group.icon,
+                                size: 22,
+                                color: isActive || isExpanded
+                                    ? AppTheme.cyan
+                                    : AppTheme.textDim,
+                              ),
+                              // Indicador de sub-itens
+                              if (hasSubItems)
+                                Positioned(
+                                  top: -3,
+                                  right: -6,
+                                  child: AnimatedRotation(
+                                    turns: isExpanded ? 0.5 : 0,
+                                    duration: const Duration(milliseconds: 200),
+                                    child: Icon(
+                                      Icons.arrow_drop_up,
+                                      size: 12,
+                                      color: isActive || isExpanded
+                                          ? AppTheme.cyan
+                                          : AppTheme.textDim,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            group.label,
+                            style: TextStyle(
+                              fontFamily: 'FiraCode',
+                              fontSize: 9,
+                              color: isActive || isExpanded
+                                  ? AppTheme.cyan
+                                  : AppTheme.textDim,
+                            ),
+                          ),
+                          // Dot indicador de tela ativa
+                          if (isActive)
+                            Container(
+                              width: 4,
+                              height: 4,
+                              margin: const EdgeInsets.only(top: 2),
+                              decoration: const BoxDecoration(
+                                color: AppTheme.cyan,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubMenu(_NavGroup group) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: AppTheme.cyan.withValues(alpha: 0.3)),
+          bottom: BorderSide(color: AppTheme.border),
         ),
-        child: BottomNavigationBar(
-          currentIndex: _currentTab,
-          onTap: (i) => setState(() => _currentTab = i),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.remove_red_eye_outlined, size: 18),
-              label: 'Observar',
+        color: AppTheme.bgElevated,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: group.screens.map((item) {
+          final isActive = currentScreen == item.index;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: InkWell(
+              onTap: () => onSubItemTap(item.index),
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: isActive ? AppTheme.cyan : AppTheme.border,
+                  ),
+                  borderRadius: BorderRadius.circular(4),
+                  color: isActive ? AppTheme.cyan.withValues(alpha: 0.1) : null,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      item.icon,
+                      size: 14,
+                      color: isActive ? AppTheme.cyan : AppTheme.textSecondary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      item.label,
+                      style: TextStyle(
+                        fontFamily: 'FiraCode',
+                        fontSize: 9,
+                        color: isActive
+                            ? AppTheme.cyan
+                            : AppTheme.textSecondary,
+                        fontWeight: isActive
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.cell_tower, size: 18),
-              label: 'Torre',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.castle_outlined, size: 18),
-              label: 'Cidadela',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.people_outline, size: 18),
-              label: 'Habitantes',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.groups_outlined, size: 18),
-              label: 'Grupos',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.article_outlined, size: 18),
-              label: 'Registros',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.menu_book_outlined, size: 18),
-              label: 'Codex',
-            ),
-          ],
-        ),
+          );
+        }).toList(),
       ),
     );
   }

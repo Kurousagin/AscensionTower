@@ -1,24 +1,10 @@
 // ═══════════════════════════════════════════════════════════════
-// SISTEMA DE ARMAZEM — Capacidade limitada, excedente é perdido
-// Nivel 0 (Sem Armazém): cap 30 | Nivel 1 (Básico): cap 60
-// Nivel 2 (Expandido): cap 120 | Nivel 3 (Grande): cap 250
-// Nivel 4 (Espacial): infinito — endgame, requer Tier 9 da Torre
+// SISTEMA DE ARMAZEM
 // ═══════════════════════════════════════════════════════════════
 
-// ─────────────────────────────────────────────
-// NÍVEL DE ARMAZÉM
-// ─────────────────────────────────────────────
-
-enum StorageLevel {
-  none, // Sem armazém: capacidade base 30
-  basic, // Armazém Básico: capacidade 60
-  expanded, // Armazém Expandido: capacidade 120
-  grand, // Grande Armazém: capacidade 250
-  spatial, // Armazém Espacial: infinito (endgame)
-}
+enum StorageLevel { none, basic, expanded, grand, spatial }
 
 extension StorageLevelExt on StorageLevel {
-  // CORREÇÃO: labels com acentuação correta
   String get label => const {
     StorageLevel.none: 'Sem Armazém',
     StorageLevel.basic: 'Armazém Básico',
@@ -35,9 +21,6 @@ extension StorageLevelExt on StorageLevel {
     StorageLevel.spatial: 'Espacial',
   }[this]!;
 
-  /// Capacidade máxima por recurso. `double.infinity` = sem limite.
-  // CORREÇÃO: -1 substituído por double.infinity — semântica clara, evita
-  // comparações mágicas com -1 espalhadas pelo código
   double get capacity => const {
     StorageLevel.none: 30.0,
     StorageLevel.basic: 60.0,
@@ -51,7 +34,6 @@ extension StorageLevelExt on StorageLevel {
   String get capacityDisplay =>
       isInfinite ? 'INFINITO' : capacity.toStringAsFixed(0);
 
-  /// Tier mínimo da Torre para desbloquear este nível de armazém
   int get requiredTier => const {
     StorageLevel.none: 0,
     StorageLevel.basic: 0,
@@ -60,7 +42,6 @@ extension StorageLevelExt on StorageLevel {
     StorageLevel.spatial: 9,
   }[this]!;
 
-  /// Custo para upgrade ao próximo nível
   Resources get upgradeCost => {
     StorageLevel.none: Resources(wood: 15, stone: 10),
     StorageLevel.basic: Resources(wood: 40, stone: 30, iron: 10),
@@ -76,7 +57,6 @@ extension StorageLevelExt on StorageLevel {
       knowledge: 60,
       wood: 60,
     ),
-    // Nível máximo — sem custo de upgrade
     StorageLevel.spatial: Resources(),
   }[this]!;
 
@@ -91,11 +71,6 @@ extension StorageLevelExt on StorageLevel {
 // RECURSOS
 // ─────────────────────────────────────────────
 
-// NOTA: Resources permanece mutável intencionalmente — é atualizado
-// com frequência no loop de simulação (tick diário, expedições, etc.)
-// e imutabilidade geraria pressão excessiva de GC. copyWith está
-// disponível para contextos que precisam de snapshots.
-
 class ResourcesCost {
   final double food, wood, stone, iron, knowledge;
   const ResourcesCost({
@@ -106,7 +81,6 @@ class ResourcesCost {
     this.knowledge = 0,
   });
 
-  // Converter para Resources mutável
   Resources toResources() => Resources(
     food: food,
     wood: wood,
@@ -117,12 +91,7 @@ class ResourcesCost {
 }
 
 class Resources {
-  double food;
-  double wood;
-  double stone;
-  double iron;
-  double knowledge;
-  double morale;
+  double food, wood, stone, iron, knowledge, morale;
 
   Resources({
     this.food = 0,
@@ -182,7 +151,6 @@ class Resources {
     stone -= cost.stone;
     iron -= cost.iron;
     knowledge -= cost.knowledge;
-    // Garante que gastar nunca deixa negativo
     clampNegatives();
   }
 
@@ -195,21 +163,15 @@ class Resources {
     morale += gain.morale;
   }
 
-  /// Adiciona recursos e aplica capacidade imediatamente.
-  /// Retorna o excedente perdido. Use este método para garantir integridade.
   Resources addCapped(Resources gain, StorageLevel storage) {
     add(gain);
     return clampToCapacity(storage);
   }
 
-  /// Clamp com capacidade do armazém. Excedente é PERDIDO.
-  /// Retorna quanto foi perdido por overflow (para log/eventos de UI).
   Resources clampToCapacity(StorageLevel storage) {
     final lost = Resources();
-
     clampNegatives();
     morale = morale.clamp(0, 100);
-
     if (!storage.isInfinite) {
       final cap = storage.capacity;
       if (food > cap) {
@@ -233,11 +195,9 @@ class Resources {
         knowledge = cap;
       }
     }
-
     return lost;
   }
 
-  /// Garante que nenhum recurso fique negativo
   void clampNegatives() {
     if (food < 0) food = 0;
     if (wood < 0) wood = 0;
@@ -245,10 +205,6 @@ class Resources {
     if (iron < 0) iron = 0;
     if (knowledge < 0) knowledge = 0;
   }
-
-  // CORREÇÃO: clampAll() removido — combinava lógica de floor(0) com
-  // cap arbitrário de 99999 que contradizia o sistema de armazém real.
-  // Use clampNegatives() + clampToCapacity() separadamente.
 
   bool hasOverflow(StorageLevel storage) {
     if (storage.isInfinite) return false;
@@ -270,10 +226,8 @@ class Resources {
         knowledge >= cap;
   }
 
-  /// Total de recursos físicos (exclui moral — para cálculos de ocupação)
   double get totalPhysical => food + wood + stone + iron + knowledge;
 
-  /// Percentual de uso do armazém (0.0–1.0), útil para barra de progresso na UI
   double usageRatio(StorageLevel storage) {
     if (storage.isInfinite) return 0.0;
     final cap = storage.capacity;
@@ -300,7 +254,6 @@ enum CitadelLevel {
 }
 
 extension CitadelLevelExt on CitadelLevel {
-  // CORREÇÃO: labels com acentuação correta
   String get label => const {
     CitadelLevel.shelter: 'Abrigo',
     CitadelLevel.camp: 'Acampamento',
@@ -353,7 +306,6 @@ extension CitadelLevelExt on CitadelLevel {
     CitadelLevel.ascended: 150,
   }[this]!;
 
-  /// Tier mínimo da Torre para desbloquear este nível
   int get requiredTowerTier => const {
     CitadelLevel.shelter: 0,
     CitadelLevel.camp: 0,
@@ -367,7 +319,6 @@ extension CitadelLevelExt on CitadelLevel {
     CitadelLevel.ascended: 10,
   }[this]!;
 
-  /// Máximo de cópias da mesma construção permitidas (para não-únicas)
   int get maxBuildingCopies => const {
     CitadelLevel.shelter: 1,
     CitadelLevel.camp: 1,
@@ -381,7 +332,6 @@ extension CitadelLevelExt on CitadelLevel {
     CitadelLevel.ascended: 6,
   }[this]!;
 
-  /// Tier de evolução de edifícios (0=básico → 3=elite)
   int get buildingTier => const {
     CitadelLevel.shelter: 0,
     CitadelLevel.camp: 0,
@@ -424,6 +374,11 @@ enum BuildingType {
   tavern,
   market,
   temple,
+  prison,
+  // ── NOVO: Abrigo de Viajantes (Tier 2) ──────────────────────────────────
+  // Permite recrutar survivors encontrados nos andares conquistados.
+  // Único (isUnique = true). Não evolui automaticamente (canEvolve = false).
+  wayfareresRefuge,
   // Avançados (Tier 4–5)
   arena,
   synthesisLab,
@@ -436,7 +391,6 @@ enum BuildingType {
   nexus,
 }
 
-/// Categoria do edifício para organização na UI
 enum BuildingCategory {
   essential,
   production,
@@ -448,7 +402,6 @@ enum BuildingCategory {
 }
 
 extension BuildingCategoryExt on BuildingCategory {
-  // CORREÇÃO: labels com acentuação correta
   String get label => const {
     BuildingCategory.essential: 'Essencial',
     BuildingCategory.production: 'Produção',
@@ -467,7 +420,7 @@ extension BuildingCategoryExt on BuildingCategory {
 class Building {
   final BuildingType type;
   int level;
-  int tier; // 0=básico, 1=intermediário, 2=avançado, 3=elite
+  int tier;
   int inheritedBonus;
 
   bool get canUpgrade => level < maxLevel || tier < 3;
@@ -486,9 +439,6 @@ class Building {
     inheritedBonus: inheritedBonus ?? this.inheritedBonus,
   );
 
-  // ─────────────────────────────────────────────
-  // BUILDING BONUS
-  // ─────────────────────────────────────────────
   static const Map<BuildingType, List<double>> levelValues = {
     BuildingType.farm: [2, 4, 6, 8, 10],
     BuildingType.firepit: [1, 3, 4, 5, 6],
@@ -504,7 +454,6 @@ class Building {
 
   double get foodConsumptionReduction {
     if (type != BuildingType.granary) return 0.0;
-
     const values = [0.015, 0.03, 0.06, 0.10, 0.15];
     final index = (level - 1).clamp(0, values.length - 1);
     return values[index];
@@ -513,7 +462,6 @@ class Building {
   double get valuePerTier {
     final values = levelValues[type];
     if (values == null) return 0.0;
-
     final t = tier.clamp(0, values.length - 1);
     return values[t];
   }
@@ -526,8 +474,7 @@ class Building {
   }
 
   double get bonus => inheritedBonus + levelBonus;
-  // CORREÇÃO: nomes por tier definidos por Map const por tipo — sem switch gigante.
-  // Quando só há 1 nome (edifício sem evolução visual), repete-se para preencher os 4 tiers.
+
   static const Map<BuildingType, List<String>> _names = {
     BuildingType.firepit: [
       'Fogueira',
@@ -564,12 +511,7 @@ class Building {
       'Biblioteca',
       'Biblioteca',
     ],
-    BuildingType.infirmary: [
-      'Enfermaria',
-      'Enfermaria',
-      'Clinica',
-      'Hospital',
-    ],
+    BuildingType.infirmary: ['Enfermaria', 'Enfermaria', 'Clinica', 'Hospital'],
     BuildingType.wall: ['Muralha', 'Muralha', 'Muralha', 'Muralha'],
     BuildingType.watchtower: [
       'Torre de Vigia',
@@ -579,6 +521,12 @@ class Building {
     ],
     BuildingType.market: ['Mercado', 'Mercado', 'Mercado', 'Mercado'],
     BuildingType.tavern: ['Taverna', 'Taverna', 'Taverna', 'Taverna'],
+    BuildingType.prison: [
+      'Cela de Detenção',
+      'Prisão',
+      'Penitenciária',
+      'Presidio',
+    ],
     BuildingType.temple: ['Templo', 'Templo', 'Templo', 'Templo'],
     BuildingType.trainingField: [
       'Campo de Treino',
@@ -612,10 +560,10 @@ class Building {
       'Laboratório Alquímico',
     ],
     BuildingType.granary: [
-      'Celeiro', // mais simples, estrutura básica
-      'Silo', // melhor armazenamento, mais eficiente
-      'Armazém de Grãos', // estrutura maior e mais organizada
-      'Estoque Real', // versão avançada / elite
+      'Celeiro',
+      'Silo',
+      'Armazém de Grãos',
+      'Estoque Real',
     ],
     BuildingType.warRoom: [
       'Sala de Guerra',
@@ -629,6 +577,13 @@ class Building {
       'Nexus da Torre',
       'Nexus da Torre',
       'Nexus da Torre',
+    ],
+    // ── NOVO ──────────────────────────────────────────────────────────────────
+    BuildingType.wayfareresRefuge: [
+      'Abrigo de Viajantes',
+      'Hospedaria da Torre',
+      'Santuário dos Errantes',
+      'Lar dos Sem-Lar',
     ],
   };
 
@@ -654,6 +609,7 @@ class Building {
     BuildingType.tavern: BuildingCategory.social,
     BuildingType.market: BuildingCategory.social,
     BuildingType.temple: BuildingCategory.social,
+    BuildingType.prison: BuildingCategory.social,
     BuildingType.arena: BuildingCategory.advanced,
     BuildingType.granary: BuildingCategory.essential,
     BuildingType.synthesisLab: BuildingCategory.advanced,
@@ -663,53 +619,43 @@ class Building {
     BuildingType.warRoom: BuildingCategory.endgame,
     BuildingType.monument: BuildingCategory.endgame,
     BuildingType.nexus: BuildingCategory.endgame,
+    // ── NOVO ──────────────────────────────────────────────────────────────────
+    BuildingType.wayfareresRefuge: BuildingCategory.social,
   }[type]!;
 
-  /// Tier mínimo da Torre para desbloquear este edifício
-  int get requiredTier => const {
-    BuildingType.firepit: 0,
-    BuildingType.tent: 0,
-    BuildingType.farm: 0,
-    BuildingType.kitchen: 1,
-    BuildingType.workshop: 1,
-    BuildingType.forge: 1,
-    BuildingType.school: 1,
-    BuildingType.library: 2,
-    BuildingType.infirmary: 1,
-    BuildingType.woodworking: 2,
-    BuildingType.granary: 2,
-    BuildingType.barracks: 2,
-    BuildingType.trainingField: 2,
-    BuildingType.wall: 2,
-    BuildingType.watchtower: 2,
-    BuildingType.tavern: 3,
-    BuildingType.market: 3,
-    BuildingType.temple: 3,
-    BuildingType.arena: 4,
-    BuildingType.synthesisLab: 5,
-    BuildingType.promotionHall: 5,
-    BuildingType.councilHall: 4,
-    BuildingType.alchemyLab: 7,
-    BuildingType.warRoom: 6,
-    BuildingType.monument: 8,
-    BuildingType.nexus: 9,
-  }[type]!;
+  int get requiredTier =>
+      const {
+        BuildingType.firepit: 0, BuildingType.tent: 0, BuildingType.farm: 0,
+        BuildingType.kitchen: 1,
+        BuildingType.workshop: 1,
+        BuildingType.forge: 1,
+        BuildingType.school: 1,
+        BuildingType.library: 2,
+        BuildingType.infirmary: 1,
+        BuildingType.woodworking: 2, BuildingType.granary: 2,
+        BuildingType.barracks: 2, BuildingType.trainingField: 2,
+        BuildingType.wall: 2, BuildingType.watchtower: 2,
+        BuildingType.tavern: 3, BuildingType.prison: 3,
+        BuildingType.market: 3, BuildingType.temple: 3,
+        BuildingType.arena: 4, BuildingType.synthesisLab: 5,
+        BuildingType.promotionHall: 5, BuildingType.councilHall: 4,
+        BuildingType.alchemyLab: 7, BuildingType.warRoom: 6,
+        BuildingType.monument: 8, BuildingType.nexus: 9,
+        // ── NOVO: disponível no Tier 2 (mesmo nível que barracks) ────────────────
+        BuildingType.wayfareresRefuge: 2,
+      }[type] ??
+      0;
 
-  /// Define se o edifício é único (não pode ter múltiplas cópias)
   bool get isUnique => const {
-    BuildingType.library,
-    BuildingType.temple,
-    BuildingType.arena,
-    BuildingType.synthesisLab,
-    BuildingType.promotionHall,
-    BuildingType.councilHall,
-    BuildingType.alchemyLab,
-    BuildingType.warRoom,
-    BuildingType.monument,
-    BuildingType.nexus,
+    BuildingType.library, BuildingType.temple, BuildingType.arena,
+    BuildingType.synthesisLab, BuildingType.promotionHall,
+    BuildingType.councilHall, BuildingType.alchemyLab,
+    BuildingType.warRoom, BuildingType.monument, BuildingType.nexus,
+    // ── NOVO: único — não pode ter cópias ────────────────────────────────────
+    BuildingType.wayfareresRefuge,
   }.contains(type);
 
-  /// Define se o edifício evolui automaticamente com o tier da cidadela
+  /// canEvolve: wayfareresRefuge NÃO entra aqui — único e não evolui com citadela
   bool get canEvolve => const {
     BuildingType.firepit,
     BuildingType.tent,
@@ -738,12 +684,8 @@ class Building {
       case BuildingType.woodworking:
         return '+${bonus.toStringAsFixed(0)} madeira/dia';
       case BuildingType.granary:
-        if (tier == 0) {
-          return 'Reduz o gasto de comida em 1.5%';
-        }
-        if (tier == 1) {
-          return 'Reduz o gasto de comida em 2.5%';
-        }
+        if (tier == 0) return 'Reduz o gasto de comida em 1.5%';
+        if (tier == 1) return 'Reduz o gasto de comida em 2.5%';
         return 'Reduz o gasto de comida em 5%';
       case BuildingType.forge:
         return '+${bonus.toStringAsFixed(0)} ferro/dia';
@@ -765,6 +707,8 @@ class Building {
         return 'Alerta antecipado, detecta traidores +15%';
       case BuildingType.tavern:
         return 'Centro social: +relações, revela fofocas e traidores';
+      case BuildingType.prison:
+        return 'Permite deter NPCs condenados pelo conselho.';
       case BuildingType.market:
         return 'Troca de recursos, +5% eficiência geral';
       case BuildingType.temple:
@@ -785,130 +729,143 @@ class Building {
         return '+5 moral/dia, símbolo de poder, +lealdade geral';
       case BuildingType.nexus:
         return 'Conexão com a Torre: −10% dificuldade, +visão dos andares';
+      // ── NOVO ───────────────────────────────────────────────────────────────
+      case BuildingType.wayfareresRefuge:
+        return 'Permite recrutar survivors encontrados nos andares conquistados. '
+            'Cada survivor chega com lealdade baixa mas combate elevado.';
     }
   }
 
-  // CORREÇÃO: custo como getter com Resources.constant — sem alocação em
-  // chamadas de consulta; só aloca ao realmente gastar (via spend())
-  ResourcesCost get cost => const {
-    // Essenciais
-    BuildingType.firepit: ResourcesCost(wood: 5),
-    BuildingType.tent: ResourcesCost(wood: 10),
-    BuildingType.farm: ResourcesCost(wood: 15, stone: 5, food: 3),
-    BuildingType.granary: ResourcesCost(wood: 20, stone: 10, food: 5),
-    // Produção
-    BuildingType.kitchen: ResourcesCost(wood: 10, stone: 5, food: 3),
-    BuildingType.workshop: ResourcesCost(wood: 20, stone: 15, iron: 5, food: 8),
-    BuildingType.forge: ResourcesCost(
-      stone: 25,
-      iron: 15,
-      knowledge: 5,
-      food: 10,
-    ),
-    BuildingType.woodworking: ResourcesCost(
-      wood: 15,
-      stone: 10,
-      knowledge: 5,
-      food: 5,
-    ),
-    // Conhecimento
-    BuildingType.school: ResourcesCost(
-      wood: 15,
-      stone: 10,
-      knowledge: 10,
-      food: 5,
-    ),
-    BuildingType.library: ResourcesCost(
-      wood: 20,
-      stone: 15,
-      knowledge: 15,
-      food: 8,
-    ),
-    BuildingType.infirmary: ResourcesCost(
-      wood: 15,
-      stone: 10,
-      knowledge: 5,
-      food: 8,
-    ),
-    // Militar
-    BuildingType.barracks: ResourcesCost(
-      wood: 25,
-      stone: 20,
-      iron: 10,
-      food: 12,
-    ),
-    BuildingType.trainingField: ResourcesCost(
-      wood: 25,
-      stone: 20,
-      iron: 10,
-      knowledge: 10,
-      food: 12,
-    ),
-    BuildingType.wall: ResourcesCost(stone: 30, iron: 10, food: 15),
-    BuildingType.watchtower: ResourcesCost(
-      wood: 15,
-      stone: 25,
-      iron: 5,
-      food: 10,
-    ),
-    // Social
-    BuildingType.tavern: ResourcesCost(wood: 30, stone: 15, food: 10),
-    BuildingType.market: ResourcesCost(wood: 20, stone: 15, food: 8),
-    BuildingType.temple: ResourcesCost(
-      stone: 30,
-      wood: 20,
-      knowledge: 20,
-      food: 20,
-    ),
-    // Avançados
-    BuildingType.arena: ResourcesCost(stone: 40, iron: 25, wood: 20, food: 25),
-    BuildingType.synthesisLab: ResourcesCost(
-      iron: 40,
-      knowledge: 30,
-      stone: 25,
-      food: 30,
-    ),
-    BuildingType.promotionHall: ResourcesCost(
-      knowledge: 50,
-      iron: 30,
-      stone: 30,
-      food: 35,
-    ),
-    BuildingType.councilHall: ResourcesCost(
-      wood: 35,
-      stone: 30,
-      knowledge: 20,
-      food: 25,
-    ),
-    // Endgame
-    BuildingType.alchemyLab: ResourcesCost(
-      knowledge: 80,
-      iron: 50,
-      stone: 30,
-      food: 40,
-    ),
-    BuildingType.warRoom: ResourcesCost(
-      iron: 60,
-      stone: 40,
-      knowledge: 40,
-      food: 35,
-    ),
-    BuildingType.monument: ResourcesCost(
-      stone: 100,
-      iron: 50,
-      knowledge: 50,
-      wood: 50,
-      food: 50,
-    ),
-    BuildingType.nexus: ResourcesCost(
-      knowledge: 150,
-      iron: 80,
-      stone: 80,
-      food: 60,
-    ),
-  }[type]!;
+  ResourcesCost get cost =>
+      const {
+        BuildingType.firepit: ResourcesCost(wood: 5),
+        BuildingType.tent: ResourcesCost(wood: 10),
+        BuildingType.farm: ResourcesCost(wood: 15, stone: 5, food: 3),
+        BuildingType.granary: ResourcesCost(wood: 20, stone: 10, food: 5),
+        BuildingType.kitchen: ResourcesCost(wood: 10, stone: 5, food: 3),
+        BuildingType.workshop: ResourcesCost(
+          wood: 20,
+          stone: 15,
+          iron: 5,
+          food: 8,
+        ),
+        BuildingType.forge: ResourcesCost(
+          stone: 25,
+          iron: 15,
+          knowledge: 5,
+          food: 10,
+        ),
+        BuildingType.woodworking: ResourcesCost(
+          wood: 15,
+          stone: 10,
+          knowledge: 5,
+          food: 5,
+        ),
+        BuildingType.school: ResourcesCost(
+          wood: 15,
+          stone: 10,
+          knowledge: 10,
+          food: 5,
+        ),
+        BuildingType.library: ResourcesCost(
+          wood: 20,
+          stone: 15,
+          knowledge: 15,
+          food: 8,
+        ),
+        BuildingType.infirmary: ResourcesCost(
+          wood: 15,
+          stone: 10,
+          knowledge: 5,
+          food: 8,
+        ),
+        BuildingType.barracks: ResourcesCost(
+          wood: 25,
+          stone: 20,
+          iron: 10,
+          food: 12,
+        ),
+        BuildingType.trainingField: ResourcesCost(
+          wood: 25,
+          stone: 20,
+          iron: 10,
+          knowledge: 10,
+          food: 12,
+        ),
+        BuildingType.wall: ResourcesCost(stone: 30, iron: 10, food: 15),
+        BuildingType.watchtower: ResourcesCost(
+          wood: 15,
+          stone: 25,
+          iron: 5,
+          food: 10,
+        ),
+        BuildingType.tavern: ResourcesCost(wood: 30, stone: 15, food: 10),
+        BuildingType.market: ResourcesCost(wood: 20, stone: 15, food: 8),
+        BuildingType.temple: ResourcesCost(
+          stone: 30,
+          wood: 20,
+          knowledge: 20,
+          food: 20,
+        ),
+        BuildingType.prison: ResourcesCost(wood: 30, stone: 40, iron: 20),
+        BuildingType.arena: ResourcesCost(
+          stone: 40,
+          iron: 25,
+          wood: 20,
+          food: 25,
+        ),
+        BuildingType.synthesisLab: ResourcesCost(
+          iron: 40,
+          knowledge: 30,
+          stone: 25,
+          food: 30,
+        ),
+        BuildingType.promotionHall: ResourcesCost(
+          knowledge: 50,
+          iron: 30,
+          stone: 30,
+          food: 35,
+        ),
+        BuildingType.councilHall: ResourcesCost(
+          wood: 35,
+          stone: 30,
+          knowledge: 20,
+          food: 25,
+        ),
+        BuildingType.alchemyLab: ResourcesCost(
+          knowledge: 80,
+          iron: 50,
+          stone: 30,
+          food: 40,
+        ),
+        BuildingType.warRoom: ResourcesCost(
+          iron: 60,
+          stone: 40,
+          knowledge: 40,
+          food: 35,
+        ),
+        BuildingType.monument: ResourcesCost(
+          stone: 100,
+          iron: 50,
+          knowledge: 50,
+          wood: 50,
+          food: 50,
+        ),
+        BuildingType.nexus: ResourcesCost(
+          knowledge: 150,
+          iron: 80,
+          stone: 80,
+          food: 60,
+        ),
+        // ── NOVO: custo acessível — disponível no Tier 2 ─────────────────────────
+        BuildingType.wayfareresRefuge: ResourcesCost(
+          wood: 25,
+          stone: 15,
+          food: 10,
+        ),
+      }[type] ??
+      const ResourcesCost();
 
-  /// Custo de upgrade: base × nível × 1.5
   Resources get upgradeCost {
     final base = cost;
     final mult = level * 1.5;
@@ -924,14 +881,12 @@ class Building {
   int get maxLevel => 5;
   bool get isMaxLevel => level >= maxLevel;
 
-  // CORREÇÃO: serialização por .name (string estável) em vez de .index
   Map<String, dynamic> toJson() => {
     'type': type.name,
     'level': level,
     'tier': tier,
-    'inheritedBonus': inheritedBonus, 
+    'inheritedBonus': inheritedBonus,
   };
-  
 
   factory Building.fromJson(Map<String, dynamic> json) {
     final typeName = json['type'];
@@ -941,20 +896,20 @@ class Building {
             (e) => e.name == typeName,
             orElse: () => BuildingType.firepit,
           );
-  
+
     final tier = json['tier'] as int? ?? 0;
     var level = json['level'] as int? ?? 1;
     var inheritedBonus = json['inheritedBonus'] as int? ?? 0;
-  
-    // MIGRAÇÃO: Se tier > 0 e inheritedBonus == 0, soma bônus do nível antigo
+
     if (tier > 0 && inheritedBonus == 0) {
       final values = Building.levelValues[type];
       if (values != null && level > 1) {
-        inheritedBonus += values[(level - 1).clamp(0, values.length - 1)].round();
+        inheritedBonus += values[(level - 1).clamp(0, values.length - 1)]
+            .round();
       }
       level = 1;
     }
-  
+
     return Building(
       type: type,
       level: level,
@@ -984,14 +939,10 @@ class Citadel {
   }) : buildings = buildings ?? [],
        resources = resources ?? Resources();
 
-  // ── Armazém ────────────────────────────────
-
   double get storageCapacity => storageLevel.capacity;
   bool get hasInfiniteStorage => storageLevel.isInfinite;
   String get storageLabel => storageLevel.label;
   bool get canUpgradeStorage => storageLevel.nextLevel != null;
-
-  // ── Cidadela ───────────────────────────────
 
   bool get canUpgrade => level.index + 1 < CitadelLevel.values.length;
 
@@ -1051,40 +1002,25 @@ class Citadel {
       iron: 1000,
       knowledge: 800,
     ),
-    CitadelLevel.ascended: ResourcesCost(), // nível máximo
+    CitadelLevel.ascended: ResourcesCost(),
   }[level]!;
 
-  // ─────────────────────────────────────────────
-  // PRODUÇÃO TOTAL
-  // ─────────────────────────────────────────────
+  double get totalFoodProduction => buildings
+      .where((b) => b.type == BuildingType.farm)
+      .fold(0.0, (sum, b) => sum + b.bonus);
 
-  double get totalFoodProduction {
-    return buildings
-        .where((b) => b.type == BuildingType.farm)
-        .fold(0.0, (sum, b) => sum + b.bonus);
-  }
+  double get totalWoodProduction => buildings
+      .where((b) => b.type == BuildingType.woodworking)
+      .fold(0.0, (sum, b) => sum + b.bonus);
 
-  double get totalWoodProduction {
-    return buildings
-        .where((b) => b.type == BuildingType.woodworking)
-        .fold(0.0, (sum, b) => sum + b.bonus);
-  }
+  double get totalIronProduction => buildings
+      .where((b) => b.type == BuildingType.forge)
+      .fold(0.0, (sum, b) => sum + b.bonus);
 
-  double get totalIronProduction {
-    return buildings
-        .where((b) => b.type == BuildingType.forge)
-        .fold(0.0, (sum, b) => sum + b.bonus);
-  }
-
-  // ── Edifícios ──────────────────────────────
-
-  /// Capacidade populacional total (base + moradia)
   int get totalPopulationCapacity {
     int total = populationCapacity;
     for (final b in buildings) {
-      if (b.type == BuildingType.tent) {
-        total += b.bonus.round();
-      }
+      if (b.type == BuildingType.tent) total += b.bonus.round();
     }
     return total;
   }
@@ -1094,8 +1030,6 @@ class Citadel {
   int countBuildings(BuildingType type) =>
       buildings.where((b) => b.type == type).length;
 
-  // CORREÇÃO: try/catch substituído por firstWhereOrNull equivalente — exceções
-  // não devem controlar fluxo normal; null é o retorno semântico correto aqui
   Building? getBuilding(BuildingType type) {
     for (final b in buildings) {
       if (b.type == type) return b;
@@ -1103,10 +1037,8 @@ class Citadel {
     return null;
   }
 
-  /// Verifica se o jogador pode construir mais edifícios
   bool get hasRoomForBuilding => buildings.length < level.maxBuildings;
 
-  /// Verifica se pode construir um tipo específico (tier, unicidade, limite de cópias)
   bool canBuild(BuildingType type, int currentTowerTier) {
     if (!hasRoomForBuilding) return false;
     final building = Building(type: type);
@@ -1118,9 +1050,6 @@ class Citadel {
     return true;
   }
 
-  // ── Serialização ───────────────────────────
-
-  // CORREÇÃO: enums por .name em vez de .index
   Map<String, dynamic> toJson() => {
     'level': level.name,
     'buildings': buildings.map((b) => b.toJson()).toList(),
@@ -1131,10 +1060,7 @@ class Citadel {
 
   factory Citadel.fromJson(Map<String, dynamic> json) {
     T parseEnum<T extends Enum>(List<T> values, Object? raw, T fallback) {
-      if (raw is int) {
-        // Suporte a saves legados
-        return values[raw.clamp(0, values.length - 1)];
-      }
+      if (raw is int) return values[raw.clamp(0, values.length - 1)];
       final name = raw as String?;
       if (name == null) return fallback;
       return values.firstWhere((e) => e.name == name, orElse: () => fallback);

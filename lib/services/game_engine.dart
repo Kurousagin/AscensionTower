@@ -1,12 +1,18 @@
 import 'dart:math';
 import 'package:collection/collection.dart';
+import 'package:tower_ascension/models/floor_faction.dart';
+import 'package:tower_ascension/models/floor_inhabitant.dart';
+import 'package:tower_ascension/widgets/event_toast.dart';
 import '../models/npc.dart';
 import '../models/citadel.dart';
 import '../models/tower.dart';
 import '../models/game_event.dart';
 import '../models/group_model.dart';
-import '../models/equipment.dart'; // ← ADICIONADO [FASE 1]
-import 'equipment_service.dart'; // ← ADICIONADO [FASE 1]
+import '../models/equipment.dart';
+import 'equipment_service.dart';
+import '../models/citadel_record.dart';
+import '../models/prison.dart';
+import '../services/prison_service.dart';
 
 class GameEngine {
   final Random _rng;
@@ -18,12 +24,27 @@ class GameEngine {
   List<GameEvent> _dayEvents = [];
   List<NpcGroup> groups;
   List<TrainingSuggestion> trainingSuggestions;
+  List<TrainingMission> activeTrainings = [];
+  int _trainingMissionCounter = 0;
+  String _nextMissionId() => 'mission_${++_trainingMissionCounter}';
   int _groupIdCounter = 0;
   int _suggestionIdCounter = 0;
 
-  // ── Equipamentos [FASE 1] ────────────────────
+  // ======== Facções ==================
+  // Survivors encontrados nos andares, aguardando recrutamento
+  final List<FloorInhabitant> _pendingRecruits = [];
+
+  List<FloorInhabitant> get pendingRecruits =>
+      List.unmodifiable(_pendingRecruits);
+  // ====== Equipamentos ==================
   final EquipmentService _equipmentService = EquipmentService();
   final List<Equipment> _inventory = [];
+  final PrisonService _prisonService = PrisonService();
+
+  // ====== Registro Oficial da Cidadela ==================
+  final List<CitadelRecord> _records = [];
+  int _recordIdCounter = 0;
+  static const int _maxRawEvents = 200;
 
   GameEngine({int? seed})
     : _rng = Random(seed),
@@ -50,9 +71,14 @@ class GameEngine {
     return idx < floors.length ? floors[idx] : null;
   }
 
-  // ── Getter de Inventário [FASE 1] ───────────
+  // ====== Getter de Inventário ==============================
   List<Equipment> get inventory => List.unmodifiable(_inventory);
 
+  // ====== Getter de Registros Oficiais ==============================
+  List<CitadelRecord> get records => List.unmodifiable(_records);
+
+  // ====== Getter de Prisão  ==============================
+  PrisonService get prison => _prisonService;
   // ── ID Generators ──────────────────────────
 
   String _nextGroupId() => 'grp_${++_groupIdCounter}';
@@ -83,6 +109,9 @@ class GameEngine {
     _groupIdCounter = 0;
     _suggestionIdCounter = 0;
     _inventory.clear(); // [FASE 1]
+    _records.clear();
+    _recordIdCounter = 0;
+    _prisonService.clear();
 
     // Gerar 15 Primordiais
     for (int i = 0; i < 15; i++) {
@@ -160,6 +189,9 @@ class GameEngine {
   // ─────────────────────────────────────────────
 
   List<GameEvent> simulateDay() {
+    for (final floor in clearedFloors) {
+      floor.clearTemporaryTags();
+    }
     _dayEvents = [];
     if (state.gameOver) return _dayEvents;
     autoEquipAllNpcs();
@@ -180,6 +212,7 @@ class GameEngine {
 
     _processResourceProduction();
     _processResourceConsumption();
+    _processOverpopulationPenalty();
     _processFatigueRecovery();
     _processRelationships();
     _processMentalHealth();
@@ -194,6 +227,7 @@ class GameEngine {
     _processAging();
     _processTraining();
     _processAutonomousTraining();
+    _processActiveTrainings();
     _processAutoReexploration();
     _processPassiveEnvironmentalTraining();
     _processSurvivalGrowth();
@@ -202,6 +236,11 @@ class GameEngine {
     _processArenaEvents();
     _processTavernEvents();
     _processEmergencySummon();
+    _processPrisonSystem();
+
+    _processFameGains();
+    _processFactionIncursions();
+    if (state.currentDay % 7 == 0) _autonomousGroupFormation();
 
     final overflow = citadel.resources.clampToCapacity(citadel.storageLevel);
     if (overflow.totalPhysical > 0) {
@@ -212,7 +251,6 @@ class GameEngine {
             '${_formatOverflow(overflow)}\nAmplie o Armazem para evitar perdas.',
       );
     }
-
     for (final npc in aliveNpcs) {
       npc.daysSurvived++;
     }
@@ -431,6 +469,7 @@ class GameEngine {
         GameEventType.crisis,
         'Fome!',
         'Nao ha comida suficiente. A fome se espalha. Moral despenca.',
+        isMajor: true,
       );
       _addPsychologicalMarksToChildren('Testemunhou fome severa na cidadela');
 
@@ -443,6 +482,42 @@ class GameEngine {
     }
   }
 
+  void _processOverpopulationPenalty() {
+    final capacity = citadel.totalPopulationCapacity;
+    final pop = aliveNpcs.length;
+    if (pop <= capacity) return;
+
+    final excess = pop - capacity;
+    final severity = excess / capacity.clamp(1, 9999); // 0.0 a N
+
+    // Penalidade de moral proporcional ao excesso
+    final moraleLoss = (excess * 1.5).clamp(2.0, 20.0);
+    citadel.resources.morale -= moraleLoss;
+
+    // Penalidade de comida — mais bocas, menos espaço → desperdício/conflito
+    final foodLoss = excess * 0.5;
+    citadel.resources.food = (citadel.resources.food - foodLoss).clamp(
+      0,
+      99999,
+    );
+
+    // Lealdade cai para todos por tensão social
+    for (final npc in aliveNpcs) {
+      npc.loyalty -= (0.2 * severity).clamp(0.1, 1.0);
+      npc.attributes.mentalStability -= (0.3 * severity).clamp(0.1, 2.0);
+    }
+
+    // Evento periódico de aviso (a cada 3 dias para não spammar)
+    if (state.currentDay % 3 == 0) {
+      _addEvent(
+        GameEventType.crisis,
+        'Superpopulação!',
+        'A cidadela tem $excess habitante(s) acima da capacidade ($pop/$capacity). '
+            'Tensão social crescente. Construa moradias ou evolua a cidadela.',
+        isMajor: excess > capacity * 0.2,
+      );
+    }
+  }
   // ─────────────────────────────────────────────
   // FADIGA
   // ─────────────────────────────────────────────
@@ -515,24 +590,28 @@ class GameEngine {
   }
 
   void _createRelationship(Npc a, Npc b) {
-    final affinity =
+    // ✅ Garante mínimo de 0.05 para o relacionamento ter chance de evoluir
+    final rawAffinity =
         (a.attributes.charisma + b.attributes.charisma) /
         20.0 *
         _rng.nextDouble();
+    final affinity = (rawAffinity + 0.05).clamp(0.05, 1.0);
+
     a.relationships.add(
       Relationship(targetId: b.id, type: 'amigo', affinity: affinity),
     );
     b.relationships.add(
       Relationship(targetId: a.id, type: 'amigo', affinity: affinity),
     );
+
     if (a.groupId != null && a.groupId == b.groupId) {
       final lastIndexA = a.relationships.length - 1;
       final lastIndexB = b.relationships.length - 1;
       a.relationships[lastIndexA] = a.relationships[lastIndexA].copyWith(
-        affinity: a.relationships[lastIndexA].affinity + 0.1,
+        affinity: (a.relationships[lastIndexA].affinity + 0.1).clamp(0.0, 1.0),
       );
       b.relationships[lastIndexB] = b.relationships[lastIndexB].copyWith(
-        affinity: b.relationships[lastIndexB].affinity + 0.1,
+        affinity: (b.relationships[lastIndexB].affinity + 0.1).clamp(0.0, 1.0),
       );
     }
   }
@@ -622,6 +701,12 @@ class GameEngine {
         npc.loyalty -= 10;
         npc.fame -= 5;
         npc.traumas.add('Rebeliao no dia ${state.currentDay}');
+        _prisonService.recordCrime(
+          npcId: npc.id,
+          type: CrimeType.rebellion,
+          day: state.currentDay,
+          witnessed: true, // rebelião é sempre pública
+        );
         _addEvent(
           GameEventType.betrayal,
           'Rebeliao',
@@ -923,7 +1008,6 @@ class GameEngine {
   // ─────────────────────────────────────────────
   // TRAIÇÃO
   // ─────────────────────────────────────────────
-
   void _processBetrayalAttempts() {
     if (state.currentDay % 7 != 0) return;
     for (int i = 0; i < npcs.length; i++) {
@@ -937,102 +1021,254 @@ class GameEngine {
   Npc _executeBetrayal(Npc npc) {
     switch (_rng.nextInt(4)) {
       case 0:
-        final stolen = 5.0 + _rng.nextDouble() * 15;
-        citadel.resources.food = (citadel.resources.food - stolen).clamp(
-          0,
-          9999,
-        );
-        _addPsychologicalMarksToChildren(
-          'Testemunhou traicao: roubo de comida',
-        );
-        _addEvent(
-          GameEventType.betrayalAttempt,
-          'Roubo de Suprimentos!',
-          '${npc.name} roubou ${stolen.toStringAsFixed(0)} de comida!',
-          involvedIds: [npc.id],
-          isMajor: true,
-        );
-        return npc.copyWith(fame: npc.fame - 10, loyalty: npc.loyalty - 5);
-
+        return _betrayalTheft(npc);
       case 1:
-        if (citadel.resources.morale > 20) {
-          citadel.resources.morale -= 8;
-          _addEvent(
-            GameEventType.betrayalAttempt,
-            'Sabotagem!',
-            '${npc.name} sabotou equipamentos durante a noite. -8 moral.',
-            involvedIds: [npc.id],
-            isMajor: true,
-          );
-          return npc.copyWith(fame: npc.fame - 8);
-        }
-        return npc;
-
+        return _betrayalSabotage(npc);
       case 2:
-        final targets = aliveNpcs
-            .where((n) => n.id != npc.id && n.loyalty < 60)
-            .toList();
-        if (targets.isNotEmpty) {
-          final target = targets[_rng.nextInt(targets.length)];
-          final targetIndex = npcs.indexWhere((n) => n.id == target.id);
-          if (targetIndex != -1) {
-            npcs[targetIndex] = npcs[targetIndex].copyWith(
-              loyalty: npcs[targetIndex].loyalty - 5,
-            );
-          }
-          _addEvent(
-            GameEventType.politicalEvent,
-            'Manipulacao',
-            '${npc.name} espalhando rumores para ${target.name}.',
-            involvedIds: [npc.id, target.id],
-          );
-          return npc.copyWith(fame: npc.fame - 5);
-        }
-        return npc;
-
+        return _betrayalManipulation(npc);
       case 3:
-        if (npc.origin != NpcOrigin.assassin || _rng.nextDouble() >= 0.3) {
-          return npc;
-        }
-        final targets = aliveNpcs
-            .where((n) => n.id != npc.id && n.fame > 15)
-            .toList();
-        if (targets.isEmpty) return npc;
-        final target = targets[_rng.nextInt(targets.length)];
-        if (_rng.nextDouble() < 0.4) {
-          _killNpc(target, 'Assassinado por ${npc.name}');
-          _addPsychologicalMarksToChildren(
-            'Testemunhou assassinato - ${target.name} morto',
-            exceptIds: [target.id],
-          );
-          _addEvent(
-            GameEventType.betrayalAttempt,
-            'ASSASSINATO!',
-            '${npc.name} assassinou ${target.name} durante a noite!',
-            involvedIds: [npc.id, target.id],
-            isMajor: true,
-          );
-          return npc.copyWith(
-            killCount: npc.killCount + 1,
-            fame: npc.fame - 30,
-          );
-        } else {
-          _addEvent(
-            GameEventType.betrayalAttempt,
-            'Tentativa de Assassinato Frustrada',
-            '${npc.name} tentou matar ${target.name}, mas foi impedido!',
-            involvedIds: [npc.id, target.id],
-            isMajor: true,
-          );
-          return npc.copyWith(fame: npc.fame - 15, isSuspicious: true);
-        }
+        return _betrayalAssassination(npc);
+      default:
+        return npc;
     }
-    return npc;
+  }
+
+  // ── Roubo ──────────────────────────────────────────────────
+
+  Npc _betrayalTheft(Npc npc) {
+    final stolen = 5.0 + _rng.nextDouble() * 15;
+    citadel.resources.food = (citadel.resources.food - stolen).clamp(0, 9999);
+
+    final witnessed = citadel.hasBuilding(BuildingType.watchtower)
+        ? _rng.nextDouble() < 0.8
+        : _rng.nextDouble() < 0.4;
+
+    _prisonService.recordCrime(
+      npcId: npc.id,
+      type: CrimeType.theft,
+      day: state.currentDay,
+      witnessed: witnessed,
+    );
+    _addPsychologicalMarksToChildren('Testemunhou traicao: roubo de comida');
+    _addEvent(
+      GameEventType.betrayalAttempt,
+      'Roubo de Suprimentos!',
+      '${npc.name} roubou ${stolen.toStringAsFixed(0)} de comida! '
+          '${witnessed ? "Foi visto!" : "Passou despercebido."}',
+      involvedIds: [npc.id],
+      isMajor: true,
+    );
+    return npc.copyWith(fame: npc.fame - 10, loyalty: npc.loyalty - 5);
+  }
+
+  // ── Sabotagem ──────────────────────────────────────────────
+
+  Npc _betrayalSabotage(Npc npc) {
+    if (citadel.resources.morale <= 20) return npc;
+
+    citadel.resources.morale -= 8;
+    _prisonService.recordCrime(
+      npcId: npc.id,
+      type: CrimeType.sabotage,
+      day: state.currentDay,
+      witnessed: _rng.nextDouble() < 0.5,
+    );
+    _addEvent(
+      GameEventType.betrayalAttempt,
+      'Sabotagem!',
+      '${npc.name} sabotou equipamentos durante a noite. -8 moral.',
+      involvedIds: [npc.id],
+      isMajor: true,
+    );
+    return npc.copyWith(fame: npc.fame - 8);
+  }
+
+  // ── Manipulação ────────────────────────────────────────────
+
+  Npc _betrayalManipulation(Npc npc) {
+    final targets = aliveNpcs
+        .where((n) => n.id != npc.id && n.loyalty < 60)
+        .toList();
+    if (targets.isEmpty) return npc;
+
+    final target = targets[_rng.nextInt(targets.length)];
+    final idx = npcs.indexWhere((n) => n.id == target.id);
+    if (idx != -1) {
+      npcs[idx] = npcs[idx].copyWith(loyalty: npcs[idx].loyalty - 5);
+    }
+    _addEvent(
+      GameEventType.politicalEvent,
+      'Manipulacao',
+      '${npc.name} espalhou rumores sobre ${target.name}.',
+      involvedIds: [npc.id, target.id],
+    );
+    return npc.copyWith(fame: npc.fame - 5);
+  }
+
+  // ── Assassinato ────────────────────────────────────────────
+
+  Npc _betrayalAssassination(Npc npc) {
+    if (npc.origin != NpcOrigin.assassin) return npc;
+
+    final targets = aliveNpcs
+        .where((n) => n.id != npc.id && n.fame > 15)
+        .toList();
+    if (targets.isEmpty) return npc;
+
+    final target = targets[_rng.nextInt(targets.length)];
+    final succeeded = _rng.nextDouble() < 0.4;
+
+    if (succeeded) {
+      _killNpc(target, 'Assassinado por ${npc.name}');
+      _prisonService.recordCrime(
+        npcId: npc.id,
+        type: CrimeType.assassination,
+        day: state.currentDay,
+        witnessed: true,
+      );
+      _addPsychologicalMarksToChildren(
+        'Testemunhou assassinato - ${target.name} morto',
+        exceptIds: [target.id],
+      );
+      _addEvent(
+        GameEventType.betrayalAttempt,
+        'ASSASSINATO!',
+        '${npc.name} assassinou ${target.name} durante a noite!',
+        involvedIds: [npc.id, target.id],
+        isMajor: true,
+      );
+      return npc.copyWith(killCount: npc.killCount + 1, fame: npc.fame - 30);
+    } else {
+      _addEvent(
+        GameEventType.betrayalAttempt,
+        'Tentativa de Assassinato Frustrada',
+        '${npc.name} tentou matar ${target.name}, mas foi impedido!',
+        involvedIds: [npc.id, target.id],
+        isMajor: true,
+      );
+      return npc.copyWith(fame: npc.fame - 15, isSuspicious: true);
+    }
   }
 
   // ─────────────────────────────────────────────
   // TREINO AUTÔNOMO
   // ─────────────────────────────────────────────
+
+  double _trainingAptitude(Npc npc, BuildingType building) {
+    double apt = 1.0;
+
+    switch (building) {
+      case BuildingType.barracks:
+        if ([
+          Profession.guard,
+          Profession.explorer,
+          Profession.trainer,
+        ].contains(npc.profession)) {
+          apt += 0.6;
+        }
+        if (npc.traits.contains(PersonalityTrait.brave)) apt += 0.2;
+        if (npc.traits.contains(PersonalityTrait.aggressive)) apt += 0.15;
+        if (npc.traits.contains(PersonalityTrait.coward)) apt -= 0.45;
+        if (npc.traits.contains(PersonalityTrait.lazy)) apt -= 0.3;
+        // Retorno diminuído: mais forte = menos ganho
+        apt *= (1.0 - (npc.attributes.strength - 5) * 0.03).clamp(0.4, 1.6);
+
+      case BuildingType.arena:
+        if (npc.traits.contains(PersonalityTrait.brave)) apt += 0.4;
+        if (npc.traits.contains(PersonalityTrait.aggressive)) apt += 0.3;
+        if (npc.traits.contains(PersonalityTrait.coward)) apt -= 0.55;
+        if (npc.traits.contains(PersonalityTrait.ambitious)) apt += 0.2;
+        apt *= (1.0 - (npc.attributes.agility - 5) * 0.03).clamp(0.4, 1.6);
+
+      case BuildingType.temple:
+        if (npc.traits.contains(PersonalityTrait.calm)) apt += 0.3;
+        if (npc.traits.contains(PersonalityTrait.optimist)) apt += 0.2;
+        if (npc.traits.contains(PersonalityTrait.pessimist)) apt -= 0.2;
+        if (npc.traits.contains(PersonalityTrait.aggressive)) apt -= 0.15;
+        apt *= (1.0 - (npc.attributes.mentalStability - 50) * 0.01).clamp(
+          0.5,
+          1.5,
+        );
+
+      case BuildingType.library:
+        if ([
+          Profession.scribe,
+          Profession.teacher,
+          Profession.doctor,
+        ].contains(npc.profession)) {
+          apt += 0.55;
+        }
+        if (npc.traits.contains(PersonalityTrait.analytical)) apt += 0.35;
+        if (npc.traits.contains(PersonalityTrait.creative)) apt += 0.2;
+        if (npc.traits.contains(PersonalityTrait.lazy)) apt -= 0.35;
+        apt *= (1.0 - (npc.attributes.intelligence - 5) * 0.03).clamp(0.4, 1.6);
+
+      case BuildingType.trainingField:
+      default:
+        if (npc.traits.contains(PersonalityTrait.ambitious)) apt += 0.15;
+        if (npc.traits.contains(PersonalityTrait.lazy)) apt -= 0.25;
+    }
+
+    // Fadiga penaliza aptitude
+    apt -= (npc.fatigue / 100.0) * 0.3;
+
+    return apt.clamp(0.1, 2.2);
+  }
+
+  Map<String, double> _dailyTrainingGains(
+    Npc npc,
+    BuildingType building,
+    int buildingLevel,
+  ) {
+    final apt = _trainingAptitude(npc, building);
+    final levelMult = 1.0 + (buildingLevel - 1) * 0.3;
+    final base = 0.07 * apt * levelMult;
+
+    switch (building) {
+      case BuildingType.barracks:
+        return {'strength': base, 'endurance': base * 0.6};
+      case BuildingType.arena:
+        return {'agility': base * 1.1, 'strength': base * 0.7};
+      case BuildingType.temple:
+        return {'mentalStability': base * 10, 'charisma': base * 0.5};
+      case BuildingType.library:
+        return {'intelligence': base * 1.2};
+      case BuildingType.trainingField:
+      default:
+        return {
+          'strength': base * 0.65,
+          'endurance': base * 0.65,
+          'agility': base * 0.55,
+        };
+    }
+  }
+
+  // Para mostrar ganho estimado ANTES de confirmar
+  Map<String, Map<String, double>> previewTrainingGains(
+    List<String> npcIds,
+    BuildingType buildingType,
+    int durationDays,
+  ) {
+    final building = citadel.getBuilding(buildingType);
+    final level = building?.level ?? 1;
+    final result = <String, Map<String, double>>{};
+
+    for (final id in npcIds) {
+      final npc = npcs.firstWhereOrNull((n) => n.id == id && n.alive);
+      if (npc == null) continue;
+      final dailyGains = _dailyTrainingGains(npc, buildingType, level);
+      result[id] = dailyGains.map(
+        (attr, gain) => MapEntry(attr, gain * durationDays),
+      );
+    }
+    return result;
+  }
+
+  double previewNpcAptitude(String npcId, BuildingType building) {
+    final npc = npcs.firstWhereOrNull((n) => n.id == npcId);
+    if (npc == null) return 0;
+    return _trainingAptitude(npc, building);
+  }
 
   void _processAutonomousTraining() {
     if (state.currentDay % 5 != 0 || clearedFloors.isEmpty) return;
@@ -1109,6 +1345,262 @@ class GameEngine {
   // ─────────────────────────────────────────────
   // RE-EXPLORAÇÃO AUTOMÁTICA
   // ─────────────────────────────────────────────
+
+  void _processFactionIncursions() {
+    if (state.currentDay % 14 != 0) return;
+
+    for (final relation in state.factionRelations.values) {
+      if (!FactionProcessor.shouldIncurse(
+        relation: relation,
+        currentDay: state.currentDay,
+        incursionCooldownDays: 14,
+      )) {
+        continue;
+      }
+
+      final severity = (-relation.standing / 100).clamp(0.0, 1.0);
+      citadel.resources.food -= 10 * severity;
+      citadel.resources.morale -= 5 * severity;
+      citadel.resources.clampNegatives();
+
+      relation.incursionsCaused++;
+
+      _addEvent(
+        GameEventType.crisis,
+        'Incursão: ${relation.faction.label}',
+        '${relation.faction.label} atacou os suprimentos da cidadela. '
+            'Standing atual: ${relation.standing.toStringAsFixed(0)}. '
+            'Incursões totais desta facção: ${relation.incursionsCaused}.',
+        isMajor: severity > 0.7,
+      );
+    }
+  }
+
+  String confirmRecruitSurvivor(String survivorId) {
+    final idx = _pendingRecruits.indexWhere((r) => r.id == survivorId);
+    if (idx == -1) return 'Survivor não encontrado.';
+
+    if (!citadel.hasBuilding(BuildingType.wayfareresRefuge)) {
+      return 'Requer Abrigo de Viajantes para recrutar survivors.';
+    }
+
+    final survivor = _pendingRecruits[idx];
+    _pendingRecruits.removeAt(idx);
+
+    // Converte FloorInhabitant → Npc e adiciona ao roster
+    final npc = _survivorToNpc(survivor);
+    npcs.add(npc);
+
+    _addEvent(
+      GameEventType.recruitment,
+      'Survivor Recrutado',
+      '${npc.name} se juntou à cidadela com lealdade baixa mas combate elevado.',
+      involvedIds: [npc.id],
+    );
+
+    return '${npc.name} se juntou à cidadela.';
+  }
+
+  // [COLE NO GameEngine como método privado]
+  Npc _survivorToNpc(FloorInhabitant survivor) {
+    final stats = survivor.survivorStats;
+    final npc = Npc.generateRandom(state.generateNpcId(), 1, _rng);
+
+    if (stats != null) {
+      npc.attributes.strength = stats.combatPower.clamp(1, 20);
+      npc.attributes.endurance = stats.endurance.clamp(1, 20);
+      npc.attributes.intelligence = stats.intelligence.clamp(1, 20);
+      npc.loyalty = stats.loyalty;
+
+      if (stats.traits.contains('battle-hardened')) {
+        if (!npc.traits.contains(PersonalityTrait.brave)) {
+          npc.traits.add(PersonalityTrait.brave);
+        }
+      }
+      if (stats.traits.contains('traumatized')) {
+        npc.attributes.mentalStability = (npc.attributes.mentalStability - 20)
+            .clamp(0, 100)
+            .toDouble();
+        npc.traumas.add('Sobreviveu sozinho na Torre por semanas');
+      }
+      if (stats.traits.contains('tower-knowledge')) {
+        npc.attributes.intelligence = (npc.attributes.intelligence + 1.5).clamp(
+          1,
+          20,
+        );
+      }
+    }
+
+    npc.profession = Profession.explorer;
+    npc.history.add(
+      'Survivor recrutado no Abrigo de Viajantes (Dia ${state.currentDay})',
+    );
+
+    return npc;
+  }
+
+  FactionRelation _getOrCreateFactionRelation(FloorFaction faction) {
+    return state.factionRelations.putIfAbsent(
+      faction.name,
+      () => FactionRelation(faction: faction),
+    );
+  }
+
+  void _applyFactionStandingChange({
+    required FloorFaction faction,
+    required double delta,
+    TowerFloor? affectedFloor,
+  }) {
+    if (faction == FloorFaction.none || delta == 0) return;
+
+    final relation = _getOrCreateFactionRelation(faction);
+    relation.standing = (relation.standing + delta).clamp(-100.0, 100.0);
+    relation.totalInteractions++;
+    relation.lastInteractionDay = state.currentDay;
+
+    // Atualiza disposição dos habitantes no andar afetado
+    if (affectedFloor != null && affectedFloor.inhabitants.isNotEmpty) {
+      InhabitantProcessor.updateForFactionStanding(
+        inhabitants: affectedFloor.inhabitants,
+        factionStanding: relation.standing,
+      );
+    }
+
+    // Para andares conquistados com a mesma facção: atualiza todos os habitantes
+    for (final floor in clearedFloors) {
+      if (floor.controllingFaction == faction && floor.inhabitants.isNotEmpty) {
+        InhabitantProcessor.updateForFactionStanding(
+          inhabitants: floor.inhabitants,
+          factionStanding: relation.standing,
+        );
+      }
+    }
+  }
+
+  FactionInteractionResult _processFactionOnAttempt(
+    TowerFloor floor,
+    List<String> partyIds,
+  ) {
+    final faction = floor.controllingFaction;
+    if (faction == FloorFaction.none) {
+      return const FactionInteractionResult(faction: FloorFaction.none);
+    }
+
+    final relation = _getOrCreateFactionRelation(faction);
+
+    // Calcula stats médias do grupo
+    final power = _averagePartyPower();
+    final intel = _averagePartyIntelligence();
+    final food = citadel.resources.food;
+    final fame = _averagePartyFame();
+    final luck = _averagePartyLuck();
+
+    final result = FactionProcessor.processFloorAttempt(
+      faction: faction,
+      relation: relation,
+      partyPower: power,
+      partyIntelligence: intel,
+      partyResources: food,
+      partyFame: fame,
+      partyLuck: luck,
+      currentDay: state.currentDay,
+    );
+
+    // Standing muda com a tentativa
+    if (result.standingDelta != 0) {
+      _applyFactionStandingChange(
+        faction: faction,
+        delta: result.standingDelta,
+        affectedFloor: floor,
+      );
+    }
+
+    // Narrativa da facção
+    if (result.narrativeLines.isNotEmpty) {
+      _addEvent(
+        GameEventType.discovery,
+        '${faction.label} — Andar ${floor.number}',
+        result.narrativeLines.join('\n'),
+        involvedIds: partyIds,
+      );
+    }
+
+    return result;
+  }
+
+  // Stats médias do grupo — helpers para FactionProcessor
+  double _averagePartyPower() {
+    if (aliveNpcs.isEmpty) return 5.0;
+    return aliveNpcs
+            .map((n) => n.attributes.combatPower)
+            .fold(0.0, (a, b) => a + b) /
+        aliveNpcs.length;
+  }
+
+  double _averagePartyIntelligence() {
+    if (aliveNpcs.isEmpty) return 5.0;
+    return aliveNpcs
+            .map((n) => n.attributes.intelligence)
+            .fold(0.0, (a, b) => a + b) /
+        aliveNpcs.length;
+  }
+
+  double _averagePartyFame() {
+    if (aliveNpcs.isEmpty) return 0.0;
+    return aliveNpcs.map((n) => n.fame).fold(0.0, (a, b) => a + b) /
+        aliveNpcs.length;
+  }
+
+  double _averagePartyLuck() {
+    if (aliveNpcs.isEmpty) return 5.0;
+    return aliveNpcs.map((n) => n.attributes.luck).fold(0.0, (a, b) => a + b) /
+        aliveNpcs.length;
+  }
+
+  Map<String, double> _processFactionOnReexplore(
+    TowerFloor floor,
+    Map<String, double> resourcesGained,
+  ) {
+    final faction = floor.controllingFaction;
+    if (faction == FloorFaction.none) return resourcesGained;
+
+    final relation = _getOrCreateFactionRelation(faction);
+    final factionResult = FactionProcessor.processReexploration(
+      faction: faction,
+      relation: relation,
+      partyPower: _averagePartyPower(),
+      partyIntelligence: _averagePartyIntelligence(),
+      currentDay: state.currentDay,
+    );
+
+    // Aplica multiplicador de recurso da facção
+    if (factionResult.resourceMod != 1.0) {
+      for (final key in resourcesGained.keys.toList()) {
+        resourcesGained[key] =
+            (resourcesGained[key] ?? 0) * factionResult.resourceMod;
+      }
+    }
+
+    // Atualiza standing
+    if (factionResult.standingDelta != 0) {
+      _applyFactionStandingChange(
+        faction: faction,
+        delta: factionResult.standingDelta,
+        affectedFloor: floor,
+      );
+    }
+
+    // Narrativa da facção (adicionar ao evento de re-exploração)
+    if (factionResult.narrativeLines.isNotEmpty) {
+      _addEvent(
+        GameEventType.discovery,
+        'Facção: ${faction.label} — Andar ${floor.number}',
+        factionResult.narrativeLines.join('\n'),
+      );
+    }
+
+    return resourcesGained;
+  }
 
   void _processAutoReexploration() {
     if (state.currentDay % 14 != 0 || clearedFloors.isEmpty) return;
@@ -1341,7 +1833,6 @@ class GameEngine {
   ) {
     final floor = floors.firstWhere((f) => f.number == floorNumber);
     final party = _resolveParty(partyIds);
-    final tier = floor.tier;
 
     final result = FloorExplorationResult(
       floorNumber: floorNumber,
@@ -1349,81 +1840,135 @@ class GameEngine {
       partyIds: partyIds,
     );
 
+    // Custo de comida
     final costPerNpc = reexploreCostPerNpc(floorNumber);
     final totalCost = party.length * costPerNpc;
     result.foodCost = totalCost;
     citadel.resources.food -= totalCost;
+
+    // Incrementa contador ANTES de calcular recursos (para aplicar diminishing)
     floor.timesReexplored++;
 
-    _applyExpeditionFatigue(party, tier, baseFatigue: 15.0);
+    _applyExpeditionFatigue(party, floor.tier, baseFatigue: 15.0);
 
     final synergy = _calculateGroupSynergy(party);
+
+    // ── RECURSOS COM DIMINISHING RETURNS (centralizado no TowerFloor) ──
     for (final entry in floor.farmableResources.entries) {
-      double totalYield = 0;
+      double totalYield = 0.0;
+      final baseYield = entry.value; // ← já vem com diminishing do getter!
+
       for (final npc in party) {
         totalYield +=
-            entry.value *
+            baseYield *
             _attributeYield(npc, floor.type) *
             (1.0 + _personalityRewardMod(npc));
       }
-      totalYield *=
-          (1.0 + synergy) *
-          (0.85 + _rng.nextDouble() * 0.30) *
-          (1.0 / (1.0 + floor.timesReexplored * 0.05));
 
+      // Bônus de grupo + variação aleatória (mantém o "feeling" bom)
+      totalYield *= (1.0 + synergy) * (0.85 + _rng.nextDouble() * 0.30);
+
+      // Proteção para solo (não fica no prejuízo)
       if (party.length == 1) {
         totalYield = totalYield.clamp(costPerNpc * 0.5, double.infinity);
       }
 
-      result.resourcesGained[entry.key] = totalYield;
+      result.resourcesGained[entry.key] = totalYield.roundToDouble();
     }
 
-    final eventLogs = _processExpeditionEvents(party, floor, result);
-    _applyResourcesToStock(result.resourcesGained);
+    // Processamentos adicionais (mantidos)
+    _processFactionOnReexplore(floor, result.resourcesGained);
+    _processInhabitantsOnReexplore(floor, partyIds, result.resourcesGained);
 
-    final threatChance = 0.05 + (floor.timesReexplored * 0.02);
-    if (_rng.nextDouble() < threatChance) {
-      for (final npc in party) {
-        if (_rng.nextDouble() < floor.scaledMortality * 0.3) {
-          _killNpc(npc, 'Morreu em ameaca reativada no Andar ${floor.number}');
-          result.casualties.add(npc.id);
-        } else {
-          npc.attributes.mentalStability -= 5;
-          npc.attributes.endurance -= 0.2;
-        }
-      }
-      if (result.casualties.isNotEmpty) {
-        _addPsychologicalMarksToChildren(
-          'Testemunhou combate violento - ${result.casualties.length} mortos',
-          exceptIds: result.casualties,
-        );
-      }
-      _addEvent(
-        GameEventType.floorReexplore,
-        'Re-Exploracao PERIGOSA - Andar $floorNumber',
-        'AMEACA REATIVADA! ${result.casualties.length} baixas. ${eventLogs.join(' | ')}',
-        involvedIds: partyIds,
-        isMajor: result.casualties.isNotEmpty,
-      );
-    } else {
-      final resStr = result.resourcesGained.entries
-          .map((e) => '${e.key}: +${e.value.toStringAsFixed(0)}')
-          .join(', ');
-      _addEvent(
-        GameEventType.floorReexplore,
-        'Re-Exploracao - Andar $floorNumber',
-        'Custo: ${totalCost.toStringAsFixed(0)} comida. Recursos: $resStr. '
-            'Sinergia: ${(synergy * 100).toStringAsFixed(0)}%. ${eventLogs.join(' | ')}',
-        involvedIds: partyIds,
-      );
-    }
-
+    // Fama (removido duplicata)
     for (final npc in party.where((n) => n.alive)) {
       npc.fame += 1;
     }
+
+    final expeditionLogs = _processExpeditionEvents(party, floor, result);
+    if (expeditionLogs.isNotEmpty) {
+      _addEvent(
+        GameEventType.floorReexplore,
+        'Reexploração — Andar ${floor.number}',
+        expeditionLogs.join('\n'),
+        involvedIds: partyIds,
+      );
+    }
+
+    // Adiciona os recursos no armazém (caso ainda não esteja sendo feito no caller)
+    for (final entry in result.resourcesGained.entries) {
+      final res = Resources();
+      switch (entry.key) {
+        case 'food':
+          res.food = entry.value;
+          break;
+        case 'wood':
+          res.wood = entry.value;
+          break;
+        case 'stone':
+          res.stone = entry.value;
+          break;
+        case 'iron':
+          res.iron = entry.value;
+          break;
+        case 'knowledge':
+          res.knowledge = entry.value;
+          break;
+      }
+      citadel.resources.addCapped(res, citadel.storageLevel);
+    }
+
     return result;
   }
 
+  void _processInhabitantsOnReexplore(
+    TowerFloor floor,
+    List<String> partyIds,
+    Map<String, double> resourcesGained,
+  ) {
+    if (floor.inhabitants.isEmpty) return;
+
+    final hasRefuge = citadel.hasBuilding(BuildingType.wayfareresRefuge);
+    final encounterResult = InhabitantProcessor.process(
+      inhabitants: floor.inhabitants,
+      hasWayfareresRefuge: hasRefuge,
+      currentDay: state.currentDay,
+    );
+
+    // Aplica multiplicador de recursos
+    if (encounterResult.resourceMultiplier != 1.0) {
+      for (final key in resourcesGained.keys.toList()) {
+        resourcesGained[key] =
+            (resourcesGained[key] ?? 0) * encounterResult.resourceMultiplier;
+      }
+    }
+
+    // Aplica tags temporárias de anomalias
+    for (final inhabitant in floor.inhabitants) {
+      if (inhabitant.isActive &&
+          inhabitant.category == InhabitantCategory.anomaly &&
+          inhabitant.effect.floorModTag != null) {
+        floor.addTemporaryTag(inhabitant.effect.floorModTag!);
+      }
+    }
+
+    // Registra survivors recrutáveis
+    for (final survivor in encounterResult.recruitableSurvivors) {
+      if (!_pendingRecruits.any((r) => r.id == survivor.id)) {
+        _pendingRecruits.add(survivor);
+      }
+    }
+
+    // Lore fragments como evento separado
+    if (encounterResult.loreFragments.isNotEmpty) {
+      _addEvent(
+        GameEventType.discovery,
+        'Fragmento de Lore — Andar ${floor.number}',
+        encounterResult.loreFragments.join('\n'),
+        involvedIds: partyIds,
+      );
+    }
+  }
   // ── Eventos aleatórios de expedição ────────────
 
   List<String> _processExpeditionEvents(
@@ -1757,6 +2302,261 @@ class GameEngine {
     );
   }
 
+  TrainingSuggestion suggestTrainingWithBuilding(
+    String groupId,
+    BuildingType buildingType,
+    int durationDays,
+  ) {
+    final suggestion = TrainingSuggestion(
+      id: _nextSuggestionId(),
+      day: state.currentDay,
+      targetType: 'group',
+      targetId: groupId,
+      floorNumber: -1, // não usa mais floorNumber
+    );
+
+    final group = groups.firstWhereOrNull((g) => g.id == groupId);
+    final refusedIds = <String>[];
+    if (group == null) {
+      suggestion.response = TrainingResponse.refused;
+      suggestion.responseDetail = 'Grupo não encontrado.';
+      suggestion.acceptedIds = [];
+      suggestion.refusedIds = refusedIds;
+      trainingSuggestions.add(suggestion);
+      return suggestion;
+    }
+
+    // Verifica se edifício existe
+    if (!citadel.hasBuilding(buildingType)) {
+      suggestion.response = TrainingResponse.refused;
+      suggestion.responseDetail = 'Edificio necessário não está construído.';
+      suggestion.acceptedIds = [];
+      suggestion.refusedIds = refusedIds;
+      trainingSuggestions.add(suggestion);
+      return suggestion;
+    }
+
+    final members = group.memberIds
+        .map((id) => npcs.firstWhereOrNull((n) => n.id == id && n.alive))
+        .whereType<Npc>()
+        .toList();
+
+    if (members.isEmpty) {
+      suggestion.response = TrainingResponse.refused;
+      suggestion.responseDetail = 'Nenhum membro disponível.';
+      suggestion.acceptedIds = [];
+      suggestion.refusedIds = refusedIds;
+      trainingSuggestions.add(suggestion);
+      return suggestion;
+    }
+
+    // Já em treino ativo?
+    if (activeTrainings.any((m) => m.groupId == groupId)) {
+      suggestion.response = TrainingResponse.refused;
+      suggestion.responseDetail =
+          '${group.name} já está em missão de treino ativa.';
+      suggestion.acceptedIds = [];
+      suggestion.refusedIds = refusedIds;
+      trainingSuggestions.add(suggestion);
+      return suggestion;
+    }
+
+    int accepted = 0;
+    int refused = 0;
+    final participantIds = <String>[];
+
+    for (final npc in members) {
+      npc.trainingSuggestionsReceived++;
+      if (npc.isIncapacitated || npc.isExhausted) {
+        refused++;
+        refusedIds.add(npc.id);
+        continue;
+      }
+
+      final apt = _trainingAptitude(npc, buildingType);
+      // Aptitude alta = mais chance de aceitar
+      final acceptChance =
+          (npc.trainingAcceptanceChance(hasTrainingField: false) * (apt * 0.5))
+              .clamp(0.1, 0.9);
+
+      if (_rng.nextDouble() < acceptChance) {
+        accepted++;
+        npc.trainingSuggestionsAccepted++;
+        participantIds.add(npc.id);
+      } else {
+        refused++;
+        refusedIds.add(npc.id);
+      }
+    }
+
+    final buildingName = Building(type: buildingType).name;
+
+    if (accepted == 0) {
+      suggestion.response = TrainingResponse.refused;
+      suggestion.responseDetail =
+          'Ninguém do ${group.name} aceitou treinar em $buildingName.';
+      suggestion.acceptedIds = [];
+      suggestion.refusedIds = refusedIds;
+    } else if (accepted > refused) {
+      suggestion.response = TrainingResponse.accepted;
+      suggestion.responseDetail =
+          '$accepted de ${members.length} membros iniciaram $durationDays dias de treino em $buildingName.';
+      suggestion.acceptedIds = participantIds;
+      suggestion.refusedIds = refusedIds;
+
+      activeTrainings.add(
+        TrainingMission(
+          id: _nextMissionId(),
+          groupId: groupId,
+          participantIds: participantIds,
+          buildingType: buildingType,
+          startDay: state.currentDay,
+          durationDays: durationDays,
+        ),
+      );
+    } else {
+      suggestion.response = TrainingResponse.negotiated;
+      suggestion.responseDetail =
+          'Apenas $accepted aceitaram ($refused recusaram). Treino iniciado com quem aceitou.';
+      suggestion.acceptedIds = participantIds;
+      suggestion.refusedIds = refusedIds;
+
+      if (participantIds.isNotEmpty) {
+        activeTrainings.add(
+          TrainingMission(
+            id: _nextMissionId(),
+            groupId: groupId,
+            participantIds: participantIds,
+            buildingType: buildingType,
+            startDay: state.currentDay,
+            durationDays: durationDays,
+          ),
+        );
+      }
+    }
+
+    trainingSuggestions.add(suggestion);
+    return suggestion;
+  }
+
+  void _processActiveTrainings() {
+    final completed = <TrainingMission>[];
+
+    for (final mission in activeTrainings) {
+      final building = citadel.getBuilding(mission.buildingType);
+      final level = building?.level ?? 1;
+
+      final participants = mission.participantIds
+          .map((id) => npcs.firstWhereOrNull((n) => n.id == id && n.alive))
+          .whereType<Npc>()
+          .toList();
+
+      if (participants.isEmpty) {
+        completed.add(mission);
+        continue;
+      }
+
+      for (final npc in participants) {
+        final gains = _dailyTrainingGains(npc, mission.buildingType, level);
+        final npcGains = mission.gainsPerNpc.putIfAbsent(npc.id, () => {});
+
+        gains.forEach((attr, value) {
+          npcGains[attr] = (npcGains[attr] ?? 0) + value;
+          _applyAttributeGain(npc, attr, value);
+        });
+
+        // Fadiga por treino (menos que expedição)
+        npc.fatigue = (npc.fatigue + 8.0).clamp(0, 100);
+      }
+
+      // Custo de comida diário
+      citadel.resources.food -= participants.length * 1.0;
+
+      mission.completedDays++;
+
+      if (mission.isComplete) {
+        completed.add(mission);
+        _onTrainingMissionComplete(mission, participants);
+      }
+    }
+
+    activeTrainings.removeWhere((m) => completed.contains(m));
+  }
+
+  void _applyAttributeGain(Npc npc, String attr, double value) {
+    switch (attr) {
+      case 'strength':
+        npc.attributes.strength = (npc.attributes.strength + value).clamp(
+          1,
+          20,
+        );
+      case 'endurance':
+        npc.attributes.endurance = (npc.attributes.endurance + value).clamp(
+          1,
+          20,
+        );
+      case 'agility':
+        npc.attributes.agility = (npc.attributes.agility + value).clamp(1, 20);
+      case 'intelligence':
+        npc.attributes.intelligence = (npc.attributes.intelligence + value)
+            .clamp(1, 20);
+      case 'charisma':
+        npc.attributes.charisma = (npc.attributes.charisma + value).clamp(
+          1,
+          20,
+        );
+      case 'mentalStability':
+        npc.attributes.mentalStability =
+            (npc.attributes.mentalStability + value).clamp(0, 100);
+    }
+  }
+
+  void _onTrainingMissionComplete(
+    TrainingMission mission,
+    List<Npc> participants,
+  ) {
+    final group = groups.firstWhereOrNull((g) => g.id == mission.groupId);
+    final buildingName = Building(type: mission.buildingType).name;
+
+    // Resumo de ganhos totais
+    final summaryParts = <String>[];
+    for (final npc in participants) {
+      final gains = mission.gainsPerNpc[npc.id];
+      if (gains == null || gains.isEmpty) continue;
+      final gainStr = gains.entries
+          .map((e) => '${_attrLabel(e.key)}+${e.value.toStringAsFixed(2)}')
+          .join(', ');
+      summaryParts.add('${npc.name}: $gainStr');
+      npc.history.add(
+        'Completou ${mission.durationDays} dias de treino em $buildingName '
+        '(Dia ${state.currentDay})',
+      );
+    }
+
+    if (group != null) {
+      group.cohesion = (group.cohesion + 3).clamp(0, 100);
+    }
+
+    _addEvent(
+      GameEventType.training,
+      'Treino Completo: $buildingName',
+      '${participants.length} membros completaram ${mission.durationDays} dias de treino.\n'
+          '${summaryParts.join('\n')}',
+      involvedIds: participants.map((n) => n.id).toList(),
+      isMajor: true,
+    );
+  }
+
+  String _attrLabel(String attr) => switch (attr) {
+    'strength' => 'FOR',
+    'endurance' => 'RES',
+    'agility' => 'AGI',
+    'intelligence' => 'INT',
+    'charisma' => 'CAR',
+    'mentalStability' => 'SAN',
+    _ => attr,
+  };
+
   // ─────────────────────────────────────────────
   // INVOCAÇÃO EMERGENCIAL
   // ─────────────────────────────────────────────
@@ -1793,6 +2593,132 @@ class GameEngine {
     }
   }
 
+  void _processPrisonSystem() {
+    // 1. Processa votos dos jurados nos julgamentos pendentes
+    final trialEvents = _prisonService.processTrialVotes(
+      allNpcs: npcs,
+      currentDay: state.currentDay,
+      rng: _rng,
+      generateEventId: () => state.eventIdCounter++,
+    );
+    // Corrige o dayImprisoned das novas celas (o service usa 0 como placeholder)
+    for (final cell in _prisonService.cells) {
+      if (cell.dayImprisoned == 0) {
+        // Recria a célula com o dia correto — como dayImprisoned é final,
+        // precisamos substituir. Fazemos isso via serialização inline.
+        final idx = _prisonService.cells.indexOf(cell);
+        if (idx != -1) {
+          _prisonService.cells
+              as dynamic; // acesso direto não disponível — use o workaround abaixo
+        }
+      }
+    }
+
+    for (final event in trialEvents) {
+      events.add(event);
+      _dayEvents.add(event);
+      if (events.length > _maxRawEvents) {
+        events.removeRange(0, events.length - _maxRawEvents);
+      }
+      _maybeCreateRecord(event);
+    }
+
+    // 2. Aplica efeitos diários nos presos
+    for (final cell in _prisonService.cells) {
+      final npc = npcs.firstWhereOrNull((n) => n.id == cell.npcId);
+      if (npc == null) continue;
+      // Prisão degrada sanidade e lealdade lentamente
+      npc.attributes.mentalStability -= 1.5;
+      npc.loyalty -= 0.5;
+      // Profissão forçada como idle
+      npc.profession = Profession.idle;
+    }
+
+    // 3. Solta presos que cumpriram a pena
+    final released = _prisonService.processReleases(state.currentDay);
+    for (final npcId in released) {
+      final npc = npcs.firstWhereOrNull((n) => n.id == npcId);
+      if (npc == null) continue;
+      npc.loyalty -= 5; // ressentimento pós-prisão
+      npc.traumas.add('Cumpriu pena de prisao no dia ${state.currentDay}');
+      _addEvent(
+        GameEventType.politicalEvent,
+        'Liberado: ${npc.name}',
+        '${npc.name} cumpriu sua pena e foi solto. '
+            'Reintegracao a cidadela pode ser turbulenta.',
+        involvedIds: [npcId],
+        isMajor: false,
+      );
+    }
+
+    // 4. Verifica se algum NPC atingiu threshold sem julgamento aberto
+    for (final npc in aliveNpcs) {
+      if (_prisonService.isImprisoned(npc.id) ||
+          _prisonService.isOnTrial(npc.id)) {
+        continue;
+      }
+      if (!_prisonService.shouldOpenTrial(npc.id)) continue;
+      if (!citadel.hasBuilding(BuildingType.councilHall)) continue;
+      if (!citadel.hasBuilding(BuildingType.prison)) continue;
+
+      final (result, trial) = _prisonService.openTrial(
+        npcId: npc.id,
+        allNpcs: npcs,
+        citadel: citadel,
+        currentDay: state.currentDay,
+        rng: _rng,
+      );
+      if (result == ArrestResult.trialOpened && trial != null) {
+        _addEvent(
+          GameEventType.politicalEvent,
+          'JULGAMENTO CONVOCADO: ${npc.name}',
+          'Evidencias acumuladas levaram o conselho a convocar '
+              'o julgamento de ${npc.name} por ${trial.primaryCrime.label}.',
+          involvedIds: [npc.id, ...trial.jurorIds],
+          isMajor: true,
+        );
+      }
+    }
+  }
+
+  /// Ação do jogador: inicia julgamento de um NPC manualmente
+  ArrestResult arrestNpc(String npcId) {
+    if (!citadel.hasBuilding(BuildingType.councilHall)) {
+      return ArrestResult.noCouncilHall;
+    }
+    if (!citadel.hasBuilding(BuildingType.prison)) {
+      return ArrestResult.noPrison;
+    }
+    if (_prisonService.isImprisoned(npcId)) {
+      return ArrestResult.alreadyImprisoned;
+    }
+    if (_prisonService.isOnTrial(npcId)) return ArrestResult.alreadyOnTrial;
+    final evidence = _prisonService.allCrimes
+        .where((c) => c.npcId == npcId && c.witnessed)
+        .toList();
+    if (evidence.isEmpty) return ArrestResult.noCrimeEvidence;
+
+    final (result, trial) = _prisonService.openTrial(
+      npcId: npcId,
+      allNpcs: npcs,
+      citadel: citadel,
+      currentDay: state.currentDay,
+      rng: _rng,
+    );
+
+    if (result == ArrestResult.trialOpened && trial != null) {
+      final accused = npcs.firstWhereOrNull((n) => n.id == npcId);
+      _addEvent(
+        GameEventType.politicalEvent,
+        'JULGAMENTO ABERTO: ${accused?.name ?? npcId}',
+        'O lider convocou o conselho para julgar ${accused?.name ?? npcId}.',
+        involvedIds: [npcId, ...trial.jurorIds],
+        isMajor: true,
+      );
+    }
+    return result;
+  }
+
   // ─────────────────────────────────────────────
   // SOLICITAR NOVOS MORADORES
   // ─────────────────────────────────────────────
@@ -1802,32 +2728,45 @@ class GameEngine {
     if (daysSince < 7) {
       return 'Aguarde ${7 - daysSince} dia(s) para nova solicitacao.';
     }
+
     if (citadel.resources.morale < 60) {
-      return 'Moral muito baixa (${citadel.resources.morale.toStringAsFixed(0)}/100). Novos moradores nao virarao.';
+      return 'Moral muito baixa '
+          '(${citadel.resources.morale.toStringAsFixed(0)}/100). '
+          'Novos moradores nao virao.';
     }
+
     if (population >= citadel.totalPopulationCapacity) {
       return 'Sem espaco! Construa mais moradias.';
     }
 
     final spacesAvailable = citadel.totalPopulationCapacity - population;
-    const foodPerDay = 1.5, daysBuffer = 10;
+
+    const foodPerDay = 1.5;
+    const daysBuffer = 10;
+
     final maxByFood = (citadel.resources.food / (foodPerDay * daysBuffer))
         .floor();
+
     final canReceive = min(spacesAvailable, maxByFood);
 
     if (canReceive <= 0) {
       return maxByFood <= 0
-          ? 'Comida insuficiente! Precisa de ${(foodPerDay * daysBuffer).toStringAsFixed(0)} por morador.'
+          ? 'Comida insuficiente! Precisa de '
+                '${(foodPerDay * daysBuffer).toStringAsFixed(0)} por morador.'
           : 'Sem espaco disponivel.';
     }
 
     final newSettlers = _generateSettlers(canReceive);
+
     state.lastSettlersRequestDay = state.currentDay;
+    npcs.addAll(newSettlers);
 
     final couples = newSettlers.where((n) => n.partnerId != null).length ~/ 2;
+
     final families = newSettlers
         .where((n) => n.relationships.any((r) => r.type == 'familiar'))
         .length;
+
     final darkCount = newSettlers.where((n) => n.origin.isDarkOrigin).length;
 
     _addEvent(
@@ -1842,8 +2781,10 @@ class GameEngine {
       isMajor: true,
     );
 
-    return 'Sucesso! ${newSettlers.length} moradores ($couples casais, $families familiares'
-        '${darkCount > 0 ? ", $darkCount suspeitos" : ""}). Proxima solicitacao em 7 dias.';
+    return 'Sucesso! ${newSettlers.length} moradores '
+        '($couples casais, $families familiares'
+        '${darkCount > 0 ? ", $darkCount suspeitos" : ""}). '
+        'Proxima solicitacao em 7 dias.';
   }
 
   List<Npc> _generateSettlers(int count) {
@@ -1852,46 +2793,52 @@ class GameEngine {
 
     while (remaining > 0) {
       final roll = _rng.nextDouble();
+
       if (roll < 0.05 && remaining >= 2) {
-        settlers.addAll(_spawnCouple());
-        remaining -= 2;
+        final couple = _spawnCouple();
+        settlers.addAll(couple.take(remaining));
+        remaining -= min(remaining, couple.length);
       } else if (roll < 0.15 && remaining >= 2) {
-        final family = _spawnFamily(min(remaining, _rng.nextInt(2) + 2));
+        final familySize = min(remaining, _rng.nextInt(2) + 2).toInt();
+
+        final family = _spawnFamily(familySize);
         settlers.addAll(family);
         remaining -= family.length;
       } else {
-        final npc = Npc.generateRandom(state.generateNpcId(), 1, _rng);
-        settlers.add(npc);
-        npcs.add(npc);
+        settlers.add(Npc.generateRandom(state.generateNpcId(), 1, _rng));
         remaining--;
       }
     }
+
     return settlers;
   }
 
   List<Npc> _spawnCouple() {
     final id1 = state.generateNpcId();
     final id2 = state.generateNpcId();
+
     final a = Npc.generateRandom(id1, 1, _rng);
     final b = Npc.generateRandom(id2, 1, _rng);
+
     a.partnerId = id2;
     b.partnerId = id1;
+
     a.relationships.add(
       Relationship(targetId: id2, type: 'parceiro', affinity: 0.85),
     );
+
     b.relationships.add(
       Relationship(targetId: id1, type: 'parceiro', affinity: 0.85),
     );
-    npcs.addAll([a, b]);
+
     return [a, b];
   }
 
   List<Npc> _spawnFamily(int size) {
     final members = List.generate(size, (_) {
-      final npc = Npc.generateRandom(state.generateNpcId(), 1, _rng);
-      npcs.add(npc);
-      return npc;
+      return Npc.generateRandom(state.generateNpcId(), 1, _rng);
     });
+
     for (int i = 0; i < members.length; i++) {
       for (int j = i + 1; j < members.length; j++) {
         members[i].relationships.add(
@@ -1910,9 +2857,9 @@ class GameEngine {
         );
       }
     }
+
     return members;
   }
-
   // ─────────────────────────────────────────────
   // EVENTOS ALEATÓRIOS
   // ─────────────────────────────────────────────
@@ -1976,6 +2923,7 @@ class GameEngine {
             'Conflito',
             '${a.name} e ${b.name} entraram em disputa.',
             involvedIds: [a.id, b.id],
+            isMajor: true,
           );
         }
         break;
@@ -2068,8 +3016,9 @@ class GameEngine {
     double riskOfLoss = 0.0;
     if (pregnant.maternalNutrition < 30) {
       riskOfLoss += 0.25;
-    } else if (pregnant.maternalNutrition < 50)
+    } else if (pregnant.maternalNutrition < 50) {
       riskOfLoss += 0.10;
+    }
     if (pregnant.attributes.mentalStability < 30) riskOfLoss += 0.08;
     if (citadel.resources.morale < 30) riskOfLoss += 0.05;
     if (pregnant.traumas.any(
@@ -2143,6 +3092,8 @@ class GameEngine {
     parentB.childrenIds.add(childId);
     parentA.pregnantSince = null;
     parentA.maternalNutrition = 100.0;
+    parentA.lastBirthDay = state.currentDay;
+    parentB.lastBirthDay = state.currentDay;
     state.totalBirths++;
 
     final nutritionNote = nutrition < 40
@@ -2167,7 +3118,32 @@ class GameEngine {
 
   void _tryConceive(Npc a, Npc b) {
     if (citadel.resources.food < 20 || citadel.resources.morale < 40) return;
-    if (_rng.nextDouble() >= 0.08) return;
+
+    // Cooldown pós-parto: mínimo 150 dias de jogo (~5 meses)
+    const int postBirthCooldown = 150;
+    if (a.lastBirthDay > 0 &&
+        (state.currentDay - a.lastBirthDay) < postBirthCooldown) {
+      return;
+    }
+    if (b.lastBirthDay > 0 &&
+        (state.currentDay - b.lastBirthDay) < postBirthCooldown) {
+      return;
+    }
+
+    // Chance base baixa
+    double chance = 0.03;
+
+    final capacity = citadel.totalPopulationCapacity;
+    final pop = aliveNpcs.length;
+    if (pop >= capacity) {
+      chance = 0.005;
+    } else if (pop >= capacity * 0.85) {
+      chance *= 0.4;
+    }
+    final foodPerCapita = citadel.resources.food / pop.clamp(1, 9999);
+    if (foodPerCapita < 2.0) chance *= 0.3;
+
+    if (_rng.nextDouble() >= chance) return;
 
     final mother = _rng.nextBool() ? a : b;
     mother.pregnantSince = state.currentDay;
@@ -2175,12 +3151,11 @@ class GameEngine {
     _addEvent(
       GameEventType.romance,
       'Nova Vida a Caminho',
-      '${a.name} e ${b.name} estao esperando um filho!',
+      '${a.name} e ${b.name} estão esperando um filho!',
       involvedIds: [a.id, b.id],
     );
     citadel.resources.morale += 2;
   }
-
   // ─────────────────────────────────────────────
   // MORTALIDADE INFANTIL
   // ─────────────────────────────────────────────
@@ -2194,8 +3169,9 @@ class GameEngine {
       final foodPerCapita = citadel.resources.food / max(1, aliveNpcs.length);
       if (foodPerCapita < 0.5) {
         risk += 0.25;
-      } else if (foodPerCapita < 1.0)
+      } else if (foodPerCapita < 1.0) {
         risk += 0.10;
+      }
       if (stage == GrowthStage.baby && child.maternalNutrition < 50) {
         risk += 0.12;
       }
@@ -2207,8 +3183,9 @@ class GameEngine {
 
       if (citadel.resources.morale < 20) {
         risk += 0.08;
-      } else if (citadel.resources.morale < 40)
+      } else if (citadel.resources.morale < 40) {
         risk += 0.04;
+      }
       if (citadel.hasBuilding(BuildingType.infirmary)) risk *= 0.5;
 
       if (risk <= 0 || _rng.nextDouble() >= risk) continue;
@@ -2265,7 +3242,7 @@ class GameEngine {
       final daysAlive = state.currentDay - npc.birthDay;
       final stage = npc.growthStage(state.currentDay);
 
-      if (daysAlive == 1 && stage == GrowthStage.child) {
+      if (daysAlive == 7 && stage == GrowthStage.child) {
         _addEvent(
           GameEventType.birth,
           'Crescimento: ${npc.name}',
@@ -2273,7 +3250,7 @@ class GameEngine {
           involvedIds: [npc.id],
         );
       }
-      if (daysAlive == 3 && stage == GrowthStage.adolescent) {
+      if (daysAlive == 30 && stage == GrowthStage.adolescent) {
         _developPersonalityFromMarks(npc, isFirstTrait: true);
         _addEvent(
           GameEventType.birth,
@@ -2282,7 +3259,7 @@ class GameEngine {
           involvedIds: [npc.id],
         );
       }
-      if (daysAlive == 5 && stage == GrowthStage.adult) {
+      if (daysAlive == 60 && stage == GrowthStage.adult) {
         _developPersonalityFromMarks(npc, isFirstTrait: false);
         final traitNames = npc.traits.map((t) => t.label).join(', ');
         _addEvent(
@@ -2318,30 +3295,31 @@ class GameEngine {
       trait = isFirstTrait
           ? PersonalityTrait.pessimist
           : PersonalityTrait.compassionate;
-    } else if (hunger >= 2)
+    } else if (hunger >= 2) {
       trait = isFirstTrait
           ? PersonalityTrait.pragmatic
           : PersonalityTrait.ruthless;
-    else if (combat >= 2)
+    } else if (combat >= 2) {
       trait = isFirstTrait
           ? PersonalityTrait.brave
           : PersonalityTrait.aggressive;
-    else if (betrayal >= 1)
+    } else if (betrayal >= 1) {
       trait = isFirstTrait
           ? PersonalityTrait.loner
           : PersonalityTrait.treacherous;
-    else if (victories >= 2)
+    } else if (victories >= 2) {
       trait = isFirstTrait ? PersonalityTrait.optimist : PersonalityTrait.brave;
-    else if (citadel.resources.morale > 70)
+    } else if (citadel.resources.morale > 70) {
       trait = isFirstTrait
           ? PersonalityTrait.optimist
           : PersonalityTrait.compassionate;
-    else if (citadel.resources.morale < 30)
+    } else if (citadel.resources.morale < 30) {
       trait = isFirstTrait
           ? PersonalityTrait.pessimist
           : PersonalityTrait.coward;
-    else
+    } else {
       trait = _inheritedOrRandomTrait(npc);
+    }
 
     if (!npc.traits.contains(trait)) {
       npc.traits.add(trait);
@@ -2390,24 +3368,88 @@ class GameEngine {
   // ─────────────────────────────────────────────
 
   void _processAging() {
-    if (state.currentDay % 30 != 0) return;
-    for (final npc in aliveNpcs) {
+    // 1 ano de jogo = 360 dias
+    if (state.currentDay % 360 != 0) return;
+
+    for (final npc in aliveNpcs.toList()) {
       npc.age++;
-      if (npc.age < 16 && npc.generation > 1) {
+
+      // Crescimento juvenil (geração 2+, ainda jovem)
+      if (npc.age < 18 && npc.generation > 1) {
         npc.attributes.strength += 0.3;
         npc.attributes.agility += 0.3;
         npc.attributes.intelligence += 0.2;
         npc.attributes.endurance += 0.3;
       }
-      if (npc.age > 60) {
-        npc.attributes.strength -= 0.2;
-        npc.attributes.agility -= 0.2;
-        npc.attributes.endurance -= 0.3;
-        if (_rng.nextDouble() < 0.02) {
+
+      final maxAge = _lifeExpectancy(npc);
+
+      // Semi-divinos: imortais — só marcamos história
+      if (npc.fame >= 600) {
+        if (npc.age % 100 == 0) {
+          npc.history.add('Atravessou ${npc.age} anos. A Torre o preserva.');
+          _addEvent(
+            GameEventType.discovery,
+            'Imortalidade Confirmada',
+            '${npc.name} completou ${npc.age} anos. Nem o tempo o alcança.',
+            involvedIds: [npc.id],
+            isMajor: true,
+          );
+        }
+        continue;
+      }
+
+      // Decaimento físico após 70% da expectativa
+      final agingRatio = npc.age / maxAge.clamp(1, 9999);
+      if (agingRatio > 0.7) {
+        npc.attributes.strength -= 0.3;
+        npc.attributes.agility -= 0.3;
+        npc.attributes.endurance -= 0.4;
+        // Sabedoria cresce com a idade
+        npc.attributes.intelligence += 0.1;
+        npc.attributes.charisma += 0.05;
+      }
+
+      // Risco de morte por velhice — cresce após 70% da expectativa
+      if (agingRatio > 0.7) {
+        final deathChance = ((agingRatio - 0.7) * 0.15).clamp(0.0, 0.8);
+        if (_rng.nextDouble() < deathChance) {
+          final flavor = _agingFlavorText(npc);
           _killNpc(npc, 'Faleceu de causas naturais aos ${npc.age} anos');
+          _addEvent(
+            GameEventType.death,
+            'Fim de Uma Era',
+            '${npc.name} viveu ${npc.age} anos. $flavor',
+            involvedIds: [npc.id],
+            isMajor: npc.fame > 30,
+          );
         }
       }
     }
+  }
+
+  int _lifeExpectancy(Npc npc) {
+    if (npc.fame >= 201) return 9999; // imortal
+    if (npc.fame >= 101) return 500 + _rng.nextInt(200); // 500–700
+    if (npc.fame >= 51) return 300 + _rng.nextInt(150); // 300–450
+    if (npc.fame >= 21) return 150 + _rng.nextInt(100); // 150–250
+    return 80 + _rng.nextInt(40); // 80–120
+  }
+
+  String _agingFlavorText(Npc npc) {
+    if (npc.fame > 50) {
+      return 'Sua lenda permanece gravada nas paredes da Torre.';
+    }
+    if (npc.killCount > 10) {
+      return 'Sobreviveu a incontáveis batalhas, mas não ao tempo.';
+    }
+    if (npc.generation > 1) {
+      return 'Nascido na Torre, na Torre encontrou seu fim.';
+    }
+    if (npc.daysSurvived > 300) {
+      return 'Resistiu mais que qualquer invocado antes.';
+    }
+    return 'A Torre segue. Os mortais, não.';
   }
 
   // ─────────────────────────────────────────────
@@ -2505,12 +3547,6 @@ class GameEngine {
       }
       if (citadel.buildings.length >= citadel.level.maxBuildings) return false;
       if (b.requiredTier > currentTier) return false;
-      if (b.canEvolve) {
-        final existing = citadel.buildings
-            .where((bd) => bd.type == type)
-            .toList();
-        if (existing.any((bd) => bd.tier > 0)) return false;
-      }
       return true;
     }).toList();
   }
@@ -2529,9 +3565,19 @@ class GameEngine {
 
   bool buildStructure(BuildingType type) {
     if (!canBuild(type)) return false;
-    final building = Building(type: type);
+
+    // Novas cópias de canEvolve já nascem no tier atual da cidadela
+    final tier = Building(type: type).canEvolve
+        ? citadel.level.buildingTier
+        : 0;
+
+    final building = Building(
+      type: type,
+      tier: tier,
+    ); // ← era só Building(type: type)
     citadel.resources.spend(building.cost.toResources());
     citadel.buildings.add(building);
+
     _addEvent(
       GameEventType.construction,
       'Nova Construcao: ${building.name}',
@@ -2571,34 +3617,19 @@ class GameEngine {
   }
 
   bool canUpgradeAllBuildings(BuildingType type) {
-    final buildings = citadel.buildings.where((b) => b.type == type).toList();
+    final buildings = citadel.buildings
+        .where((b) => b.type == type && b.level < b.maxLevel)
+        .toList();
     if (buildings.isEmpty) return false;
-    final firstLevel = buildings.first.level;
-    if (!buildings.every((b) => b.level == firstLevel)) return false;
-    if (buildings.first.level >= buildings.first.maxLevel) return false;
     final totalCost = _calculateBulkUpgradeCost(buildings);
     return citadel.resources.canAfford(totalCost);
   }
 
-  Resources _calculateBulkUpgradeCost(List<Building> buildings) {
-    if (buildings.isEmpty) return Resources();
-    final count = buildings.length;
-    final singleCost = buildings.first.upgradeCost;
-    return Resources(
-      food: singleCost.food * count,
-      wood: singleCost.wood * count,
-      stone: singleCost.stone * count,
-      iron: singleCost.iron * count,
-      knowledge: singleCost.knowledge * count,
-    );
-  }
-
   bool upgradeAllBuildings(BuildingType type) {
-    final buildings = citadel.buildings.where((b) => b.type == type).toList();
+    final buildings = citadel.buildings
+        .where((b) => b.type == type && b.level < b.maxLevel)
+        .toList();
     if (buildings.isEmpty) return false;
-
-    final first = buildings.first;
-    if (!buildings.every((b) => b.level == first.level)) return false;
 
     final totalCost = _calculateBulkUpgradeCost(buildings);
     if (!citadel.resources.canAfford(totalCost)) return false;
@@ -2608,9 +3639,8 @@ class GameEngine {
     for (final building in buildings) {
       upgradeBuildingWithInheritance(building);
     }
-
     final count = buildings.length;
-    final buildingName = first.name;
+    final buildingName = buildings.first.name;
 
     _addEvent(
       GameEventType.upgrade,
@@ -2625,6 +3655,20 @@ class GameEngine {
 
     _processNpcBuildReaction(type, isUpgrade: true);
     return true;
+  }
+
+  Resources _calculateBulkUpgradeCost(List<Building> buildings) {
+    if (buildings.isEmpty) return Resources();
+    return buildings.fold(Resources(), (total, b) {
+      final c = b.upgradeCost;
+      return Resources(
+        food: total.food + c.food,
+        wood: total.wood + c.wood,
+        stone: total.stone + c.stone,
+        iron: total.iron + c.iron,
+        knowledge: total.knowledge + c.knowledge,
+      );
+    });
   }
 
   void upgradeBuildingWithInheritance(Building building) {
@@ -2764,6 +3808,7 @@ class GameEngine {
             GameEventType.politicalEvent,
             'Barracks ${isUpgrade ? "Melhorado" : "Construido"} - Divisão',
             'A ${isUpgrade ? "melhoria" : "construção"} divide opiniões. ${lowMorale ? "Muitos questionam: 'Armas não nos alimentam!'" : "Alguns temem a militarização."}',
+            isMajor: true,
           );
         } else if (militaryStrong) {
           _addEvent(
@@ -2813,6 +3858,7 @@ class GameEngine {
           GameEventType.celebration,
           'Fe Renovada',
           'A $action do Templo trouxe esperanca a todos.',
+          isMajor: true,
         );
         break;
       case BuildingType.tavern:
@@ -2848,6 +3894,7 @@ class GameEngine {
           GameEventType.politicalEvent,
           'Arena Inaugurada!',
           'Os mais bravos ja planejam seus duelos.',
+          isMajor: true,
         );
         break;
       case BuildingType.councilHall:
@@ -2858,6 +3905,7 @@ class GameEngine {
           GameEventType.politicalEvent,
           'Democracia Emergente',
           'A Sala do Conselho da voz ao povo.',
+          isMajor: true,
         );
         break;
       case BuildingType.promotionHall:
@@ -2882,6 +3930,7 @@ class GameEngine {
             GameEventType.celebration,
             'Comida Garantida',
             'A $action traz alivio a todos.',
+            isMajor: true,
           );
         }
         break;
@@ -2928,6 +3977,27 @@ class GameEngine {
         // Opcional: resetar nível para 1 se quiser
         // building.level = 1;
       }
+    }
+  }
+
+  void _processFameGains() {
+    for (final npc in aliveNpcs) {
+      double gain = 0.0;
+
+      // ✅ Verifica AMBOS os campos para garantir consistência:
+      // um NPC é líder se leaderOfGroupId aponta para algum grupo
+      // OU se o grupo em que está o lista como leaderId.
+      final isLeader =
+          npc.leaderOfGroupId != null ||
+          (npc.groupId != null &&
+              groups.any((g) => g.id == npc.groupId && g.leaderId == npc.id));
+
+      if (isLeader) gain += 0.8;
+      if (citadel.hasBuilding(BuildingType.monument)) gain += 0.4;
+      if (citadel.hasBuilding(BuildingType.tavern)) gain += 0.3;
+      if (npc.daysSurvived > 100) gain += 0.2;
+
+      if (gain > 0) npc.gainFame(gain);
     }
   }
 
@@ -2992,6 +4062,43 @@ class GameEngine {
           involvedIds: [npc.id],
         );
       }
+      // Rumor expõe um crime oculto de algum NPC suspeito
+      final suspects = aliveNpcs.where((n) => n.isSuspicious).toList();
+      if (suspects.isNotEmpty) {
+        final suspect = suspects[_rng.nextInt(suspects.length)];
+        final exposed = _prisonService.spreadRumor(suspect.id, _rng);
+        if (exposed != null) {
+          _addEvent(
+            GameEventType.system,
+            'Rumor Expõe Crime!',
+            'Fofocas na taverna revelam: ${suspect.name} pode ter cometido '
+                '${exposed.type.label}${exposed.witnessed ? " — EVIDENCIA CONFIRMADA!" : " (ainda sem prova concreta)."}',
+            involvedIds: [suspect.id],
+            isMajor: exposed.witnessed,
+          );
+          // Abre julgamento automático se threshold atingido
+          if (_prisonService.shouldOpenTrial(suspect.id)) {
+            final (result, trial) = _prisonService.openTrial(
+              npcId: suspect.id,
+              allNpcs: npcs,
+              citadel: citadel,
+              currentDay: state.currentDay,
+              rng: _rng,
+            );
+            if (result == ArrestResult.trialOpened && trial != null) {
+              _addEvent(
+                GameEventType.politicalEvent,
+                'JULGAMENTO ABERTO: ${suspect.name}',
+                'Os rumores da taverna acumularam evidencias suficientes. '
+                    'O conselho foi convocado para julgar ${suspect.name} '
+                    'por ${trial.primaryCrime.label}.',
+                involvedIds: [suspect.id, ...trial.jurorIds],
+                isMajor: true,
+              );
+            }
+          }
+        }
+      }
     }
 
     if (_rng.nextDouble() < 0.2 && aliveNpcs.length >= 2) {
@@ -3006,6 +4113,118 @@ class GameEngine {
     }
   }
 
+  /// FAMA & AUTO-FORMAÇÃO DE GRUPOS
+  void _autonomousGroupFormation() {
+    if (aliveNpcs.length < 4) return;
+
+    // ✅ NÃO captura ungrouped antes do loop — reavalia sempre via getter
+    List<Npc> ungrouped() => aliveNpcs.where((n) => n.groupId == null).toList();
+
+    if (ungrouped().length < 3) return;
+
+    // 1. Famosos atraem seguidores
+    final famous = ungrouped().where((n) => n.isFamous).toList()
+      ..sort((a, b) => b.fame.compareTo(a.fame));
+
+    for (final leader in famous) {
+      // ✅ Reavalia groupId do líder a cada iteração
+      if (leader.groupId != null) continue;
+
+      final potentialFollowers = ungrouped()
+          .where((n) => n.id != leader.id)
+          .where((n) => _synergyScore(leader, n) >= 68)
+          .take(5)
+          .toList();
+
+      if (potentialFollowers.length >= 2) {
+        final allMembers = [leader.id, ...potentialFollowers.map((f) => f.id)];
+
+        final group = createGroup(
+          "${leader.name}'s ${leader.profession == Profession.explorer ? 'Expedição' : 'Equipe'}",
+          allMembers,
+          _roleFromLeader(leader),
+        );
+
+        leader.leaderOfGroupId = group.id;
+        // ✅ Sincroniza group.leaderId com leaderOfGroupId do NPC
+        group.leaderId = leader.id;
+        leader.gainFame(4.0);
+
+        _addEvent(
+          GameEventType.groupFormed,
+          'Líder Carismático!',
+          '${leader.name} (${leader.fame.toStringAsFixed(0)} fama) formou o grupo "${group.name}" '
+              'com ${potentialFollowers.length} seguidores espontâneos!',
+          involvedIds: allMembers,
+          isMajor: true,
+        );
+      }
+    }
+
+    // 2. Formação espontânea com lista atualizada
+    // ✅ Passa a lista reavaliada, não a capturada antes do loop
+    _formSpontaneousGroups(ungrouped());
+  }
+
+  GroupRole _roleFromLeader(Npc leader) {
+    // ✅ guard → assault (combate direto)
+    if (leader.profession == Profession.guard) {
+      return GroupRole.assault;
+    }
+    // ✅ explorer e scout → recon (exploração e reconhecimento)
+    if (leader.profession == Profession.explorer ||
+        leader.profession == Profession.scout) {
+      return GroupRole.recon;
+    }
+    return GroupRole.general;
+  }
+
+  void _formSpontaneousGroups(List<Npc> initial) {
+    // ✅ Filtra logo na entrada para garantir que só processa sem grupo
+    final remaining = initial.where((n) => n.groupId == null).toList();
+    if (remaining.length < 3) return;
+
+    final rng = Random(state.currentDay * 141);
+
+    while (remaining.length >= 3 && rng.nextDouble() < 0.45) {
+      remaining.shuffle();
+
+      // ✅ Refiltra antes de pegar membros (alguém pode ter sido adicionado
+      //    a um grupo por outra iteração deste loop)
+      final available = remaining.where((n) => n.groupId == null).toList();
+      if (available.length < 3) break;
+
+      final size = rng.nextInt(3) + 3; // 3 a 5 pessoas
+      final members = available.take(size).toList();
+
+      // ✅ Remove os selecionados da lista remaining imediatamente
+      remaining.removeWhere((n) => members.any((m) => m.id == n.id));
+
+      final leader = members.reduce(
+        (a, b) =>
+            (a.attributes.charisma + a.fame) > (b.attributes.charisma + b.fame)
+            ? a
+            : b,
+      );
+
+      final group = createGroup(
+        "Equipe ${leader.name.split(' ').first}",
+        members.map((n) => n.id).toList(),
+        _roleFromLeader(leader),
+      );
+
+      leader.leaderOfGroupId = group.id;
+      // ✅ Sincroniza leaderId no grupo
+      group.leaderId = leader.id;
+
+      _addEvent(
+        GameEventType.groupFormed,
+        'Grupo Espontâneo',
+        '${members.length} NPCs formaram "${group.name}" por afinidade natural.',
+        involvedIds: members.map((n) => n.id).toList(),
+      );
+    }
+  }
   // ─────────────────────────────────────────────
   // COMBATE NA TORRE
   // ─────────────────────────────────────────────
@@ -3040,58 +4259,179 @@ class GameEngine {
 
     _applyExpeditionFatigue(party, floor.tier, baseFatigue: 20.0);
 
+    // ── Regra do Andar ──────────────────────────────────────────
+    final rule = floor.rule;
+    List<Npc> effectiveParty = List.from(party);
+
+    if (rule.type != FloorRuleType.none) {
+      challenge.log.addAll([
+        '⚖ REGRA: ${rule.description}',
+        '  → ${rule.mechanicHint}',
+        '',
+      ]);
+    }
+
+    // soloEntry: apenas o NPC mais forte entra
+    if (rule.type == FloorRuleType.soloEntry && party.isNotEmpty) {
+      effectiveParty = [
+        party.reduce(
+          (a, b) =>
+              a.effectiveCombatPowerWithGear(_inventory) >=
+                  b.effectiveCombatPowerWithGear(_inventory)
+              ? a
+              : b,
+        ),
+      ];
+      challenge.log.add(
+        '  ⚔ Apenas ${effectiveParty.first.name} entra. Os outros aguardam.',
+      );
+    }
+
+    // tributeRequired: custo extra de comida
+    if (rule.type == FloorRuleType.tributeRequired) {
+      final tributeCost = totalCost * 0.5;
+      citadel.resources.food -= tributeCost;
+      challenge.log.add(
+        '  💰 Tributo pago: ${tributeCost.toStringAsFixed(0)} comida adicional.',
+      );
+    }
+
+    // ── Cálculo de Poder do Grupo ────────────────────────────────
     double partyPower = 0;
-    for (final npc in party) {
-      // Usa poder de combate real com equipamentos
-      double power = npc.effectiveCombatPowerWithGear(_inventory);
-      if (npc.talentDiscovered &&
-          npc.hiddenTalent == HiddenTalent.combatGenius) {
-        power *= 1.5;
+    for (final npc in effectiveParty) {
+      double power;
+
+      // intelligenceOnly: INT substitui combatPower
+      if (rule.type == FloorRuleType.intelligenceOnly) {
+        power = npc.attributes.intelligence * 1.5;
+        // runeReader tem vantagem natural aqui
+        if (npc.talentDiscovered &&
+            npc.hiddenTalent == HiddenTalent.runeReader) {
+          power *= 1.4;
+        }
+      } else {
+        power = npc.effectiveCombatPowerWithGear(_inventory);
+        if (npc.talentDiscovered &&
+            npc.hiddenTalent == HiddenTalent.combatGenius) {
+          power *= 1.5;
+        }
       }
+
       if (npc.traits.contains(PersonalityTrait.brave)) power *= 1.1;
       if (npc.traits.contains(PersonalityTrait.coward)) power *= 0.85;
+
+      // Modificadores por regra
+      switch (rule.type) {
+        case FloorRuleType.loyaltyTest:
+          if (npc.loyalty < 40 ||
+              npc.traits.contains(PersonalityTrait.treacherous) ||
+              npc.origin.isDarkOrigin) {
+            power *= 0.6;
+            challenge.log.add(
+              '  [⚖] ${npc.name}: lealdade baixa — −40% poder.',
+            );
+          } else if (npc.loyalty > 70 &&
+              npc.traits.contains(PersonalityTrait.loyal)) {
+            power *= 1.3;
+            challenge.log.add('  [⚖] ${npc.name}: leal — +30% poder.');
+          } else if (npc.loyalty > 60) {
+            power *= 1.15;
+          }
+          break;
+
+        case FloorRuleType.silenceRequired:
+          if (npc.traits.contains(PersonalityTrait.aggressive)) {
+            power *= 0.45;
+            challenge.log.add('  [⚖] ${npc.name}: agressivo — −55% poder.');
+          }
+          break;
+
+        default:
+          break;
+      }
+
       partyPower += power;
       challenge.log.add('  ${npc.name} [PWR: ${power.toStringAsFixed(1)}]');
     }
 
-    final successChance =
-        ((partyPower / (floor.scaledDifficulty * party.length) * 0.6) + 0.2)
+    // weakLeads: NPC mais fraco define o poder total
+    if (rule.type == FloorRuleType.weakLeads && effectiveParty.isNotEmpty) {
+      final weakestPower = effectiveParty
+          .map((n) => n.effectiveCombatPowerWithGear(_inventory))
+          .reduce(min);
+      partyPower = weakestPower * effectiveParty.length * 0.75;
+      challenge.log.add(
+        '  [⚖] Mais fraco comanda. Poder efetivo: ${partyPower.toStringAsFixed(1)}',
+      );
+    }
+
+    // mirrorRule: dificuldade escala com poder do grupo
+    final effectiveDifficulty = rule.type == FloorRuleType.mirrorRule
+        ? floor.scaledDifficulty + partyPower * 0.25
+        : floor.scaledDifficulty;
+
+    // tributeRequired: +10% chance de sucesso como compensação
+    final tributeBonus = rule.type == FloorRuleType.tributeRequired ? 0.1 : 0.0;
+
+    double successChance =
+        ((partyPower / (effectiveDifficulty * effectiveParty.length) * 0.6) +
+                0.2 +
+                tributeBonus)
             .clamp(0.1, 0.95);
-    final hasStrategist = party.any(
+
+    double mortalityRate = floor.scaledMortality;
+
+    final factionMods = _processFactionOnAttempt(floor, partyIds);
+    successChance += factionMods.successChanceMod;
+    mortalityRate += factionMods.mortalityMod;
+    citadel.resources.food -= factionMods.foodTribute;
+
+    final hasStrategist = effectiveParty.any(
       (n) => n.talentDiscovered && n.hiddenTalent == HiddenTalent.strategicMind,
     );
-    final adjustedMortality = hasStrategist
-        ? floor.scaledMortality * 0.85
-        : floor.scaledMortality;
 
-    // Aplica bônus da enfermaria
+    mortalityRate = hasStrategist ? mortalityRate * 0.85 : mortalityRate;
+
     final infirmaryBonus = citadel.buildings
         .where((b) => b.type == BuildingType.infirmary)
         .fold(0.0, (sum, b) => sum + b.bonus);
 
-    final mortalityWithInfirmary = adjustedMortality * (1 - infirmaryBonus);
+    mortalityRate *= (1 - infirmaryBonus);
 
     challenge.log.addAll([
       '',
-      'Poder total: ${partyPower.toStringAsFixed(1)} vs ${floor.scaledDifficulty.toStringAsFixed(1)}',
+      'Poder total: ${partyPower.toStringAsFixed(1)} vs ${effectiveDifficulty.toStringAsFixed(1)}',
       'Chance de sucesso: ${(successChance * 100).toStringAsFixed(0)}%',
       '',
     ]);
 
     final success = _rng.nextDouble() < successChance;
     if (success) {
-      _resolveVictory(challenge, party, floor, mortalityWithInfirmary);
+      // Passa effectiveParty para resolveVictory (soloEntry)
+      _resolveVictoryWithParty(
+        challenge,
+        effectiveParty,
+        party,
+        floor,
+        mortalityRate,
+      );
     } else {
-      _resolveDefeat(challenge, party, floor, mortalityWithInfirmary);
+      _resolveDefeatWithParty(
+        challenge,
+        effectiveParty,
+        party,
+        floor,
+        mortalityRate,
+      );
     }
 
-    if (party.any(
+    if (effectiveParty.any(
       (n) =>
           n.alive &&
           n.talentDiscovered &&
           n.hiddenTalent == HiddenTalent.healingTouch,
     )) {
-      for (final npc in party.where((n) => n.alive)) {
+      for (final npc in effectiveParty.where((n) => n.alive)) {
         npc.attributes.endurance += 0.5;
         npc.attributes.mentalStability += 2;
       }
@@ -3104,6 +4444,37 @@ class GameEngine {
     challenge.completed = true;
     citadel.resources.morale = citadel.resources.morale.clamp(0, 100);
     return challenge;
+  }
+
+  // Wrapper para compatibilidade com soloEntry:
+  // effectiveParty = quem realmente combateu
+  // fullParty      = todos que foram mobilizados (para fatigue/morale)
+  void _resolveVictoryWithParty(
+    TowerChallenge challenge,
+    List<Npc> effectiveParty,
+    List<Npc> fullParty,
+    TowerFloor floor,
+    double mortality,
+  ) {
+    // Membros que ficaram fora (soloEntry) ganham pequeno bônus por esperar
+    for (final npc in fullParty.where((n) => !effectiveParty.contains(n))) {
+      npc.loyalty += 1;
+    }
+    _resolveVictory(challenge, effectiveParty, floor, mortality);
+  }
+
+  void _resolveDefeatWithParty(
+    TowerChallenge challenge,
+    List<Npc> effectiveParty,
+    List<Npc> fullParty,
+    TowerFloor floor,
+    double mortality,
+  ) {
+    // Membros de fora ficam abalados mesmo sem entrar
+    for (final npc in fullParty.where((n) => !effectiveParty.contains(n))) {
+      npc.attributes.mentalStability -= 3;
+    }
+    _resolveDefeat(challenge, effectiveParty, floor, mortality);
   }
 
   void _resolveVictory(
@@ -3722,28 +5093,6 @@ class GameEngine {
     }
   }
 
-  void _applyResourcesToStock(Map<String, double> resources) {
-    for (final entry in resources.entries) {
-      switch (entry.key) {
-        case 'food':
-          citadel.resources.food += entry.value;
-          break;
-        case 'wood':
-          citadel.resources.wood += entry.value;
-          break;
-        case 'stone':
-          citadel.resources.stone += entry.value;
-          break;
-        case 'iron':
-          citadel.resources.iron += entry.value;
-          break;
-        case 'knowledge':
-          citadel.resources.knowledge += entry.value;
-          break;
-      }
-    }
-  }
-
   void _addEvent(
     GameEventType type,
     String title,
@@ -3762,6 +5111,129 @@ class GameEngine {
     );
     events.add(event);
     _dayEvents.add(event);
+    // Pruning: mantém apenas os últimos 200 eventos brutos
+    if (events.length > _maxRawEvents) {
+      events.removeRange(0, events.length - _maxRawEvents);
+    }
+    // Gera CitadelRecord para eventos relevantes
+    _maybeCreateRecord(event);
+
+    ToastController().show(event);
+  }
+
+  void _maybeCreateRecord(GameEvent event) {
+    RecordCategory? cat;
+    String? verdict;
+    bool signed = false;
+    switch (event.type) {
+      case GameEventType.death:
+        cat = RecordCategory.death;
+        signed = event.isMajor;
+        break;
+
+      case GameEventType.birth:
+        if (event.title.contains('Maior') ||
+            event.title.contains('Novo Membro')) {
+          cat = RecordCategory.birth;
+          signed = true;
+        }
+        break;
+
+      case GameEventType.betrayalAttempt:
+        cat = RecordCategory.crime;
+        verdict = event.title.contains('ASSASSINATO')
+            ? 'Assassinato confirmado. Individuo considerado perigo publico.'
+            : event.title.contains('Roubo')
+            ? 'Roubo de suprimentos. Penalidade a ser determinada.'
+            : event.title.contains('Sabotagem')
+            ? 'Sabotagem intencional. Investigar cumplices.'
+            : 'Tentativa criminosa registrada.';
+        signed = true;
+        break;
+
+      case GameEventType.betrayal:
+        if (event.title.contains('Rebeliao')) {
+          cat = RecordCategory.crime;
+          verdict = 'Rebeliao violenta. Restricao de acesso temporaria.';
+          signed = true;
+        }
+        break;
+
+      case GameEventType.recruitment:
+        cat = RecordCategory.honor; // ou uma categoria específica
+        signed = true;
+        break;
+
+      case GameEventType.construction:
+        cat = RecordCategory.construction;
+        signed = false;
+        break;
+
+      case GameEventType.upgrade:
+        if (event.isMajor) {
+          cat = RecordCategory.construction;
+          signed = true;
+        }
+        break;
+
+      case GameEventType.towerCleared:
+        cat = RecordCategory.towerConquest;
+        signed = true;
+        break;
+
+      case GameEventType.politicalEvent:
+        if (event.isMajor ||
+            event.title.contains('Democracia') ||
+            event.title.contains('Decreto') ||
+            event.title.contains('Divisao') ||
+            event.title.contains('Divisão')) {
+          cat = RecordCategory.political;
+          signed = event.isMajor;
+        }
+        break;
+
+      case GameEventType.discovery:
+        if (event.title.contains('Talento')) {
+          cat = RecordCategory.honor;
+          signed = true;
+        }
+        break;
+
+      case GameEventType.mentalBreak:
+        if (event.title.contains('Sacrificio') ||
+            event.title.contains('Colapso')) {
+          cat = RecordCategory.punishment;
+          verdict = 'Individuo necessita de acompanhamento medico.';
+          signed = false;
+        }
+        break;
+
+      case GameEventType.crisis:
+        if (event.isMajor) {
+          cat = RecordCategory.decree;
+          signed = false;
+        }
+        break;
+
+      default:
+        break;
+    }
+
+    if (cat == null) return;
+
+    _recordIdCounter++;
+    _records.add(
+      CitadelRecord(
+        id: 'rec_$_recordIdCounter',
+        day: state.currentDay,
+        category: cat,
+        title: event.title,
+        body: event.description,
+        involvedIds: event.involvedNpcIds,
+        isSigned: signed,
+        verdict: verdict,
+      ),
+    );
   }
 
   // ─────────────────────────────────────────────
@@ -3780,6 +5252,14 @@ class GameEngine {
     'suggestionIdCounter': _suggestionIdCounter,
     // ── Equipamentos [FASE 1] ──
     'inventory': _inventory.map((e) => e.toJson()).toList(),
+    // ── Registros Oficiais ──
+    'records': _records.map((r) => r.toJson()).toList(),
+    'recordIdCounter': _recordIdCounter,
+    // ── Prisão ──
+    'prison': _prisonService.toJson(),
+    'activeTrainings': activeTrainings.map((m) => m.toJson()).toList(),
+    'trainingMissionCounter': _trainingMissionCounter,
+    'pendingRecruits': _pendingRecruits.map((r) => r.toJson()).toList(),
   };
 
   void loadFromJson(Map<String, dynamic> json) {
@@ -3813,6 +5293,67 @@ class GameEngine {
       ..addAll(
         rawInv.map((e) => Equipment.fromJson(e as Map<String, dynamic>)),
       );
+    // ── Registros Oficiais ── compatível com saves antigos ✓
+    final rawRec = json['records'] as List<dynamic>? ?? [];
+    _records
+      ..clear()
+      ..addAll(
+        rawRec.map((e) => CitadelRecord.fromJson(e as Map<String, dynamic>)),
+      );
+    _recordIdCounter = json['recordIdCounter'] as int? ?? 0;
+    final prisonJson = json['prison'] as Map<String, dynamic>?;
+    if (prisonJson != null) _prisonService.loadFromJson(prisonJson);
+    activeTrainings =
+        (json['activeTrainings'] as List?)
+            ?.map((m) => TrainingMission.fromJson(m as Map<String, dynamic>))
+            .toList() ??
+        [];
+    _trainingMissionCounter = json['trainingMissionCounter'] as int? ?? 0;
+    // pendingRecruits
+    final rawRecruits = json['pendingRecruits'] as List<dynamic>? ?? [];
+    _pendingRecruits
+      ..clear()
+      ..addAll(
+        rawRecruits.map(
+          (e) => FloorInhabitant.fromJson(e as Map<String, dynamic>),
+        ),
+      );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SISTEMA DE SINERGIA
+  // ═══════════════════════════════════════════════════════════════════════════
+  double _synergyScore(Npc a, Npc b) {
+    double score = 50.0;
+
+    // Mesma profissão = forte atração
+    if (a.profession == b.profession) score += 25;
+
+    // Traços compatíveis
+    final sharedTraits = a.traits.where((t) => b.traits.contains(t)).length * 9;
+    score += sharedTraits;
+
+    // Atributos parecidos
+    if ((a.attributes.combatPower - b.attributes.combatPower).abs() < 4) {
+      score += 15;
+    }
+    if ((a.attributes.mentalStability - b.attributes.mentalStability).abs() <
+        25) {
+      score += 12;
+    }
+    if ((a.attributes.charisma - b.attributes.charisma).abs() < 5) score += 10;
+
+    // Opostos complementares
+    if (a.traits.contains(PersonalityTrait.lazy) &&
+        b.traits.contains(PersonalityTrait.calm)) {
+      score += 18;
+    }
+    if (a.traits.contains(PersonalityTrait.brave) &&
+        b.traits.contains(PersonalityTrait.cautious)) {
+      score += 15;
+    }
+
+    return score.clamp(0.0, 100.0);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

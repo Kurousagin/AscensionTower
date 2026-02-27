@@ -323,7 +323,7 @@ class _CraftTabState extends State<_CraftTab> {
             children: EquipmentRarity.values.map((r) {
               return _SelectButton(
                 label:
-                    '${r.prefix.trim().isEmpty ? "" : r.prefix.trim() + " "}${r.label}',
+                    '${r.prefix.trim().isEmpty ? "" : "${r.prefix.trim()} "}${r.label}',
                 selected: _selectedRarity == r,
                 color: _C.forRarity(r),
                 onTap: () => setState(() => _selectedRarity = r),
@@ -489,6 +489,7 @@ class _FilterChip extends StatelessWidget {
         margin: const EdgeInsets.only(right: 6),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
+          // ignore: deprecated_member_use
           color: selected ? color.withOpacity(0.2) : Colors.transparent,
           border: Border.all(color: selected ? color : _C.border),
           borderRadius: BorderRadius.circular(4),
@@ -928,6 +929,7 @@ class _SlotButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
+          // ignore: deprecated_member_use
           color: hasItem ? rarityColor.withOpacity(0.1) : _C.bg,
           border: Border.all(
             color: hasItem ? rarityColor : _C.border,
@@ -1012,7 +1014,9 @@ class _BonusPreview extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
+        // ignore: deprecated_member_use
         color: color.withOpacity(0.08),
+        // ignore: deprecated_member_use
         border: Border.all(color: color.withOpacity(0.4)),
         borderRadius: BorderRadius.circular(4),
       ),
@@ -1122,7 +1126,7 @@ class _CostItem extends StatelessWidget {
           ),
         ),
         Text(
-          '${cost.toStringAsFixed(0)}',
+          cost.toStringAsFixed(0),
           style: TextStyle(
             fontFamily: 'Consolas',
             color: canAfford ? _C.green : _C.red,
@@ -1184,6 +1188,7 @@ class _SelectButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
+          // ignore: deprecated_member_use
           color: selected ? color.withOpacity(0.2) : _C.surface,
           border: Border.all(
             color: selected ? color : _C.border,

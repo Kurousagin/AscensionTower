@@ -1,6 +1,9 @@
 import 'dart:async';
+//import 'dart:math';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:tower_ascension/models/floor_faction.dart';
+import 'package:tower_ascension/models/floor_inhabitant.dart';
 import '../services/game_engine.dart';
 import '../services/save_service.dart';
 import '../models/npc.dart';
@@ -10,6 +13,9 @@ import '../models/game_event.dart';
 import '../models/group_model.dart';
 import '../models/equipment.dart'; // ← ADICIONADO [FASE 1]
 import '../services/equipment_service.dart'; // ← ADICIONADO [FASE 1]
+import '../models/citadel_record.dart';
+import '../widgets/event_toast.dart';
+import '../services/prison_service.dart';
 
 class GameProvider extends ChangeNotifier {
   final GameEngine _engine = GameEngine();
@@ -80,6 +86,8 @@ class GameProvider extends ChangeNotifier {
   Citadel get citadel => _engine.citadel;
   List<TowerFloor> get floors => _engine.floors;
   List<GameEvent> get events => _engine.events;
+  List<CitadelRecord> get citadelRecords => engine.records;
+  PrisonService get prison => engine.prison;
   int get population => _engine.population;
   TowerFloor? get nextFloor => _engine.nextFloor;
   List<TowerFloor> get clearedFloors => _engine.clearedFloors;
@@ -97,6 +105,16 @@ class GameProvider extends ChangeNotifier {
 
   List<Npc> get incapacitatedNpcs =>
       aliveNpcs.where((n) => n.isIncapacitated).toList();
+
+  // ── Sistema de Habitantes ─────────────────────────────
+  /// Survivors encontrados em andares, aguardando recrutamento.
+  /// Requer Abrigo de Viajantes para confirmar.
+  List<FloorInhabitant> get pendingRecruits => _engine.pendingRecruits;
+
+  // ── Sistema de Facções ────────────────────────────────
+  /// Relações com cada facção da torre. Chave = FloorFaction.name.
+  Map<String, FactionRelation> get factionRelations =>
+      _engine.state.factionRelations;
 
   /// Custo estimado de comida para expedicao ao proximo andar
   double expeditionCostEstimate(int npcCount) {
@@ -251,9 +269,11 @@ class GameProvider extends ChangeNotifier {
 
     int daysProcessed = 0;
     _recentEvents = [];
+
     while (state.gameSeconds >= 86400.0 && daysProcessed < maxDaysPerUpdate) {
       state.gameSeconds -= 86400.0;
       final dayEvents = _engine.simulateDay();
+      ToastController().showBatch(dayEvents);
       _recentEvents.addAll(dayEvents);
       daysProcessed++;
       if (state.gameOver) break;
@@ -363,6 +383,7 @@ class GameProvider extends ChangeNotifier {
     while (state.gameSeconds >= 86400.0 && daysThisCycle < maxDaysPerUpdate) {
       state.gameSeconds -= 86400.0;
       final dayEvents = _engine.simulateDay();
+      ToastController().showBatch(dayEvents);
 
       _recentEvents = [..._recentEvents, ...dayEvents];
       dayAdvanced = true;
@@ -698,15 +719,7 @@ class GameProvider extends ChangeNotifier {
   // ==================== CONSTRUCAO MANUAL ====================
 
   /// Edificios disponiveis para construir
-  List<BuildingType> get availableBuildings {
-    final currentTier =
-        ((state.highestFloorCleared) ~/ 10) +
-        (state.highestFloorCleared % 10 > 0 ? 1 : 0);
-
-    return BuildingType.values
-        .where((type) => citadel.canBuild(type, currentTier))
-        .toList();
-  }
+  List<BuildingType> get availableBuildings => _engine.availableBuildings;
 
   /// Verifica se pode construir
   bool canBuild(BuildingType type) => _engine.canBuild(type);
@@ -799,6 +812,14 @@ class GameProvider extends ChangeNotifier {
     return true;
   }
 
+  String confirmRecruitSurvivor(String survivorId) {
+    final result = _engine.confirmRecruitSurvivor(survivorId);
+    if (result.contains('juntou')) {
+      _saveGame(); // persiste imediatamente
+      notifyListeners(); // atualiza a UI
+    }
+    return result;
+  }
   // ==================== SUGESTAO DE TREINO ====================
 
   TrainingSuggestion suggestTraining(
@@ -815,6 +836,44 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
     return suggestion;
   }
+
+  List<TrainingMission> get activeTrainings => _engine.activeTrainings;
+
+  // Edifícios militares disponíveis para treino
+  List<BuildingType> get trainingBuildings {
+    const supported = [
+      BuildingType.trainingField,
+      BuildingType.barracks,
+      BuildingType.arena,
+      BuildingType.temple,
+      BuildingType.library,
+    ];
+    return supported.where((b) => _engine.citadel.hasBuilding(b)).toList();
+  }
+
+  TrainingSuggestion suggestGroupTraining(
+    String groupId,
+    BuildingType buildingType,
+    int durationDays,
+  ) {
+    final result = _engine.suggestTrainingWithBuilding(
+      groupId,
+      buildingType,
+      durationDays,
+    );
+    _saveGame();
+    notifyListeners();
+    return result;
+  }
+
+  Map<String, Map<String, double>> previewTrainingGains(
+    List<String> npcIds,
+    BuildingType buildingType,
+    int durationDays,
+  ) => _engine.previewTrainingGains(npcIds, buildingType, durationDays);
+
+  double previewNpcAptitude(String npcId, BuildingType building) =>
+      _engine.previewNpcAptitude(npcId, building);
 
   // ==================== CONTROLES ====================
 
@@ -864,9 +923,89 @@ class GameProvider extends ChangeNotifier {
     _hasSave = true;
   }
 
+  // ── PAUSA AUTOMÁTICA POR CRISE ─────────────────────────────────────
+  bool _pausedByCrisis = false;
+
+  void pauseForCrisis() {
+    if (!_paused) {
+      _pausedByCrisis = true;
+      _paused = true;
+      _updateTimer?.cancel();
+      notifyListeners();
+    }
+  }
+
+  void resumeIfCrisisPaused() {
+    if (_pausedByCrisis) {
+      _pausedByCrisis = false;
+      _paused = false;
+      _startSimulation(); // retoma o timer normalmente
+      notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
     _updateTimer?.cancel();
     super.dispose();
   }
+
+  void refresh() => notifyListeners();
+
+  // //================++=================================++++================DEBUG=================================
+
+  // /// DEBUG ONLY — adiciona +200 de cada recurso
+  // void debugAddResources() {
+  //   final res = _engine.citadel.resources;
+  //   res.food += 200;
+  //   res.wood += 200;
+  //   res.stone += 200;
+  //   res.iron += 200;
+  //   res.knowledge += 200;
+  //   notifyListeners();
+  // }
+
+  // /// DEBUG ONLY — remove antes de publicar
+  // void debugForceCouple() {
+  //   final id1 = state.generateNpcId();
+  //   final id2 = state.generateNpcId();
+
+  //   final a = Npc.generateRandom(id1, 1, Random())
+  //     ..profession = Profession.farmer;
+  //   final b = Npc.generateRandom(id2, 1, Random())
+  //     ..profession = Profession.farmer;
+
+  //   // Vincula como casal
+  //   a.partnerId = id2;
+  //   b.partnerId = id1;
+  //   a.relationships.add(
+  //     Relationship(targetId: id2, type: 'parceiro', affinity: 0.95),
+  //   );
+  //   b.relationships.add(
+  //     Relationship(targetId: id1, type: 'parceiro', affinity: 0.95),
+  //   );
+
+  //   _engine.npcs.addAll([a, b]);
+
+  //   // Força gravidez imediata
+  //   a.pregnantSince = state.currentDay;
+  //   a.maternalNutrition = 100.0;
+
+  //   // Garante moral e comida suficiente para o parto acontecer
+  //   _engine.citadel.resources.morale = 80;
+  //   _engine.citadel.resources.food = 200;
+
+  //   _saveGame();
+  //   notifyListeners();
+  // }
+
+  // /// DEBUG ONLY — avança N dias instantaneamente
+  // void debugAdvanceDays(int days) {
+  //   for (int i = 0; i < days; i++) {
+  //     _engine.simulateDay();
+  //     if (state.gameOver) break;
+  //   }
+  //   _saveGame();
+  //   notifyListeners();
+  // }
 }

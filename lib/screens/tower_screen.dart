@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:tower_ascension/widgets/collapsible_list.dart';
 import '../providers/game_provider.dart';
 import '../models/npc.dart';
 import '../models/tower.dart';
@@ -60,7 +61,6 @@ class _TowerScreenState extends State<TowerScreen> {
   Widget _buildTowerOverview(GameProvider gp) {
     final cleared = gp.state.highestFloorCleared;
     final currentTier = ((cleared) ~/ 10) + (cleared % 10 > 0 ? 1 : 0);
-    final tierProgress = cleared % 10;
 
     return TerminalCard(
       child: Column(
@@ -90,11 +90,6 @@ class _TowerScreenState extends State<TowerScreen> {
                       'Tier atual: $currentTier / 10',
                       fontSize: 10,
                       color: AppTheme.orange,
-                    ),
-                    TerminalText(
-                      'Progresso no tier: $tierProgress / 10',
-                      fontSize: 10,
-                      color: AppTheme.textSecondary,
                     ),
                   ],
                 ),
@@ -465,8 +460,9 @@ class _TowerScreenState extends State<TowerScreen> {
                   final resStr = floor.farmableResources.entries
                       .map((e) => '${e.key}:~${e.value.toStringAsFixed(0)}')
                       .join(', ');
-                  final threatPct = ((0.05 + floor.timesReexplored * 0.02) * 100)
-                      .toStringAsFixed(0);
+                  final threatPct =
+                      ((0.05 + floor.timesReexplored * 0.02) * 100)
+                          .toStringAsFixed(0);
                   return Container(
                     margin: const EdgeInsets.only(bottom: 4),
                     padding: const EdgeInsets.all(6),
@@ -489,7 +485,11 @@ class _TowerScreenState extends State<TowerScreen> {
                                 color: AppTheme.green,
                                 fontWeight: FontWeight.bold,
                               ),
-                              TerminalText(resStr, fontSize: 7, color: AppTheme.cyan),
+                              TerminalText(
+                                resStr,
+                                fontSize: 7,
+                                color: AppTheme.cyan,
+                              ),
                               TerminalText(
                                 'Visitas:${floor.timesReexplored} | Risco:$threatPct%',
                                 fontSize: 7,
@@ -1279,179 +1279,180 @@ class _TowerScreenState extends State<TowerScreen> {
                   ),
                   const SizedBox(height: 6),
 
-                  ...gp.aliveNpcs.map((npc) {
-                    final selected = selectedIds.contains(npc.id);
-                    final power = npc.attributes.combatPower;
-                    final isDisabled = npc.isIncapacitated;
-                    final fatigueColor = npc.fatigue >= 90
-                        ? const Color(0xFFFF0044)
-                        : npc.fatigue >= 70
-                        ? AppTheme.red
-                        : npc.fatigue >= 50
-                        ? AppTheme.orange
-                        : npc.fatigue >= 30
-                        ? AppTheme.yellow
-                        : AppTheme.green;
+                  CollapsibleList(
+                    items: gp.aliveNpcs,
+                    initialCount: 5,
+                    itemBuilder: (npc, _) {
+                      final selected = selectedIds.contains(npc.id);
+                      final power = npc.attributes.combatPower;
+                      final isDisabled = npc.isIncapacitated;
+                      final fatigueColor = npc.fatigue >= 90
+                          ? const Color(0xFFFF0044)
+                          : npc.fatigue >= 70
+                          ? AppTheme.red
+                          : npc.fatigue >= 50
+                          ? AppTheme.orange
+                          : npc.fatigue >= 30
+                          ? AppTheme.yellow
+                          : AppTheme.green;
+                      final dangerTraits = npc.traits
+                          .where(
+                            (t) =>
+                                t == PersonalityTrait.lazy ||
+                                t == PersonalityTrait.coward ||
+                                t == PersonalityTrait.treacherous ||
+                                t == PersonalityTrait.individualist,
+                          )
+                          .map((t) => t.label)
+                          .toList();
+                      final goodTraits = npc.traits
+                          .where(
+                            (t) =>
+                                t == PersonalityTrait.brave ||
+                                t == PersonalityTrait.loyal ||
+                                t == PersonalityTrait.ambitious ||
+                                t == PersonalityTrait.analytical ||
+                                t == PersonalityTrait.leader,
+                          )
+                          .map((t) => t.label)
+                          .toList();
 
-                    // Tags de personalidade relevantes
-                    final dangerTraits = npc.traits
-                        .where(
-                          (t) =>
-                              t == PersonalityTrait.lazy ||
-                              t == PersonalityTrait.coward ||
-                              t == PersonalityTrait.treacherous ||
-                              t == PersonalityTrait.individualist,
-                        )
-                        .map((t) => t.label)
-                        .toList();
-                    final goodTraits = npc.traits
-                        .where(
-                          (t) =>
-                              t == PersonalityTrait.brave ||
-                              t == PersonalityTrait.loyal ||
-                              t == PersonalityTrait.ambitious ||
-                              t == PersonalityTrait.analytical ||
-                              t == PersonalityTrait.leader,
-                        )
-                        .map((t) => t.label)
-                        .toList();
-
-                    return GestureDetector(
-                      onTap: isDisabled
-                          ? null
-                          : () => setModalState(() {
-                              if (selected) {
-                                selectedIds.remove(npc.id);
-                              } else {
-                                selectedIds.add(npc.id);
-                              }
-                            }),
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 4),
-                        padding: const EdgeInsets.all(7),
-                        decoration: BoxDecoration(
-                          border: Border.all(
+                      return GestureDetector(
+                        onTap: isDisabled
+                            ? null
+                            : () => setModalState(() {
+                                if (selected){
+                                  selectedIds.remove(npc.id);
+                                } else {
+                                  selectedIds.add(npc.id);
+                                }
+                              }),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 4),
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: isDisabled
+                                  ? AppTheme.red.withValues(alpha: 0.3)
+                                  : selected
+                                  ? AppTheme.orange
+                                  : AppTheme.border,
+                            ),
+                            borderRadius: BorderRadius.circular(4),
                             color: isDisabled
-                                ? AppTheme.red.withValues(alpha: 0.3)
+                                ? AppTheme.red.withValues(alpha: 0.03)
                                 : selected
-                                ? AppTheme.orange
-                                : AppTheme.border,
+                                ? AppTheme.orange.withValues(alpha: 0.06)
+                                : null,
                           ),
-                          borderRadius: BorderRadius.circular(4),
-                          color: isDisabled
-                              ? AppTheme.red.withValues(alpha: 0.03)
-                              : selected
-                              ? AppTheme.orange.withValues(alpha: 0.06)
-                              : null,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  isDisabled
-                                      ? Icons.block
-                                      : selected
-                                      ? Icons.check_box
-                                      : Icons.check_box_outline_blank,
-                                  size: 14,
-                                  color: isDisabled
-                                      ? AppTheme.red.withValues(alpha: 0.5)
-                                      : selected
-                                      ? AppTheme.orange
-                                      : AppTheme.textDim,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: TerminalText(
-                                    '${npc.name} | ${npc.profession.label}',
-                                    fontSize: 9,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    isDisabled
+                                        ? Icons.block
+                                        : selected
+                                        ? Icons.check_box
+                                        : Icons.check_box_outline_blank,
+                                    size: 14,
                                     color: isDisabled
                                         ? AppTheme.red.withValues(alpha: 0.5)
                                         : selected
-                                        ? AppTheme.textPrimary
-                                        : AppTheme.textSecondary,
-                                    fontWeight: selected
-                                        ? FontWeight.bold
-                                        : FontWeight.normal,
+                                        ? AppTheme.orange
+                                        : AppTheme.textDim,
                                   ),
-                                ),
-                                if (npc.isSuspicious)
-                                  const Icon(
-                                    Icons.warning,
-                                    size: 12,
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: TerminalText(
+                                      '${npc.name} | ${npc.profession.label}',
+                                      fontSize: 9,
+                                      color: isDisabled
+                                          ? AppTheme.red.withValues(alpha: 0.5)
+                                          : selected
+                                          ? AppTheme.textPrimary
+                                          : AppTheme.textSecondary,
+                                      fontWeight: selected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                  if (npc.isSuspicious)
+                                    const Icon(
+                                      Icons.warning,
+                                      size: 12,
+                                      color: AppTheme.red,
+                                    ),
+                                  const SizedBox(width: 4),
+                                  TerminalText(
+                                    'F:${npc.fatigue.toStringAsFixed(0)}',
+                                    fontSize: 8,
+                                    color: fatigueColor,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  TerminalText(
+                                    'PWR:${power.toStringAsFixed(1)}',
+                                    fontSize: 9,
+                                    color: AppTheme.orange,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ],
+                              ),
+                              if (isDisabled)
+                                const Padding(
+                                  padding: EdgeInsets.only(left: 20, top: 2),
+                                  child: TerminalText(
+                                    '[INCAPACITADO - NAO PODE PARTICIPAR]',
+                                    fontSize: 7,
                                     color: AppTheme.red,
                                   ),
-                                const SizedBox(width: 4),
-                                TerminalText(
-                                  'F:${npc.fatigue.toStringAsFixed(0)}',
-                                  fontSize: 8,
-                                  color: fatigueColor,
-                                ),
-                                const SizedBox(width: 6),
-                                TerminalText(
-                                  'PWR:${power.toStringAsFixed(1)}',
-                                  fontSize: 9,
-                                  color: AppTheme.orange,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ],
-                            ),
-                            if (isDisabled)
-                              const Padding(
-                                padding: EdgeInsets.only(left: 20, top: 2),
-                                child: TerminalText(
-                                  '[INCAPACITADO - NAO PODE PARTICIPAR]',
-                                  fontSize: 7,
-                                  color: AppTheme.red,
-                                ),
-                              )
-                            else if (npc.isExhausted)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  left: 20,
-                                  top: 2,
-                                ),
-                                child: TerminalText(
-                                  '[EXAUSTO - rendimento severamente reduzido]',
-                                  fontSize: 7,
-                                  color: AppTheme.red,
-                                ),
-                              )
-                            else if (dangerTraits.isNotEmpty ||
-                                goodTraits.isNotEmpty) ...[
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  left: 20,
-                                  top: 2,
-                                ),
-                                child: Wrap(
-                                  spacing: 4,
-                                  children: [
-                                    ...goodTraits.map(
-                                      (t) => TerminalText(
-                                        '[+$t]',
-                                        fontSize: 7,
-                                        color: AppTheme.green,
+                                )
+                              else if (npc.isExhausted)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 20,
+                                    top: 2,
+                                  ),
+                                  child: TerminalText(
+                                    '[EXAUSTO - rendimento severamente reduzido]',
+                                    fontSize: 7,
+                                    color: AppTheme.red,
+                                  ),
+                                )
+                              else if (dangerTraits.isNotEmpty ||
+                                  goodTraits.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 20,
+                                    top: 2,
+                                  ),
+                                  child: Wrap(
+                                    spacing: 4,
+                                    children: [
+                                      ...goodTraits.map(
+                                        (t) => TerminalText(
+                                          '[+$t]',
+                                          fontSize: 7,
+                                          color: AppTheme.green,
+                                        ),
                                       ),
-                                    ),
-                                    ...dangerTraits.map(
-                                      (t) => TerminalText(
-                                        '[-$t]',
-                                        fontSize: 7,
-                                        color: AppTheme.orange,
+                                      ...dangerTraits.map(
+                                        (t) => TerminalText(
+                                          '[-$t]',
+                                          fontSize: 7,
+                                          color: AppTheme.orange,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                    );
-                  }),
+                      );
+                    },
+                  ),
 
                   const SizedBox(height: 16),
 
@@ -2017,14 +2018,24 @@ class _TowerScreenState extends State<TowerScreen> {
             final costPerNpc = gp.engine.reexploreCostPerNpc(floor.number);
             final totalCost = selectedNpcs.length * costPerNpc;
             final synergy = gp.engine.previewGroupSynergy(selectedNpcs) * 100;
-            final personalityMod = gp.engine.previewPartyPersonalityMod(selectedNpcs) * 100;
-            final attributeYield = gp.engine.previewPartyAttributeYield(selectedNpcs, floor.type);
-            final eventChances = gp.engine.previewEventChances(selectedNpcs, floor);
+            final personalityMod =
+                gp.engine.previewPartyPersonalityMod(selectedNpcs) * 100;
+            final attributeYield = gp.engine.previewPartyAttributeYield(
+              selectedNpcs,
+              floor.type,
+            );
+            final eventChances = gp.engine.previewEventChances(
+              selectedNpcs,
+              floor,
+            );
 
             // Estima recursos considerando sinergia e eficiência
             final baseResources = floor.farmableResources;
             final estimatedFood = baseResources['food'] ?? 0.0;
-            final totalYield = attributeYield * (1 + synergy / 100) * (1 + personalityMod / 100);
+            final totalYield =
+                attributeYield *
+                (1 + synergy / 100) *
+                (1 + personalityMod / 100);
             final estimatedReturn = estimatedFood * totalYield;
             final netFood = estimatedReturn - totalCost;
 
@@ -2057,14 +2068,30 @@ class _TowerScreenState extends State<TowerScreen> {
                     color: AppTheme.orange,
                   ),
                   TerminalText(
-                    'Sinergia: ${synergy.toStringAsFixed(0)}% ${synergy > 30 ? "(Excelente)" : synergy > 10 ? "(Boa)" : synergy < -10 ? "(Ruim)" : "(Neutra)"}',
+                    'Sinergia: ${synergy.toStringAsFixed(0)}% ${synergy > 30
+                        ? "(Excelente)"
+                        : synergy > 10
+                        ? "(Boa)"
+                        : synergy < -10
+                        ? "(Ruim)"
+                        : "(Neutra)"}',
                     fontSize: 9,
-                    color: synergy > 30 ? AppTheme.green : synergy > 10 ? AppTheme.yellow : synergy < -10 ? AppTheme.red : AppTheme.textSecondary,
+                    color: synergy > 30
+                        ? AppTheme.green
+                        : synergy > 10
+                        ? AppTheme.yellow
+                        : synergy < -10
+                        ? AppTheme.red
+                        : AppTheme.textSecondary,
                   ),
                   TerminalText(
                     'Eficiencia: ${(totalYield * 100).toStringAsFixed(0)}% (atrib: ${(attributeYield * 100).toStringAsFixed(0)}%, pers: ${personalityMod >= 0 ? "+" : ""}${personalityMod.toStringAsFixed(0)}%)',
                     fontSize: 9,
-                    color: totalYield > 1.3 ? AppTheme.green : totalYield > 1.0 ? AppTheme.yellow : AppTheme.orange,
+                    color: totalYield > 1.3
+                        ? AppTheme.green
+                        : totalYield > 1.0
+                        ? AppTheme.yellow
+                        : AppTheme.orange,
                   ),
                   const SizedBox(height: 4),
                   const Divider(color: AppTheme.border, height: 1),
@@ -2075,9 +2102,17 @@ class _TowerScreenState extends State<TowerScreen> {
                     color: AppTheme.textDim,
                   ),
                   TerminalText(
-                    'Lucro: ${netFood >= 0 ? "+" : ""}${netFood.toStringAsFixed(1)} ${netFood < 0 ? "(PREJUIZO)" : netFood < totalCost * 0.5 ? "(baixo)" : "(bom)"}',
+                    'Lucro: ${netFood >= 0 ? "+" : ""}${netFood.toStringAsFixed(1)} ${netFood < 0
+                        ? "(PREJUIZO)"
+                        : netFood < totalCost * 0.5
+                        ? "(baixo)"
+                        : "(bom)"}',
                     fontSize: 9,
-                    color: netFood < 0 ? AppTheme.red : netFood < totalCost * 0.5 ? AppTheme.orange : AppTheme.green,
+                    color: netFood < 0
+                        ? AppTheme.red
+                        : netFood < totalCost * 0.5
+                        ? AppTheme.orange
+                        : AppTheme.green,
                     fontWeight: FontWeight.bold,
                   ),
                   const SizedBox(height: 4),
@@ -2092,7 +2127,9 @@ class _TowerScreenState extends State<TowerScreen> {
                     TerminalText(
                       'Acidente: ${(eventChances['acidente']! * 100).toStringAsFixed(0)}%',
                       fontSize: 8,
-                      color: eventChances['acidente']! > 0.2 ? AppTheme.red : AppTheme.textDim,
+                      color: eventChances['acidente']! > 0.2
+                          ? AppTheme.red
+                          : AppTheme.textDim,
                     ),
                   if (eventChances['doenca'] != null)
                     TerminalText(
@@ -2100,13 +2137,17 @@ class _TowerScreenState extends State<TowerScreen> {
                       fontSize: 8,
                       color: AppTheme.textDim,
                     ),
-                  if (eventChances['conflito'] != null && eventChances['conflito']! > 0)
+                  if (eventChances['conflito'] != null &&
+                      eventChances['conflito']! > 0)
                     TerminalText(
                       'Conflito: ${(eventChances['conflito']! * 100).toStringAsFixed(0)}%',
                       fontSize: 8,
-                      color: eventChances['conflito']! > 0.15 ? AppTheme.orange : AppTheme.textDim,
+                      color: eventChances['conflito']! > 0.15
+                          ? AppTheme.orange
+                          : AppTheme.textDim,
                     ),
-                  if (eventChances['traicao'] != null && eventChances['traicao']! > 0)
+                  if (eventChances['traicao'] != null &&
+                      eventChances['traicao']! > 0)
                     TerminalText(
                       'Traicao: ${(eventChances['traicao']! * 100).toStringAsFixed(0)}% (!)',
                       fontSize: 8,
@@ -2115,7 +2156,9 @@ class _TowerScreenState extends State<TowerScreen> {
                   TerminalText(
                     'Ameaca Reativada: ${((0.05 + floor.timesReexplored * 0.02) * 100).toStringAsFixed(0)}%',
                     fontSize: 8,
-                    color: floor.timesReexplored > 3 ? AppTheme.red : AppTheme.yellow,
+                    color: floor.timesReexplored > 3
+                        ? AppTheme.red
+                        : AppTheme.yellow,
                   ),
                   if (eventChances['evento_raro'] != null)
                     TerminalText(
@@ -2211,190 +2254,192 @@ class _TowerScreenState extends State<TowerScreen> {
                   ),
                   const SizedBox(height: 8),
 
-                  ...gp.aliveNpcs.map((npc) {
-                    final selected = selectedIds.contains(npc.id);
-                    final isTooYoung = !npc.canGoOnExpedition(gp.state.currentDay);
-                    final isDisabled = npc.isIncapacitated || isTooYoung;
-                    final power = npc.attributes.combatPower;
+                  CollapsibleList(
+                    items: gp.aliveNpcs,
+                    initialCount: 5,
+                    itemBuilder: (npc, _) {
+                      final selected = selectedIds.contains(npc.id);
+                      final isTooYoung = !npc.canGoOnExpedition(
+                        gp.state.currentDay,
+                      );
+                      final isDisabled = npc.isIncapacitated || isTooYoung;
+                      final power = npc.attributes.combatPower;
+                      final fatigueColor = npc.fatigue >= 90
+                          ? const Color(0xFFFF0044)
+                          : npc.fatigue >= 70
+                          ? AppTheme.red
+                          : npc.fatigue >= 50
+                          ? AppTheme.orange
+                          : npc.fatigue >= 30
+                          ? AppTheme.yellow
+                          : AppTheme.green;
+                      final dangerTraits = npc.traits
+                          .where(
+                            (t) =>
+                                t == PersonalityTrait.lazy ||
+                                t == PersonalityTrait.coward ||
+                                t == PersonalityTrait.treacherous ||
+                                t == PersonalityTrait.individualist,
+                          )
+                          .map((t) => t.label)
+                          .toList();
+                      final goodTraits = npc.traits
+                          .where(
+                            (t) =>
+                                t == PersonalityTrait.brave ||
+                                t == PersonalityTrait.loyal ||
+                                t == PersonalityTrait.ambitious ||
+                                t == PersonalityTrait.analytical ||
+                                t == PersonalityTrait.leader,
+                          )
+                          .map((t) => t.label)
+                          .toList();
 
-                    final fatigueColor = npc.fatigue >= 90
-                        ? const Color(0xFFFF0044)
-                        : npc.fatigue >= 70
-                        ? AppTheme.red
-                        : npc.fatigue >= 50
-                        ? AppTheme.orange
-                        : npc.fatigue >= 30
-                        ? AppTheme.yellow
-                        : AppTheme.green;
-
-                    // Tags de personalidade relevantes
-                    final dangerTraits = npc.traits
-                        .where(
-                          (t) =>
-                              t == PersonalityTrait.lazy ||
-                              t == PersonalityTrait.coward ||
-                              t == PersonalityTrait.treacherous ||
-                              t == PersonalityTrait.individualist,
-                        )
-                        .map((t) => t.label)
-                        .toList();
-                    final goodTraits = npc.traits
-                        .where(
-                          (t) =>
-                              t == PersonalityTrait.brave ||
-                              t == PersonalityTrait.loyal ||
-                              t == PersonalityTrait.ambitious ||
-                              t == PersonalityTrait.analytical ||
-                              t == PersonalityTrait.leader,
-                        )
-                        .map((t) => t.label)
-                        .toList();
-
-                    return GestureDetector(
-                      onTap: isDisabled
-                          ? null
-                          : () => setModalState(() {
-                              if (selected) {
-                                selectedIds.remove(npc.id);
-                              } else {
-                                selectedIds.add(npc.id);
-                              }
-                            }),
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 4),
-                        padding: const EdgeInsets.all(7),
-                        decoration: BoxDecoration(
-                          border: Border.all(
+                      return GestureDetector(
+                        onTap: isDisabled
+                            ? null
+                            : () => setModalState(() {
+                                if (selected) {
+                                  selectedIds.remove(npc.id);
+                                } else {
+                                  selectedIds.add(npc.id);
+                                }
+                              }),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 4),
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: isDisabled
+                                  ? AppTheme.red.withValues(alpha: 0.3)
+                                  : selected
+                                  ? AppTheme.green
+                                  : AppTheme.border,
+                            ),
+                            borderRadius: BorderRadius.circular(4),
                             color: isDisabled
-                                ? AppTheme.red.withValues(alpha: 0.3)
+                                ? AppTheme.red.withValues(alpha: 0.03)
                                 : selected
-                                ? AppTheme.green
-                                : AppTheme.border,
+                                ? AppTheme.green.withValues(alpha: 0.06)
+                                : null,
                           ),
-                          borderRadius: BorderRadius.circular(4),
-                          color: isDisabled
-                              ? AppTheme.red.withValues(alpha: 0.03)
-                              : selected
-                              ? AppTheme.green.withValues(alpha: 0.06)
-                              : null,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  isDisabled
-                                      ? Icons.block
-                                      : selected
-                                      ? Icons.check_box
-                                      : Icons.check_box_outline_blank,
-                                  size: 14,
-                                  color: isDisabled
-                                      ? AppTheme.red.withValues(alpha: 0.5)
-                                      : selected
-                                      ? AppTheme.green
-                                      : AppTheme.textDim,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: TerminalText(
-                                    '${npc.name} | ${npc.profession.label}',
-                                    fontSize: 9,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    isDisabled
+                                        ? Icons.block
+                                        : selected
+                                        ? Icons.check_box
+                                        : Icons.check_box_outline_blank,
+                                    size: 14,
                                     color: isDisabled
                                         ? AppTheme.red.withValues(alpha: 0.5)
                                         : selected
-                                        ? AppTheme.textPrimary
-                                        : AppTheme.textSecondary,
-                                    fontWeight: selected
-                                        ? FontWeight.bold
-                                        : FontWeight.normal,
+                                        ? AppTheme.green
+                                        : AppTheme.textDim,
                                   ),
-                                ),
-                                if (npc.isSuspicious)
-                                  const Icon(
-                                    Icons.warning,
-                                    size: 12,
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: TerminalText(
+                                      '${npc.name} | ${npc.profession.label}',
+                                      fontSize: 9,
+                                      color: isDisabled
+                                          ? AppTheme.red.withValues(alpha: 0.5)
+                                          : selected
+                                          ? AppTheme.textPrimary
+                                          : AppTheme.textSecondary,
+                                      fontWeight: selected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                  if (npc.isSuspicious)
+                                    const Icon(
+                                      Icons.warning,
+                                      size: 12,
+                                      color: AppTheme.red,
+                                    ),
+                                  const SizedBox(width: 4),
+                                  TerminalText(
+                                    'F:${npc.fatigue.toStringAsFixed(0)}',
+                                    fontSize: 8,
+                                    color: fatigueColor,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  TerminalText(
+                                    'PWR:${power.toStringAsFixed(1)}',
+                                    fontSize: 9,
+                                    color: AppTheme.green,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ],
+                              ),
+                              if (isTooYoung)
+                                const Padding(
+                                  padding: EdgeInsets.only(left: 20, top: 2),
+                                  child: TerminalText(
+                                    '[JOVEM DEMAIS - NAO PODE PARTICIPAR]',
+                                    fontSize: 7,
                                     color: AppTheme.red,
                                   ),
-                                const SizedBox(width: 4),
-                                TerminalText(
-                                  'F:${npc.fatigue.toStringAsFixed(0)}',
-                                  fontSize: 8,
-                                  color: fatigueColor,
-                                ),
-                                const SizedBox(width: 6),
-                                TerminalText(
-                                  'PWR:${power.toStringAsFixed(1)}',
-                                  fontSize: 9,
-                                  color: AppTheme.green,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ],
-                            ),
-                            if (isTooYoung)
-                              const Padding(
-                                padding: EdgeInsets.only(left: 20, top: 2),
-                                child: TerminalText(
-                                  '[JOVEM DEMAIS - NAO PODE PARTICIPAR]',
-                                  fontSize: 7,
-                                  color: AppTheme.red,
-                                ),
-                              )
-                            else if (isDisabled)
-                              const Padding(
-                                padding: EdgeInsets.only(left: 20, top: 2),
-                                child: TerminalText(
-                                  '[INCAPACITADO - NAO PODE PARTICIPAR]',
-                                  fontSize: 7,
-                                  color: AppTheme.red,
-                                ),
-                              )
-                            else if (npc.isExhausted)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  left: 20,
-                                  top: 2,
-                                ),
-                                child: TerminalText(
-                                  '[EXAUSTO - rendimento severamente reduzido]',
-                                  fontSize: 7,
-                                  color: AppTheme.red,
-                                ),
-                              )
-                            else if (dangerTraits.isNotEmpty ||
-                                goodTraits.isNotEmpty) ...[
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  left: 20,
-                                  top: 2,
-                                ),
-                                child: Wrap(
-                                  spacing: 4,
-                                  children: [
-                                    ...goodTraits.map(
-                                      (t) => TerminalText(
-                                        '[+$t]',
-                                        fontSize: 7,
-                                        color: AppTheme.green,
+                                )
+                              else if (isDisabled)
+                                const Padding(
+                                  padding: EdgeInsets.only(left: 20, top: 2),
+                                  child: TerminalText(
+                                    '[INCAPACITADO - NAO PODE PARTICIPAR]',
+                                    fontSize: 7,
+                                    color: AppTheme.red,
+                                  ),
+                                )
+                              else if (npc.isExhausted)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 20,
+                                    top: 2,
+                                  ),
+                                  child: TerminalText(
+                                    '[EXAUSTO - rendimento severamente reduzido]',
+                                    fontSize: 7,
+                                    color: AppTheme.red,
+                                  ),
+                                )
+                              else if (dangerTraits.isNotEmpty ||
+                                  goodTraits.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 20,
+                                    top: 2,
+                                  ),
+                                  child: Wrap(
+                                    spacing: 4,
+                                    children: [
+                                      ...goodTraits.map(
+                                        (t) => TerminalText(
+                                          '[+$t]',
+                                          fontSize: 7,
+                                          color: AppTheme.green,
+                                        ),
                                       ),
-                                    ),
-                                    ...dangerTraits.map(
-                                      (t) => TerminalText(
-                                        '[-$t]',
-                                        fontSize: 7,
-                                        color: AppTheme.orange,
+                                      ...dangerTraits.map(
+                                        (t) => TerminalText(
+                                          '[-$t]',
+                                          fontSize: 7,
+                                          color: AppTheme.orange,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                    );
-                  }),
+                      );
+                    },
+                  ),
 
                   const SizedBox(height: 16),
                   TerminalButton(

@@ -2,12 +2,14 @@ import 'dart:math';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:tower_ascension/models/citadel.dart';
 import '../providers/game_provider.dart';
 import '../models/npc.dart';
 import '../models/group_model.dart';
 import '../models/tower.dart';
 import '../widgets/theme.dart';
 import '../widgets/terminal_widgets.dart';
+import '../widgets/collapsible_list.dart';
 
 class GroupsScreen extends StatelessWidget {
   const GroupsScreen({super.key});
@@ -28,8 +30,11 @@ class GroupsScreen extends StatelessWidget {
               if (gp.groups.isEmpty)
                 const _EmptyGroupsCard()
               else
-                ...gp.groups.map(
-                  (g) => Padding(
+                CollapsibleList(
+                  label: 'Grupos ativos',
+                  items: gp.groups,
+                  initialCount: 5,
+                  itemBuilder: (g, _) => Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: _GroupCard(gp: gp, group: g),
                   ),
@@ -148,8 +153,8 @@ class _GroupCard extends StatelessWidget {
     final borderColor = group.cohesion > 70
         ? AppTheme.green
         : group.cohesion > 40
-            ? AppTheme.yellow
-            : AppTheme.red;
+        ? AppTheme.yellow
+        : AppTheme.red;
 
     return TerminalCard(
       title: '${group.name} (${group.role.label})',
@@ -175,7 +180,11 @@ class _GroupCard extends StatelessWidget {
               ),
             ),
           const SizedBox(height: 6),
-          ...aliveMembers.map((npc) => _MemberRow(npc: npc, group: group)),
+          CollapsibleList(
+            items: aliveMembers,
+            initialCount: 5,
+            itemBuilder: (npc, _) => _MemberRow(npc: npc, group: group),
+          ),
           const SizedBox(height: 8),
           _GroupActions(gp: gp, group: group, aliveMembers: aliveMembers),
         ],
@@ -214,10 +223,10 @@ class _GroupStats extends StatelessWidget {
     final fatigueColor = avgFatigue >= 70
         ? AppTheme.red
         : avgFatigue >= 50
-            ? AppTheme.orange
-            : avgFatigue >= 30
-                ? AppTheme.yellow
-                : AppTheme.green;
+        ? AppTheme.orange
+        : avgFatigue >= 30
+        ? AppTheme.yellow
+        : AppTheme.green;
 
     final exhaustedSuffix = exhaustedCount > 0
         ? ' ($exhaustedCount exausto${exhaustedCount > 1 ? "s" : ""})'
@@ -232,18 +241,28 @@ class _GroupStats extends StatelessWidget {
           children: [
             TerminalText(
               'Membros: ${aliveMembers.length}/${group.memberIds.length}',
-              fontSize: 9, color: AppTheme.textSecondary,
+              fontSize: 9,
+              color: AppTheme.textSecondary,
             ),
             TerminalText(
               'Coesao: ${group.cohesion.toStringAsFixed(0)}%',
               fontSize: 9,
-              color: group.cohesion > 70 ? AppTheme.green
-                  : group.cohesion > 40 ? AppTheme.yellow : AppTheme.red,
+              color: group.cohesion > 70
+                  ? AppTheme.green
+                  : group.cohesion > 40
+                  ? AppTheme.yellow
+                  : AppTheme.red,
             ),
-            TerminalText('Missoes: ${group.missionsCompleted}',
-                fontSize: 9, color: AppTheme.cyan),
-            TerminalText('Baixas: ${group.casualties}',
-                fontSize: 9, color: AppTheme.red),
+            TerminalText(
+              'Missoes: ${group.missionsCompleted}',
+              fontSize: 9,
+              color: AppTheme.cyan,
+            ),
+            TerminalText(
+              'Baixas: ${group.casualties}',
+              fontSize: 9,
+              color: AppTheme.red,
+            ),
           ],
         ),
         const SizedBox(height: 4),
@@ -253,15 +272,18 @@ class _GroupStats extends StatelessWidget {
           children: [
             TerminalText(
               'Poder medio: ${avgPower.toStringAsFixed(1)}',
-              fontSize: 9, color: AppTheme.orange,
+              fontSize: 9,
+              color: AppTheme.orange,
             ),
             TerminalText(
               'Lealdade media: ${avgLoyalty.toStringAsFixed(0)}',
-              fontSize: 9, color: AppTheme.yellow,
+              fontSize: 9,
+              color: AppTheme.yellow,
             ),
             TerminalText(
               'Fadiga media: ${avgFatigue.toStringAsFixed(0)}%$exhaustedSuffix',
-              fontSize: 9, color: fatigueColor,
+              fontSize: 9,
+              color: fatigueColor,
             ),
           ],
         ),
@@ -280,13 +302,18 @@ class _MemberRow extends StatelessWidget {
     final isLeader = npc.id == group.leaderId;
     final fatigueColor = npc.fatigue >= 90
         ? const Color(0xFFFF0044)
-        : npc.fatigue >= 70 ? AppTheme.red
-        : npc.fatigue >= 50 ? AppTheme.orange
-        : npc.fatigue >= 30 ? AppTheme.yellow
+        : npc.fatigue >= 70
+        ? AppTheme.red
+        : npc.fatigue >= 50
+        ? AppTheme.orange
+        : npc.fatigue >= 30
+        ? AppTheme.yellow
         : AppTheme.green;
 
-    final statusSuffix = npc.isIncapacitated ? ' [INCAP]'
-        : npc.isExhausted ? ' [EXAU]'
+    final statusSuffix = npc.isIncapacitated
+        ? ' [INCAP]'
+        : npc.isExhausted
+        ? ' [EXAU]'
         : '';
 
     return Padding(
@@ -300,12 +327,15 @@ class _MemberRow extends StatelessWidget {
               fontSize: 8,
               color: npc.isIncapacitated
                   ? AppTheme.red.withValues(alpha: 0.5)
-                  : npc.isSuspicious ? AppTheme.red : AppTheme.textSecondary,
+                  : npc.isSuspicious
+                  ? AppTheme.red
+                  : AppTheme.textSecondary,
             ),
           ),
           TerminalText(
             'F:${npc.fatigue.toStringAsFixed(0)}',
-            fontSize: 8, color: fatigueColor,
+            fontSize: 8,
+            color: fatigueColor,
           ),
           if (npc.isSuspicious)
             const TerminalText(' [!]', fontSize: 8, color: AppTheme.red),
@@ -401,14 +431,18 @@ class _SuggestionHistory extends StatelessWidget {
       title: 'HISTORICO DE SUGESTOES',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: recent.map((s) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: TerminalText(
-            '[${s.response.label}] ${s.responseDetail}',
-            fontSize: 8,
-            color: _responseColors[s.response] ?? AppTheme.textSecondary,
-          ),
-        )).toList(),
+        children: recent
+            .map(
+              (s) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: TerminalText(
+                  '[${s.response.label}] ${s.responseDetail}',
+                  fontSize: 8,
+                  color: _responseColors[s.response] ?? AppTheme.textSecondary,
+                ),
+              ),
+            )
+            .toList(),
       ),
     );
   }
@@ -426,12 +460,17 @@ class _EmptyGroupsCard extends StatelessWidget {
     return const TerminalCard(
       child: Column(
         children: [
-          TerminalText('Nenhum grupo formado.', fontSize: 11, color: AppTheme.textDim),
+          TerminalText(
+            'Nenhum grupo formado.',
+            fontSize: 11,
+            color: AppTheme.textDim,
+          ),
           SizedBox(height: 4),
           TerminalText(
             'Forme grupos para coordenar expedicoes, treinos e defesas. '
             'Grupos com alta coesao trabalham melhor juntos.',
-            fontSize: 9, color: AppTheme.textDim,
+            fontSize: 9,
+            color: AppTheme.textDim,
           ),
         ],
       ),
@@ -453,34 +492,47 @@ class _HowItWorksCard extends StatelessWidget {
           SizedBox(height: 4),
           TerminalText(
             'Escolher quem desafia novos andares e quem re-explora para coletar recursos.',
-            fontSize: 9, color: AppTheme.textPrimary,
+            fontSize: 9,
+            color: AppTheme.textPrimary,
           ),
           SizedBox(height: 8),
           _SectionHeader('ACOES DISPONIVEIS:', AppTheme.cyan),
           SizedBox(height: 4),
-          TerminalText('1. DESAFIAR ANDAR - Enviar grupo para conquistar o proximo andar',
-              fontSize: 9, color: AppTheme.orange),
-          TerminalText('2. COLETAR RECURSOS - Re-explorar andares conquistados',
-              fontSize: 9, color: AppTheme.green),
-          TerminalText('3. SUGERIR TREINO - NPCs podem aceitar ou recusar',
-              fontSize: 9, color: AppTheme.cyan),
+          TerminalText(
+            '1. DESAFIAR ANDAR - Enviar grupo para conquistar o proximo andar',
+            fontSize: 9,
+            color: AppTheme.orange,
+          ),
+          TerminalText(
+            '2. COLETAR RECURSOS - Re-explorar andares conquistados',
+            fontSize: 9,
+            color: AppTheme.green,
+          ),
+          TerminalText(
+            '3. SUGERIR TREINO - NPCs podem aceitar ou recusar',
+            fontSize: 9,
+            color: AppTheme.cyan,
+          ),
           SizedBox(height: 8),
           _SectionHeader('HIERARQUIA DE DECISAO:', AppTheme.yellow),
           SizedBox(height: 4),
           TerminalText(
             'Voce NAO diz aos NPCs qual andar explorar - voce os DESIGNA como lideres.',
-            fontSize: 9, color: AppTheme.textSecondary,
+            fontSize: 9,
+            color: AppTheme.textSecondary,
           ),
           TerminalText(
             'NPCs decidem autonomamente treino, relacionamentos e decisoes pessoais.',
-            fontSize: 9, color: AppTheme.textSecondary,
+            fontSize: 9,
+            color: AppTheme.textSecondary,
           ),
           SizedBox(height: 8),
           _SectionHeader('FATORES DE DECISAO (para treino):', AppTheme.textDim),
           SizedBox(height: 4),
           TerminalText(
             'Lealdade, fadiga, moral, ambicao, medo, relacionamentos, confianca, experiencias passadas e traumas.',
-            fontSize: 9, color: AppTheme.textDim,
+            fontSize: 9,
+            color: AppTheme.textDim,
           ),
           SizedBox(height: 8),
           _SectionHeader('IMPACTO POLITICO:', AppTheme.red),
@@ -488,7 +540,8 @@ class _HowItWorksCard extends StatelessWidget {
           TerminalText(
             'Favoritismo gera ressentimento. Enviar os mesmos NPCs sempre pode desgasta-los. '
             'Perdas em expedicoes abalam moral e confianca.',
-            fontSize: 9, color: AppTheme.textDim,
+            fontSize: 9,
+            color: AppTheme.textDim,
           ),
         ],
       ),
@@ -504,11 +557,11 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => TerminalText(
-        text,
-        fontSize: 10,
-        color: color,
-        fontWeight: FontWeight.bold,
-      );
+    text,
+    fontSize: 10,
+    color: color,
+    fontWeight: FontWeight.bold,
+  );
 }
 
 // ─────────────────────────────────────────────
@@ -540,50 +593,74 @@ class _ExpeditionDialog {
         ),
         title: TerminalText(
           'ENVIAR ${group.name.toUpperCase()}?',
-          fontSize: 13, color: AppTheme.orange, fontWeight: FontWeight.bold,
+          fontSize: 13,
+          color: AppTheme.orange,
+          fontWeight: FontWeight.bold,
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TerminalText('Destino: Andar ${floor.number} (${floor.type.label})',
-                fontSize: 11, color: AppTheme.textPrimary),
-            TerminalText('Dificuldade: ${floor.scaledDifficulty.toStringAsFixed(1)}',
-                fontSize: 10, color: AppTheme.red),
+            TerminalText(
+              'Destino: Andar ${floor.number} (${floor.type.label})',
+              fontSize: 11,
+              color: AppTheme.textPrimary,
+            ),
+            TerminalText(
+              'Dificuldade: ${floor.scaledDifficulty.toStringAsFixed(1)}',
+              fontSize: 10,
+              color: AppTheme.red,
+            ),
             const SizedBox(height: 4),
-            TerminalText('Membros vivos: ${aliveIds.length}',
-                fontSize: 10, color: AppTheme.textSecondary),
+            TerminalText(
+              'Membros vivos: ${aliveIds.length}',
+              fontSize: 10,
+              color: AppTheme.textSecondary,
+            ),
             TerminalText(
               'Poder: ${totalPower.toStringAsFixed(1)} / ${floor.recommendedPower.toStringAsFixed(1)} '
               '(${powerPct.toStringAsFixed(0)}%)',
               fontSize: 10,
-              color: powerPct >= 100 ? AppTheme.green
-                  : powerPct >= 60 ? AppTheme.yellow : AppTheme.red,
+              color: powerPct >= 100
+                  ? AppTheme.green
+                  : powerPct >= 60
+                  ? AppTheme.yellow
+                  : AppTheme.red,
             ),
             TerminalText(
               'Mortalidade: ${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
-              fontSize: 10, color: AppTheme.red,
+              fontSize: 10,
+              color: AppTheme.red,
             ),
             const SizedBox(height: 8),
             if (powerPct < 60)
-              const TerminalText('PERIGO: Poder muito abaixo do recomendado!',
-                  fontSize: 9, color: AppTheme.red),
+              const TerminalText(
+                'PERIGO: Poder muito abaixo do recomendado!',
+                fontSize: 9,
+                color: AppTheme.red,
+              ),
             const TerminalText(
               'MORTE PERMANENTE. Eles podem nao voltar.',
-              fontSize: 10, color: AppTheme.red, fontWeight: FontWeight.bold,
+              fontSize: 10,
+              color: AppTheme.red,
+              fontWeight: FontWeight.bold,
             ),
           ],
         ),
         actions: [
-          TerminalButton(label: 'CANCELAR', color: AppTheme.textDim,
-              onPressed: () => Navigator.pop(ctx)),
+          TerminalButton(
+            label: 'CANCELAR',
+            color: AppTheme.textDim,
+            onPressed: () => Navigator.pop(ctx),
+          ),
           TerminalButton(
             label: 'ENVIAR',
             icon: Icons.rocket_launch,
             color: AppTheme.orange,
             onPressed: () {
-              Navigator.pop(ctx);
+              final nav = Navigator.of(ctx);
               final result = gp.sendGroupExpedition(group.id);
+              nav.pop();
               if (result != null && context.mounted) {
                 _ExpeditionResultDialog.show(context, result);
               }
@@ -607,7 +684,9 @@ class _ExpeditionResultDialog {
         backgroundColor: AppTheme.bgCard,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
-          side: BorderSide(color: result.victory ? AppTheme.green : AppTheme.red),
+          side: BorderSide(
+            color: result.victory ? AppTheme.green : AppTheme.red,
+          ),
         ),
         title: TerminalText(
           result.victory ? 'VITORIA!' : 'DERROTA',
@@ -696,27 +775,48 @@ class _ReexploreDialogState extends State<_ReexploreDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const _BottomSheetHandle(),
-            TerminalText('RE-EXPLORAR COM: ${widget.group.name}',
-                fontSize: 12, color: AppTheme.green, fontWeight: FontWeight.bold),
+            TerminalText(
+              'RE-EXPLORAR COM: ${widget.group.name}',
+              fontSize: 12,
+              color: AppTheme.green,
+              fontWeight: FontWeight.bold,
+            ),
             const SizedBox(height: 4),
-            const TerminalText('Escolha um andar conquistado para coletar recursos:',
-                fontSize: 9, color: AppTheme.textDim),
+            const TerminalText(
+              'Escolha um andar conquistado para coletar recursos:',
+              fontSize: 9,
+              color: AppTheme.textDim,
+            ),
             if (_selectedFloor != null) _buildAnalysis(),
             const SizedBox(height: 8),
 
             // Lista de andares com scroll independente
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 300),
-              child: SingleChildScrollView(
-                child: Column(
-                  children: widget.gp.clearedFloors.map(_buildFloorOption).toList(),
-                ),
+              child: CollapsibleList<int>(
+                items: widget.gp.clearedFloors
+                    .map((floor) => floor.number)
+                    .toList(),
+
+                initialCount: 8,
+                itemBuilder: (floorNumber, idx) {
+                  final floor = widget.gp.clearedFloors.firstWhere(
+                    (f) => f.number == floorNumber,
+                  );
+                  return _buildFloorOption(
+                    floor.number,
+                    'Andar ${floor.number} (${floor.type.label}) - Risco moderado',
+                    AppTheme.textSecondary,
+                  );
+                },
               ),
             ),
 
             const SizedBox(height: 12),
             TerminalButton(
-              label: _selectedFloor != null ? 'ENVIAR COLETORES' : 'SELECIONE UM ANDAR',
+              label: _selectedFloor != null
+                  ? 'ENVIAR COLETORES'
+                  : 'SELECIONE UM ANDAR',
               icon: Icons.search,
               expanded: true,
               color: AppTheme.green,
@@ -729,17 +829,24 @@ class _ReexploreDialogState extends State<_ReexploreDialog> {
   }
 
   Widget _buildAnalysis() {
-    final floor = widget.gp.clearedFloors.firstWhere((f) => f.number == _selectedFloor);
+    final floor = widget.gp.clearedFloors.firstWhere(
+      (f) => f.number == _selectedFloor,
+    );
     final aliveIds = _aliveIds;
     final costPerNpc = widget.gp.engine.reexploreCostPerNpc(_selectedFloor!);
     final totalCost = aliveIds.length * costPerNpc;
     final synergy = widget.gp.engine.previewGroupSynergy(aliveIds) * 100;
-    final personalityMod = widget.gp.engine.previewPartyPersonalityMod(aliveIds) * 100;
-    final attributeYield = widget.gp.engine.previewPartyAttributeYield(aliveIds, floor.type);
+    final personalityMod =
+        widget.gp.engine.previewPartyPersonalityMod(aliveIds) * 100;
+    final attributeYield = widget.gp.engine.previewPartyAttributeYield(
+      aliveIds,
+      floor.type,
+    );
     final eventChances = widget.gp.engine.previewEventChances(aliveIds, floor);
 
     final estimatedFood = (floor.farmableResources['food'] ?? 0.0);
-    final totalYield = attributeYield * (1 + synergy / 100) * (1 + personalityMod / 100);
+    final totalYield =
+        attributeYield * (1 + synergy / 100) * (1 + personalityMod / 100);
     final netFood = estimatedFood * totalYield - totalCost;
 
     final threatPct = (0.05 + floor.timesReexplored * 0.02) * 100;
@@ -755,14 +862,22 @@ class _ReexploreDialogState extends State<_ReexploreDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const TerminalText('ANALISE DA EXPEDICAO',
-              fontSize: 11, color: AppTheme.cyan, fontWeight: FontWeight.bold),
+          const TerminalText(
+            'ANALISE DA EXPEDICAO',
+            fontSize: 11,
+            color: AppTheme.cyan,
+            fontWeight: FontWeight.bold,
+          ),
           const SizedBox(height: 8),
-          TerminalText('Membros: ${aliveIds.length} NPCs',
-              fontSize: 9, color: AppTheme.textSecondary),
+          TerminalText(
+            'Membros: ${aliveIds.length} NPCs',
+            fontSize: 9,
+            color: AppTheme.textSecondary,
+          ),
           TerminalText(
             'Custo: ${totalCost.toStringAsFixed(1)} comida (${costPerNpc.toStringAsFixed(1)}/NPC)',
-            fontSize: 9, color: AppTheme.orange,
+            fontSize: 9,
+            color: AppTheme.orange,
           ),
           _SynergyText(synergy: synergy),
           TerminalText(
@@ -770,17 +885,31 @@ class _ReexploreDialogState extends State<_ReexploreDialog> {
             ' (atrib: ${(attributeYield * 100).toStringAsFixed(0)}%,'
             ' pers: ${personalityMod >= 0 ? "+" : ""}${personalityMod.toStringAsFixed(0)}%)',
             fontSize: 9,
-            color: totalYield > 1.3 ? AppTheme.green
-                : totalYield > 1.0 ? AppTheme.yellow : AppTheme.orange,
+            color: totalYield > 1.3
+                ? AppTheme.green
+                : totalYield > 1.0
+                ? AppTheme.yellow
+                : AppTheme.orange,
           ),
           const Divider(color: AppTheme.border, height: 12),
-          const TerminalText('Estimativa de retorno (comida):', fontSize: 9, color: AppTheme.textDim),
+          const TerminalText(
+            'Estimativa de retorno (comida):',
+            fontSize: 9,
+            color: AppTheme.textDim,
+          ),
           TerminalText(
             'Lucro: ${netFood >= 0 ? "+" : ""}${netFood.toStringAsFixed(1)}'
-            ' ${netFood < 0 ? "(PREJUIZO)" : netFood < totalCost * 0.5 ? "(baixo)" : "(bom)"}',
+            ' ${netFood < 0
+                ? "(PREJUIZO)"
+                : netFood < totalCost * 0.5
+                ? "(baixo)"
+                : "(bom)"}',
             fontSize: 9,
-            color: netFood < 0 ? AppTheme.red
-                : netFood < totalCost * 0.5 ? AppTheme.orange : AppTheme.green,
+            color: netFood < 0
+                ? AppTheme.red
+                : netFood < totalCost * 0.5
+                ? AppTheme.orange
+                : AppTheme.green,
             fontWeight: FontWeight.bold,
           ),
           const Divider(color: AppTheme.border, height: 12),
@@ -791,8 +920,9 @@ class _ReexploreDialogState extends State<_ReexploreDialog> {
             _RiskText('Conflito', eventChances['conflito'], threshold: 0.15),
           if ((eventChances['traicao'] ?? 0) > 0)
             TerminalText(
-              'Traicao: ${((eventChances['traicao'] ?? 0) * 100).toStringAsFixed(0)}% (!)',
-              fontSize: 8, color: AppTheme.red,
+              'Traicao: ${((eventChances['traicao'] ?? 0) * 100).toStringAsFixed(0)}%',
+              fontSize: 8,
+              color: AppTheme.red,
             ),
           TerminalText(
             'Ameaca Reativada: ${threatPct.toStringAsFixed(0)}%',
@@ -802,54 +932,50 @@ class _ReexploreDialogState extends State<_ReexploreDialog> {
           if ((eventChances['evento_raro'] ?? 0) > 0)
             TerminalText(
               'Evento Raro (2x recursos): ${((eventChances['evento_raro'] ?? 0) * 100).toStringAsFixed(0)}%',
-              fontSize: 8, color: AppTheme.green,
+              fontSize: 8,
+              color: AppTheme.green,
             ),
         ],
       ),
     );
   }
 
-  Widget _buildFloorOption(TowerFloor floor) {
-    final isSelected = _selectedFloor == floor.number;
-    final threatPct = ((0.05 + floor.timesReexplored * 0.02) * 100).toStringAsFixed(0);
-    final resStr = floor.farmableResources.entries
-        .map((e) => '${e.key}: ~${e.value.toStringAsFixed(0)}')
-        .join(', ');
-
+  Widget _buildFloorOption(int floorNumber, String label, Color labelColor) {
+    final isSelected = _selectedFloor == floorNumber;
     return GestureDetector(
-      onTap: () => setState(() => _selectedFloor = floor.number),
+      onTap: () => setState(() => _selectedFloor = floorNumber),
       child: Container(
         padding: const EdgeInsets.all(8),
         margin: const EdgeInsets.only(bottom: 4),
         decoration: BoxDecoration(
-          border: Border.all(color: isSelected ? AppTheme.green : AppTheme.border),
+          border: Border.all(
+            color: isSelected ? AppTheme.green : AppTheme.border,
+          ),
           borderRadius: BorderRadius.circular(4),
           color: isSelected ? AppTheme.green.withValues(alpha: 0.05) : null,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                TerminalText('Andar ${floor.number} (${floor.type.label})',
-                    fontSize: 10,
-                    color: isSelected ? AppTheme.green : AppTheme.textPrimary),
-                const Spacer(),
-                TerminalText('Risco: $threatPct%', fontSize: 8, color: AppTheme.yellow),
-              ],
-            ),
-            TerminalText('Recursos base: $resStr', fontSize: 8, color: AppTheme.cyan),
-          ],
+        child: TerminalText(
+          label,
+          fontSize: 10,
+          color: isSelected ? AppTheme.green : labelColor,
         ),
       ),
     );
   }
 
   void _submit() {
-    Navigator.pop(context);
-    final result = widget.gp.sendGroupReexploration(widget.group.id, _selectedFloor!);
-    if (result != null && context.mounted) {
-      _ReexploreResultDialog.show(context, result);
+    // Captura o navigator ANTES de desmontar o widget
+    final nav = Navigator.of(context);
+    final overlayContext = context;
+
+    final result = widget.gp.sendGroupReexploration(
+      widget.group.id,
+      _selectedFloor!,
+    );
+    nav.pop(); // fecha bottom sheet com navigator já capturado
+
+    if (result != null && overlayContext.mounted) {
+      _ReexploreResultDialog.show(overlayContext, result);
     }
   }
 }
@@ -875,7 +1001,9 @@ class _ReexploreResultDialog {
           ),
         ),
         title: TerminalText(
-          result.casualties.isNotEmpty ? 'AMEACA REATIVADA!' : 'COLETA CONCLUIDA',
+          result.casualties.isNotEmpty
+              ? 'AMEACA REATIVADA!'
+              : 'COLETA CONCLUIDA',
           fontSize: 14,
           color: result.casualties.isNotEmpty ? AppTheme.red : AppTheme.green,
           fontWeight: FontWeight.bold,
@@ -884,20 +1012,34 @@ class _ReexploreResultDialog {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TerminalText('Andar ${result.floorNumber}',
-                fontSize: 12, color: AppTheme.textPrimary),
+            TerminalText(
+              'Andar ${result.floorNumber}',
+              fontSize: 12,
+              color: AppTheme.textPrimary,
+            ),
             const SizedBox(height: 8),
-            const TerminalText('Recursos coletados:', fontSize: 10, color: AppTheme.cyan),
+            const TerminalText(
+              'Recursos coletados:',
+              fontSize: 10,
+              color: AppTheme.cyan,
+            ),
             TerminalText(resStr, fontSize: 10, color: AppTheme.green),
             if (result.casualties.isNotEmpty) ...[
               const SizedBox(height: 8),
-              TerminalText('BAIXAS: ${result.casualties.length}',
-                  fontSize: 10, color: AppTheme.red, fontWeight: FontWeight.bold),
+              TerminalText(
+                'BAIXAS: ${result.casualties.length}',
+                fontSize: 10,
+                color: AppTheme.red,
+                fontWeight: FontWeight.bold,
+              ),
             ],
             if (result.discoveries.isNotEmpty) ...[
               const SizedBox(height: 8),
-              TerminalText('Descobertas: ${result.discoveries.join(', ')}',
-                  fontSize: 10, color: AppTheme.yellow),
+              TerminalText(
+                'Descobertas: ${result.discoveries.join(', ')}',
+                fontSize: 10,
+                color: AppTheme.yellow,
+              ),
             ],
           ],
         ),
@@ -945,7 +1087,8 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
     super.dispose();
   }
 
-  bool get _canCreate => _selectedIds.length >= 2 && _nameController.text.isNotEmpty;
+  bool get _canCreate =>
+      _selectedIds.length >= 2 && _nameController.text.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -961,8 +1104,12 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const _BottomSheetHandle(),
-            const TerminalText('FORMAR NOVO ESQUADRAO',
-                fontSize: 14, color: AppTheme.cyan, fontWeight: FontWeight.bold),
+            const TerminalText(
+              'FORMAR NOVO ESQUADRAO',
+              fontSize: 14,
+              color: AppTheme.cyan,
+              fontWeight: FontWeight.bold,
+            ),
             const SizedBox(height: 12),
             _buildNameField(),
             const SizedBox(height: 12),
@@ -971,10 +1118,17 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
             const SizedBox(height: 12),
             TerminalText(
               'Selecionar membros (${_selectedIds.length} selecionados):',
-              fontSize: 10, color: AppTheme.textSecondary,
+              fontSize: 10,
+              color: AppTheme.textSecondary,
             ),
             const SizedBox(height: 8),
-            ...widget.gp.aliveNpcs.where((n) => n.groupId == null).map(_buildNpcOption),
+            CollapsibleList(
+              items: widget.gp.aliveNpcs
+                  .where((n) => n.groupId == null)
+                  .toList(),
+              initialCount: 5,
+              itemBuilder: (npc, _) => _buildNpcOption(npc),
+            ),
             const SizedBox(height: 12),
             TerminalButton(
               label: 'CRIAR GRUPO',
@@ -993,12 +1147,16 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
       controller: _nameController,
       onChanged: (_) => setState(() {}),
       style: const TextStyle(
-        fontFamily: 'FiraCode', fontSize: 12, color: AppTheme.textPrimary,
+        fontFamily: 'FiraCode',
+        fontSize: 12,
+        color: AppTheme.textPrimary,
       ),
       decoration: InputDecoration(
         hintText: 'Nome do grupo...',
         hintStyle: const TextStyle(
-          color: AppTheme.textDim, fontFamily: 'FiraCode', fontSize: 11,
+          color: AppTheme.textDim,
+          fontFamily: 'FiraCode',
+          fontSize: 11,
         ),
         enabledBorder: OutlineInputBorder(
           borderSide: const BorderSide(color: AppTheme.border),
@@ -1019,7 +1177,11 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const TerminalText('Funcao:', fontSize: 10, color: AppTheme.textSecondary),
+        const TerminalText(
+          'Funcao:',
+          fontSize: 10,
+          color: AppTheme.textSecondary,
+        ),
         const SizedBox(height: 4),
         Wrap(
           spacing: 6,
@@ -1036,8 +1198,11 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
                   borderRadius: BorderRadius.circular(2),
                   color: active ? AppTheme.cyan.withValues(alpha: 0.1) : null,
                 ),
-                child: TerminalText(role.label, fontSize: 9,
-                    color: active ? AppTheme.cyan : AppTheme.textDim),
+                child: TerminalText(
+                  role.label,
+                  fontSize: 9,
+                  color: active ? AppTheme.cyan : AppTheme.textDim,
+                ),
               ),
             );
           }).toList(),
@@ -1049,11 +1214,18 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
   Widget _buildGroupAnalysis() {
     final ids = _selectedIds.toList();
     final synergy = widget.gp.engine.previewGroupSynergy(ids) * 100;
-    final personalityMod = widget.gp.engine.previewPartyPersonalityMod(ids) * 100;
-    final npcs = ids.map((id) => widget.gp.aliveNpcs.firstWhere((n) => n.id == id)).toList();
-    final avgPower = npcs.map((n) => n.attributes.combatPower).reduce((a, b) => a + b) / npcs.length;
-    final avgLoyalty = npcs.map((n) => n.loyalty).reduce((a, b) => a + b) / npcs.length;
-    final avgFatigue = npcs.map((n) => n.fatigue).reduce((a, b) => a + b) / npcs.length;
+    final personalityMod =
+        widget.gp.engine.previewPartyPersonalityMod(ids) * 100;
+    final npcs = ids
+        .map((id) => widget.gp.aliveNpcs.firstWhere((n) => n.id == id))
+        .toList();
+    final avgPower =
+        npcs.map((n) => n.attributes.combatPower).reduce((a, b) => a + b) /
+        npcs.length;
+    final avgLoyalty =
+        npcs.map((n) => n.loyalty).reduce((a, b) => a + b) / npcs.length;
+    final avgFatigue =
+        npcs.map((n) => n.fatigue).reduce((a, b) => a + b) / npcs.length;
     final exhaustedCount = npcs.where((n) => n.isExhausted).length;
     final hasSuspicious = npcs.any((n) => n.isSuspicious);
 
@@ -1068,41 +1240,75 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const TerminalText('ANALISE DE EFICIENCIA',
-              fontSize: 11, color: AppTheme.cyan, fontWeight: FontWeight.bold),
+          const TerminalText(
+            'ANALISE DE EFICIENCIA',
+            fontSize: 11,
+            color: AppTheme.cyan,
+            fontWeight: FontWeight.bold,
+          ),
           const SizedBox(height: 8),
           _SynergyText(synergy: synergy),
           TerminalText(
             'Dinamica de grupo: ${personalityMod >= 0 ? "+" : ""}${personalityMod.toStringAsFixed(0)}%'
-            ' ${personalityMod > 10 ? "(Harmoniosa)" : personalityMod < -10 ? "(Conflituosa)" : "(Equilibrada)"}',
+            ' ${personalityMod > 10
+                ? "(Harmoniosa)"
+                : personalityMod < -10
+                ? "(Conflituosa)"
+                : "(Equilibrada)"}',
             fontSize: 9,
-            color: personalityMod > 10 ? AppTheme.green
-                : personalityMod < -10 ? AppTheme.red : AppTheme.textSecondary,
+            color: personalityMod > 10
+                ? AppTheme.green
+                : personalityMod < -10
+                ? AppTheme.red
+                : AppTheme.textSecondary,
           ),
           const Divider(color: AppTheme.border, height: 12),
-          TerminalText('Poder medio: ${avgPower.toStringAsFixed(1)}', fontSize: 9,
-              color: avgPower > 15 ? AppTheme.green : avgPower > 10 ? AppTheme.yellow : AppTheme.orange),
-          TerminalText('Lealdade media: ${avgLoyalty.toStringAsFixed(0)}', fontSize: 9,
-              color: avgLoyalty > 70 ? AppTheme.green : avgLoyalty > 50 ? AppTheme.yellow : AppTheme.orange),
+          TerminalText(
+            'Poder medio: ${avgPower.toStringAsFixed(1)}',
+            fontSize: 9,
+            color: avgPower > 15
+                ? AppTheme.green
+                : avgPower > 10
+                ? AppTheme.yellow
+                : AppTheme.orange,
+          ),
+          TerminalText(
+            'Lealdade media: ${avgLoyalty.toStringAsFixed(0)}',
+            fontSize: 9,
+            color: avgLoyalty > 70
+                ? AppTheme.green
+                : avgLoyalty > 50
+                ? AppTheme.yellow
+                : AppTheme.orange,
+          ),
           TerminalText(
             'Fadiga media: ${avgFatigue.toStringAsFixed(0)}%'
             '${exhaustedCount > 0 ? " ($exhaustedCount exausto${exhaustedCount > 1 ? "s" : ""})" : ""}',
             fontSize: 9,
-            color: avgFatigue >= 70 ? AppTheme.red
-                : avgFatigue >= 50 ? AppTheme.orange
-                : avgFatigue >= 30 ? AppTheme.yellow : AppTheme.green,
+            color: avgFatigue >= 70
+                ? AppTheme.red
+                : avgFatigue >= 50
+                ? AppTheme.orange
+                : avgFatigue >= 30
+                ? AppTheme.yellow
+                : AppTheme.green,
           ),
           if (hasSuspicious) ...[
             const SizedBox(height: 4),
-            const TerminalText('ALERTA: Membro suspeito no grupo!',
-                fontSize: 9, color: AppTheme.red, fontWeight: FontWeight.bold),
+            const TerminalText(
+              'ALERTA: Membro suspeito no grupo!',
+              fontSize: 9,
+              color: AppTheme.red,
+              fontWeight: FontWeight.bold,
+            ),
           ],
           if (exhaustedCount > 0) ...[
             const SizedBox(height: 4),
             TerminalText(
               'AVISO: $exhaustedCount membro${exhaustedCount > 1 ? "s" : ""} '
               'exausto${exhaustedCount > 1 ? "s" : ""}',
-              fontSize: 9, color: AppTheme.orange,
+              fontSize: 9,
+              color: AppTheme.orange,
             ),
           ],
         ],
@@ -1114,8 +1320,11 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
     final selected = _selectedIds.contains(npc.id);
     return GestureDetector(
       onTap: () => setState(() {
-        if (selected) _selectedIds.remove(npc.id);
-        else _selectedIds.add(npc.id);
+        if (selected) {
+          _selectedIds.remove(npc.id);
+        } else {
+          _selectedIds.add(npc.id);
+        }
       }),
       child: Container(
         margin: const EdgeInsets.only(bottom: 4),
@@ -1137,19 +1346,28 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TerminalText(npc.name, fontSize: 10, color: AppTheme.textPrimary),
+                  TerminalText(
+                    npc.name,
+                    fontSize: 10,
+                    color: AppTheme.textPrimary,
+                  ),
                   TerminalText(
                     'PWR:${npc.attributes.combatPower.toStringAsFixed(1)}'
                     ' | ${npc.profession.label}'
                     ' | Leal:${npc.loyalty.toStringAsFixed(0)}'
                     ' | Fad:${npc.fatigue.toStringAsFixed(0)}%',
-                    fontSize: 8, color: AppTheme.textDim,
+                    fontSize: 8,
+                    color: AppTheme.textDim,
                   ),
                 ],
               ),
             ),
             if (npc.isSuspicious)
-              const TerminalText('[SUSPEITO]', fontSize: 8, color: AppTheme.red),
+              const TerminalText(
+                '[SUSPEITO]',
+                fontSize: 8,
+                color: AppTheme.red,
+              ),
           ],
         ),
       ),
@@ -1165,7 +1383,6 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
 // ─────────────────────────────────────────────
 // DIALOGO: SUGERIR TREINO
 // ─────────────────────────────────────────────
-
 class _SuggestTrainingDialog extends StatefulWidget {
   final GameProvider gp;
   final NpcGroup group;
@@ -1175,6 +1392,7 @@ class _SuggestTrainingDialog extends StatefulWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.bgCard,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
         side: BorderSide(color: AppTheme.border),
@@ -1188,74 +1406,359 @@ class _SuggestTrainingDialog extends StatefulWidget {
 }
 
 class _SuggestTrainingDialogState extends State<_SuggestTrainingDialog> {
-  int? _selectedFloor;
+  BuildingType? _selectedBuilding;
+  int _durationDays = 3;
+
+  static const _durations = [3, 5, 7];
+
+  static const _buildingMeta = {
+    BuildingType.trainingField: (
+      label: 'Campo de Treino',
+      focus: 'FOR / RES / AGI (balanceado)',
+      color: AppTheme.green,
+      icon: '🏃',
+    ),
+    BuildingType.barracks: (
+      label: 'Barracks',
+      focus: 'FOR / RES (combate)',
+      color: AppTheme.orange,
+      icon: '⚔️',
+    ),
+    BuildingType.arena: (
+      label: 'Arena',
+      focus: 'AGI / FOR (velocidade)',
+      color: AppTheme.red,
+      icon: '🏟️',
+    ),
+    BuildingType.temple: (
+      label: 'Templo',
+      focus: 'SAN / CAR (mental)',
+      color: AppTheme.cyan,
+      icon: '⛪',
+    ),
+    BuildingType.library: (
+      label: 'Biblioteca',
+      focus: 'INT (tática)',
+      color: AppTheme.purple,
+      icon: '📚',
+    ),
+  };
+
+  List<String> get _aliveIds => widget.group.memberIds
+      .where((id) => widget.gp.allNpcs.any((n) => n.id == id && n.alive))
+      .toList();
+
+  bool get _alreadyTraining =>
+      widget.gp.activeTrainings.any((m) => m.groupId == widget.group.id);
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (_, controller) => SingleChildScrollView(
+        controller: controller,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _BottomSheetHandle(),
+            TerminalText(
+              'SUGERIR TREINO: ${widget.group.name}',
+              fontSize: 12,
+              color: AppTheme.cyan,
+              fontWeight: FontWeight.bold,
+            ),
+            const SizedBox(height: 4),
+            TerminalText(
+              'NPCs podem aceitar ou recusar baseado em aptitude, fadiga e personalidade.',
+              fontSize: 9,
+              color: AppTheme.textDim,
+            ),
+
+            // Aviso se já em treino
+            if (_alreadyTraining) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppTheme.yellow),
+                  borderRadius: BorderRadius.circular(4),
+                  color: AppTheme.yellow.withValues(alpha: 0.05),
+                ),
+                child: const TerminalText(
+                  'Este grupo já possui missão de treino ativa.',
+                  fontSize: 9,
+                  color: AppTheme.yellow,
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 12),
+            // Seleção de edifício
+            const TerminalText(
+              'EDIFÍCIO DE TREINO:',
+              fontSize: 10,
+              color: AppTheme.textSecondary,
+              fontWeight: FontWeight.bold,
+            ),
+            const SizedBox(height: 6),
+            ...widget.gp.trainingBuildings.map((b) {
+              final meta = _buildingMeta[b];
+              if (meta == null) return const SizedBox.shrink();
+              final selected = _selectedBuilding == b;
+              return GestureDetector(
+                onTap: () => setState(() => _selectedBuilding = b),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: selected ? meta.color : AppTheme.border,
+                    ),
+                    borderRadius: BorderRadius.circular(4),
+                    color: selected ? meta.color.withValues(alpha: 0.07) : null,
+                  ),
+                  child: Row(
+                    children: [
+                      Text(meta.icon, style: const TextStyle(fontSize: 18)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            TerminalText(
+                              meta.label,
+                              fontSize: 10,
+                              color: selected
+                                  ? meta.color
+                                  : AppTheme.textPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            TerminalText(
+                              meta.focus,
+                              fontSize: 8,
+                              color: AppTheme.textDim,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (selected)
+                        Icon(Icons.check_circle, color: meta.color, size: 16),
+                    ],
+                  ),
+                ),
+              );
+            }),
+
+            if (widget.gp.trainingBuildings.isEmpty)
+              const TerminalText(
+                'Nenhum edifício de treino disponível. Construa Campo de Treino, Barracks, Arena, Templo ou Biblioteca.',
+                fontSize: 9,
+                color: AppTheme.red,
+              ),
+
+            // Seleção de duração
+            if (_selectedBuilding != null) ...[
+              const SizedBox(height: 12),
+              const TerminalText(
+                'DURAÇÃO DO TREINO:',
+                fontSize: 10,
+                color: AppTheme.textSecondary,
+                fontWeight: FontWeight.bold,
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: _durations.map((d) {
+                  final selected = _durationDays == d;
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _durationDays = d),
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: selected ? AppTheme.cyan : AppTheme.border,
+                          ),
+                          borderRadius: BorderRadius.circular(4),
+                          color: selected
+                              ? AppTheme.cyan.withValues(alpha: 0.08)
+                              : null,
+                        ),
+                        child: Column(
+                          children: [
+                            TerminalText(
+                              '$d dias',
+                              fontSize: 10,
+                              color: selected
+                                  ? AppTheme.cyan
+                                  : AppTheme.textSecondary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            TerminalText(
+                              _durationLabel(d),
+                              fontSize: 8,
+                              color: AppTheme.textDim,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+
+              // Preview de ganhos
+              const SizedBox(height: 12),
+              _buildGainPreview(),
+            ],
+
+            const SizedBox(height: 16),
+            TerminalButton(
+              label: _alreadyTraining
+                  ? 'JÁ EM TREINO'
+                  : _selectedBuilding == null
+                  ? 'SELECIONE UM EDIFÍCIO'
+                  : 'SUGERIR TREINO',
+              icon: Icons.fitness_center,
+              expanded: true,
+              color: AppTheme.cyan,
+              onPressed: (_selectedBuilding != null && !_alreadyTraining)
+                  ? _submit
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGainPreview() {
+    if (_selectedBuilding == null) return const SizedBox.shrink();
+
+    final preview = widget.gp.previewTrainingGains(
+      _aliveIds,
+      _selectedBuilding!,
+      _durationDays,
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppTheme.cyan.withValues(alpha: 0.4)),
+        borderRadius: BorderRadius.circular(4),
+        color: AppTheme.cyan.withValues(alpha: 0.04),
+      ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _BottomSheetHandle(),
-          TerminalText('SUGERIR TREINO: ${widget.group.name}',
-              fontSize: 12, color: AppTheme.cyan, fontWeight: FontWeight.bold),
+          const TerminalText(
+            'GANHO ESTIMADO (se aceito):',
+            fontSize: 10,
+            color: AppTheme.cyan,
+            fontWeight: FontWeight.bold,
+          ),
           const SizedBox(height: 8),
-          const TerminalText('Os NPCs podem aceitar, recusar ou ignorar.',
-              fontSize: 9, color: AppTheme.textDim),
-          const SizedBox(height: 12),
-          // Lista de andares com scroll independente
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 300),
-            child: SingleChildScrollView(
-              child: Column(
+          ...preview.entries.map((entry) {
+            final npc = widget.gp.allNpcs.firstWhereOrNull(
+              (n) => n.id == entry.key,
+            );
+            if (npc == null) return const SizedBox.shrink();
+
+            final apt = widget.gp.previewNpcAptitude(
+              npc.id,
+              _selectedBuilding!,
+            );
+            final aptColor = apt >= 1.5
+                ? AppTheme.green
+                : apt >= 0.8
+                ? AppTheme.yellow
+                : AppTheme.red;
+            final aptLabel = apt >= 1.5
+                ? 'Alta'
+                : apt >= 0.8
+                ? 'Média'
+                : 'Baixa';
+
+            final gainStr = entry.value.entries
+                .map(
+                  (e) => '${_attrLabel(e.key)}+${e.value.toStringAsFixed(2)}',
+                )
+                .join('  ');
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Row(
                 children: [
-                  if (widget.gp.hasTrainingField)
-                    _buildFloorOption(-1, 'Campo de Treino (seguro, ganhos lentos)', AppTheme.green),
-                  ...widget.gp.clearedFloors.map((floor) => _buildFloorOption(
-                    floor.number,
-                    'Andar ${floor.number} (${floor.type.label}) - Risco moderado',
-                    AppTheme.textSecondary,
-                  )),
+                  Expanded(
+                    flex: 3,
+                    child: TerminalText(
+                      npc.name,
+                      fontSize: 8,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: TerminalText(
+                      'Apt: $aptLabel',
+                      fontSize: 8,
+                      color: aptColor,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 4,
+                    child: TerminalText(
+                      gainStr,
+                      fontSize: 8,
+                      color: AppTheme.green,
+                    ),
+                  ),
                 ],
               ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TerminalButton(
-            label: 'SUGERIR',
-            icon: Icons.send,
-            expanded: true,
-            color: AppTheme.green,
-            onPressed: _selectedFloor != null ? _submit : null,
+            );
+          }),
+          const Divider(color: AppTheme.border, height: 12),
+          TerminalText(
+            'Custo: ${(_aliveIds.length * _durationDays * 1.0).toStringAsFixed(0)} comida total',
+            fontSize: 8,
+            color: AppTheme.orange,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFloorOption(int floorNumber, String label, Color labelColor) {
-    final isSelected = _selectedFloor == floorNumber;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedFloor = floorNumber),
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        margin: const EdgeInsets.only(bottom: 4),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: isSelected ? AppTheme.green : AppTheme.border,
-          ),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: TerminalText(label, fontSize: 10, color: isSelected ? AppTheme.green : labelColor),
-      ),
-    );
-  }
+  String _durationLabel(int days) => switch (days) {
+    3 => 'rápido',
+    5 => 'normal',
+    7 => 'intensivo',
+    _ => '',
+  };
+
+  String _attrLabel(String attr) => switch (attr) {
+    'strength' => 'FOR',
+    'endurance' => 'RES',
+    'agility' => 'AGI',
+    'intelligence' => 'INT',
+    'charisma' => 'CAR',
+    'mentalStability' => 'SAN',
+    _ => attr,
+  };
 
   void _submit() {
-    widget.gp.suggestTraining(widget.group.id, 'group', _selectedFloor!);
-    Navigator.pop(context);
+    final nav = Navigator.of(context);
+    final ctx = context;
+    final result = widget.gp.suggestGroupTraining(
+      widget.group.id,
+      _selectedBuilding!,
+      _durationDays,
+    );
+    nav.pop();
+    if (ctx.mounted) _TrainingResponseDialog.show(ctx, result);
   }
 }
 
@@ -1263,19 +1766,123 @@ class _SuggestTrainingDialogState extends State<_SuggestTrainingDialog> {
 // WIDGETS AUXILIARES REUTILIZÁVEIS
 // ─────────────────────────────────────────────
 
+class _TrainingResponseDialog {
+  static const _configs = {
+    TrainingResponse.accepted: (
+      color: AppTheme.green,
+      icon: Icons.check_circle_outline,
+      title: 'PROPOSTA ACEITA',
+    ),
+    TrainingResponse.refused: (
+      color: AppTheme.red,
+      icon: Icons.cancel_outlined,
+      title: 'PROPOSTA RECUSADA',
+    ),
+    TrainingResponse.negotiated: (
+      color: AppTheme.yellow,
+      icon: Icons.handshake_outlined,
+      title: 'NEGOCIACAO',
+    ),
+    TrainingResponse.ignored: (
+      color: AppTheme.textDim,
+      icon: Icons.do_not_disturb_outlined,
+      title: 'IGNORADO',
+    ),
+  };
+
+  static void show(BuildContext context, TrainingSuggestion result) {
+    final cfg = _configs[result.response]!;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.bgCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(color: cfg.color),
+        ),
+        title: Row(
+          children: [
+            Icon(cfg.icon, color: cfg.color, size: 18),
+            const SizedBox(width: 8),
+            TerminalText(
+              cfg.title,
+              fontSize: 13,
+              color: cfg.color,
+              fontWeight: FontWeight.bold,
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Resposta narrativa principal
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                border: Border.all(color: cfg.color.withValues(alpha: 0.3)),
+                borderRadius: BorderRadius.circular(4),
+                color: cfg.color.withValues(alpha: 0.05),
+              ),
+              child: TerminalText(
+                '"${result.responseDetail}"',
+                fontSize: 10,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Quem aceitou / recusou individualmente (se houver)
+            if (result.acceptedIds != null &&
+                result.acceptedIds!.isNotEmpty) ...[
+              TerminalText(
+                '${result.acceptedIds!.length} membro(s) confirmado(s)',
+                fontSize: 9,
+                color: AppTheme.green,
+              ),
+            ],
+            if (result.refusedIds != null && result.refusedIds!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              TerminalText(
+                '${result.refusedIds!.length} membro(s) recusou(aram)',
+                fontSize: 9,
+                color: AppTheme.red,
+              ),
+            ],
+
+            // Motivo resumido (se vier no model)
+            if (result.reason != null) ...[
+              const SizedBox(height: 8),
+              TerminalText(
+                result.reason!,
+                fontSize: 8,
+                color: AppTheme.textDim,
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TerminalButton(label: 'FECHAR', onPressed: () => Navigator.pop(ctx)),
+        ],
+      ),
+    );
+  }
+}
+
 /// Handle visual do bottom sheet
 class _BottomSheetHandle extends StatelessWidget {
   const _BottomSheetHandle();
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Container(
-          width: 40,
-          height: 3,
-          color: AppTheme.border,
-          margin: const EdgeInsets.only(bottom: 12),
-        ),
-      );
+    child: Container(
+      width: 40,
+      height: 3,
+      color: AppTheme.border,
+      margin: const EdgeInsets.only(bottom: 12),
+    ),
+  );
 }
 
 /// Texto de sinergia com cor automática
@@ -1285,18 +1892,25 @@ class _SynergyText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = synergy > 30 ? '(Excelente)'
-        : synergy > 10 ? '(Boa)'
-        : synergy < -10 ? '(Ruim)'
+    final label = synergy > 30
+        ? '(Excelente)'
+        : synergy > 10
+        ? '(Boa)'
+        : synergy < -10
+        ? '(Ruim)'
         : '(Neutra)';
-    final color = synergy > 30 ? AppTheme.green
-        : synergy > 10 ? AppTheme.yellow
-        : synergy < -10 ? AppTheme.red
+    final color = synergy > 30
+        ? AppTheme.green
+        : synergy > 10
+        ? AppTheme.yellow
+        : synergy < -10
+        ? AppTheme.red
         : AppTheme.textSecondary;
 
     return TerminalText(
       'Sinergia: ${synergy.toStringAsFixed(0)}% $label',
-      fontSize: 9, color: color,
+      fontSize: 9,
+      color: color,
     );
   }
 }

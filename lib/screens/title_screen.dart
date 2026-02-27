@@ -194,6 +194,8 @@ class _TitleScreenState extends State<TitleScreen>
                                 );
                                 if (selectedSlot != null) {
                                   gp.setSlot(selectedSlot);
+                                  if (!mounted) return;
+                                  // ignore: use_build_context_synchronously
                                   _confirmDelete(context, gp);
                                   setState(
                                     () {},

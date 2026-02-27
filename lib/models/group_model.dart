@@ -1,3 +1,5 @@
+import 'package:tower_ascension/models/citadel.dart';
+
 /// Modelo de grupo/esquadrao de NPCs
 class NpcGroup {
   final String id;
@@ -7,7 +9,7 @@ class NpcGroup {
   GroupRole role;
   int missionsCompleted;
   int casualties;
-  double cohesion; 
+  double cohesion;
 
   NpcGroup({
     required this.id,
@@ -24,44 +26,109 @@ class NpcGroup {
   bool get isEmpty => memberIds.isEmpty;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'memberIds': memberIds,
-        'leaderId': leaderId,
-        'role': role.index,
-        'missionsCompleted': missionsCompleted,
-        'casualties': casualties,
-        'cohesion': cohesion,
-      };
+    'id': id,
+    'name': name,
+    'memberIds': memberIds,
+    'leaderId': leaderId,
+    'role': role.index,
+    'missionsCompleted': missionsCompleted,
+    'casualties': casualties,
+    'cohesion': cohesion,
+  };
 
   factory NpcGroup.fromJson(Map<String, dynamic> json) => NpcGroup(
-        id: json['id'] as String? ?? '',
-        name: json['name'] as String? ?? 'Grupo',
-        memberIds: (json['memberIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-        leaderId: json['leaderId'] as String?,
-        role: GroupRole.values[(json['role'] as int? ?? 0).clamp(0, GroupRole.values.length - 1)],
-        missionsCompleted: json['missionsCompleted'] as int? ?? 0,
-        casualties: json['casualties'] as int? ?? 0,
-        cohesion: (json['cohesion'] as num?)?.toDouble() ?? 50.0,
-      );
+    id: json['id'] as String? ?? '',
+    name: json['name'] as String? ?? 'Grupo',
+    memberIds:
+        (json['memberIds'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        [],
+    leaderId: json['leaderId'] as String?,
+    role:
+        GroupRole.values[(json['role'] as int? ?? 0).clamp(
+          0,
+          GroupRole.values.length - 1,
+        )],
+    missionsCompleted: json['missionsCompleted'] as int? ?? 0,
+    casualties: json['casualties'] as int? ?? 0,
+    cohesion: (json['cohesion'] as num?)?.toDouble() ?? 50.0,
+  );
 }
 
-enum GroupRole {
-  general,
-  assault,
-  recon,
-  training,
-  defense,
+class TrainingMission {
+  final String id;
+  final String groupId;
+  final List<String> participantIds;
+  final BuildingType buildingType;
+  final int startDay;
+  final int durationDays;
+  int completedDays;
+  bool get isComplete => completedDays >= durationDays;
+
+  // Ganhos acumulados: npcId → { atributo → total ganho }
+  final Map<String, Map<String, double>> gainsPerNpc;
+
+  TrainingMission({
+    required this.id,
+    required this.groupId,
+    required this.participantIds,
+    required this.buildingType,
+    required this.startDay,
+    required this.durationDays,
+    this.completedDays = 0,
+    Map<String, Map<String, double>>? gainsPerNpc,
+  }) : gainsPerNpc = gainsPerNpc ?? {};
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'groupId': groupId,
+    'participantIds': participantIds,
+    'buildingType': buildingType.index,
+    'startDay': startDay,
+    'durationDays': durationDays,
+    'completedDays': completedDays,
+    'gainsPerNpc': gainsPerNpc,
+  };
+
+  factory TrainingMission.fromJson(Map<String, dynamic> j) => TrainingMission(
+    id: j['id'],
+    groupId: j['groupId'],
+    participantIds: List<String>.from(j['participantIds']),
+    buildingType: BuildingType.values[j['buildingType']],
+    startDay: j['startDay'],
+    durationDays: j['durationDays'],
+    completedDays: j['completedDays'] ?? 0,
+    gainsPerNpc:
+        (j['gainsPerNpc'] as Map<String, dynamic>?)?.map(
+          (k, v) => MapEntry(
+            k,
+            Map<String, double>.from(
+              (v as Map).map(
+                (a, b) => MapEntry(a.toString(), (b as num).toDouble()),
+              ),
+            ),
+          ),
+        ) ??
+        {},
+  );
 }
+
+enum GroupRole { general, assault, recon, training, defense }
 
 extension GroupRoleExt on GroupRole {
   String get label {
     switch (this) {
-      case GroupRole.general: return 'Geral';
-      case GroupRole.assault: return 'Assalto';
-      case GroupRole.recon: return 'Reconhecimento';
-      case GroupRole.training: return 'Treinamento';
-      case GroupRole.defense: return 'Defesa';
+      case GroupRole.general:
+        return 'Geral';
+      case GroupRole.assault:
+        return 'Assalto';
+      case GroupRole.recon:
+        return 'Reconhecimento';
+      case GroupRole.training:
+        return 'Treinamento';
+      case GroupRole.defense:
+        return 'Defesa';
     }
   }
 }
@@ -75,6 +142,9 @@ class TrainingSuggestion {
   final int floorNumber; // andar para treinar, ou -1 para training field
   TrainingResponse response;
   String responseDetail;
+  List<String>? acceptedIds;
+  List<String>? refusedIds;
+  String? reason;
 
   TrainingSuggestion({
     required this.id,
@@ -87,22 +157,27 @@ class TrainingSuggestion {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'day': day,
-        'targetType': targetType,
-        'targetId': targetId,
-        'floorNumber': floorNumber,
-        'response': response.index,
-        'responseDetail': responseDetail,
-      };
+    'id': id,
+    'day': day,
+    'targetType': targetType,
+    'targetId': targetId,
+    'floorNumber': floorNumber,
+    'response': response.index,
+    'responseDetail': responseDetail,
+  };
 
-  factory TrainingSuggestion.fromJson(Map<String, dynamic> json) => TrainingSuggestion(
+  factory TrainingSuggestion.fromJson(Map<String, dynamic> json) =>
+      TrainingSuggestion(
         id: json['id'] as String? ?? '',
         day: json['day'] as int? ?? 0,
         targetType: json['targetType'] as String? ?? 'npc',
         targetId: json['targetId'] as String? ?? '',
         floorNumber: json['floorNumber'] as int? ?? 1,
-        response: TrainingResponse.values[(json['response'] as int? ?? 0).clamp(0, TrainingResponse.values.length - 1)],
+        response:
+            TrainingResponse.values[(json['response'] as int? ?? 0).clamp(
+              0,
+              TrainingResponse.values.length - 1,
+            )],
         responseDetail: json['responseDetail'] as String? ?? '',
       );
 }
@@ -119,12 +194,18 @@ enum TrainingResponse {
 extension TrainingResponseExt on TrainingResponse {
   String get label {
     switch (this) {
-      case TrainingResponse.pending: return 'Pendente';
-      case TrainingResponse.accepted: return 'Aceitou';
-      case TrainingResponse.refused: return 'Recusou';
-      case TrainingResponse.negotiated: return 'Negociou';
-      case TrainingResponse.ignored: return 'Ignorou';
-      case TrainingResponse.persuadedOthers: return 'Convenceu outros';
+      case TrainingResponse.pending:
+        return 'Pendente';
+      case TrainingResponse.accepted:
+        return 'Aceitou';
+      case TrainingResponse.refused:
+        return 'Recusou';
+      case TrainingResponse.negotiated:
+        return 'Negociou';
+      case TrainingResponse.ignored:
+        return 'Ignorou';
+      case TrainingResponse.persuadedOthers:
+        return 'Convenceu outros';
     }
   }
 }
@@ -146,28 +227,28 @@ class FloorExplorationResult {
     required this.floorNumber,
     required this.day,
     required this.partyIds,
-    Map<String, double>? resourcesGained,
-    List<String>? discoveries,
-    List<String>? casualties,
+    Map<String, double>? resourcesParam,
+    List<String>? discoveriesParam,
+    List<String>? casualtiesParam,
     this.hiddenThreatActivated = false,
     this.narrative = '',
     this.foodCost = 0.0,
-    List<String>? expeditionEvents,
-  })  : resourcesGained = resourcesGained ?? {},
-        discoveries = discoveries ?? [],
-        casualties = casualties ?? [],
-        expeditionEvents = expeditionEvents ?? [];
+    List<String>? expeditionEventsParam,
+  }) : resourcesGained = resourcesParam ?? {},
+       discoveries = discoveriesParam ?? [],
+       casualties = casualtiesParam ?? [],
+       expeditionEvents = expeditionEventsParam ?? [];
 
   Map<String, dynamic> toJson() => {
-        'floorNumber': floorNumber,
-        'day': day,
-        'partyIds': partyIds,
-        'resourcesGained': resourcesGained,
-        'discoveries': discoveries,
-        'casualties': casualties,
-        'hiddenThreatActivated': hiddenThreatActivated,
-        'narrative': narrative,
-        'foodCost': foodCost,
-        'expeditionEvents': expeditionEvents,
-      };
+    'floorNumber': floorNumber,
+    'day': day,
+    'partyIds': partyIds,
+    'resourcesGained': resourcesGained,
+    'discoveries': discoveries,
+    'casualties': casualties,
+    'hiddenThreatActivated': hiddenThreatActivated,
+    'narrative': narrative,
+    'foodCost': foodCost,
+    'expeditionEvents': expeditionEvents,
+  };
 }

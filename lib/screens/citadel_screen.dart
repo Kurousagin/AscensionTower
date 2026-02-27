@@ -22,6 +22,29 @@ class CitadelScreen extends StatelessWidget {
               children: [
                 _buildCitadelHeader(citadel, gp),
                 const SizedBox(height: 12),
+                // DEBUG — remover depois
+                // Row(
+                //   children: [
+                //     ElevatedButton(
+                //       onPressed: () =>
+                //           context.read<GameProvider>().debugForceCouple(),
+                //       child: const Text('🧪 Forçar Casal'),
+                //     ),
+                //     const SizedBox(width: 8),
+                //     ElevatedButton(
+                //       onPressed: () =>
+                //           context.read<GameProvider>().debugAdvanceDays(10),
+                //       child: const Text('⏩ +10 dias'),
+                //     ),
+                //     const SizedBox(width: 8),
+                //     ElevatedButton(
+                //       onPressed: () =>
+                //           context.read<GameProvider>().debugAddResources(),
+                //       child: const Text('💰 +200 recursos'),
+                //     ),
+                //   ],
+                // ),
+                const SizedBox(height: 12),
                 _buildResourcesDetailed(citadel, gp),
                 const SizedBox(height: 12),
                 _buildStorageUpgrade(context, citadel, gp),
@@ -106,7 +129,7 @@ class CitadelScreen extends StatelessWidget {
             ' .|T|.  ._|_|_.  .|T|.\n |=|=| /  ***  \\ |=|=|\n |=|=|/ [=] [=] \\|=|=|\n=|===|===========|===|=';
       case CitadelLevel.kingdom:
         art =
-            '  .*T*. .._|*|_.. .*T*.\n  |===| / *** *** \\ |===|\n  |===|/ [===][===] \\|===|\n==|=====|===========|=====|==';
+            '  .*T*. .._|*|_.. .*T*.\n  |===| / ********* \\ |===|\n  |===|/ [===][===] \\|===|\n==|=====|===========|=====|==';
       case CitadelLevel.empire:
         art =
             ' .***T***. .._|***|_.. .***T***.\n |=======| / ********* \\ |=======|\n |=======|/[====][====] \\|=======|\n=|=========|==============|=========|=';
@@ -138,10 +161,11 @@ class CitadelScreen extends StatelessWidget {
     if (!isInfinite) {
       if (maxUsage >= 1.0) {
         storageBorderColor = AppTheme.red;
-      } else if (maxUsage >= 0.8)
+      } else if (maxUsage >= 0.8){
         storageBorderColor = AppTheme.orange;
-      else if (maxUsage >= 0.6)
+      } else if (maxUsage >= 0.6) {
         storageBorderColor = AppTheme.yellow;
+      }
     }
 
     return TerminalCard(
@@ -924,6 +948,14 @@ class CitadelScreen extends StatelessWidget {
                               fontSize: 8,
                               color: AppTheme.textDim,
                             ),
+                            if (first.level < first.maxLevel)
+                              TerminalText(
+                                count > 1
+                                    ? 'Custo de upgrade (${count}x): ${_costString(_multiplyResources(first.upgradeCost, count))}'
+                                    : 'Custo de upgrade: ${_costString(first.upgradeCost)}',
+                                fontSize: 8,
+                                color: AppTheme.orange,
+                              ),
                           ],
                         ),
                       ),
@@ -966,6 +998,14 @@ class CitadelScreen extends StatelessWidget {
       ),
     );
   }
+
+  Resources _multiplyResources(Resources r, int factor) => Resources(
+    food: r.food * factor,
+    wood: r.wood * factor,
+    stone: r.stone * factor,
+    iron: r.iron * factor,
+    knowledge: r.knowledge * factor,
+  );
 
   // ==================== CONSTRUIR NOVOS EDIFICIOS ====================
 
@@ -1024,11 +1064,15 @@ class CitadelScreen extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             ...available.map((type) {
-              final b = Building(type: type);
-              final canAfford = citadel.resources.canAfford(
-                b.cost.toResources(),
-              );
-              return _buildBuildingOption(context, gp, b, canAfford, atLimit);
+              try {
+                final b = Building(type: type);
+                final canAfford = citadel.resources.canAfford(
+                  b.cost.toResources(),
+                );
+                return _buildBuildingOption(context, gp, b, canAfford, atLimit);
+              } catch (e) {
+                return const SizedBox.shrink(); // falha silenciosa segura
+              }
             }),
           ] else ...[
             const TerminalText(
