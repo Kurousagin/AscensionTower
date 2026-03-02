@@ -20,6 +20,7 @@ enum GameEventType {
   system,
   // Novos tipos
   groupFormed,
+  groupDissolved,
   trainingSuggestion,
   betrayalAttempt,
   emergencySummon,
@@ -67,6 +68,8 @@ extension GameEventTypeExt on GameEventType {
         return 'Sistema';
       case GameEventType.groupFormed:
         return 'Grupo Formado';
+      case GameEventType.groupDissolved:
+        return 'Grupo Dissolvido';
       case GameEventType.trainingSuggestion:
         return 'Sugestao de Treino';
       case GameEventType.betrayalAttempt:
@@ -122,6 +125,8 @@ extension GameEventTypeExt on GameEventType {
         return '#888888';
       case GameEventType.groupFormed:
         return '#66BBFF';
+      case GameEventType.groupDissolved:
+        return '#FF6666';
       case GameEventType.trainingSuggestion:
         return '#88DDAA';
       case GameEventType.betrayalAttempt:

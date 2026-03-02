@@ -359,6 +359,26 @@ class GameProvider extends ChangeNotifier {
     );
   }
 
+  /// Pausa a simulação para uma ação do jogador.
+  /// Retorna se já estava pausado antes (para restaurar o estado correto).
+  bool pauseForPlayerAction() {
+    if (_paused) return true; // já estava pausado, não precisa restaurar
+    _paused = true;
+    _updateTimer?.cancel();
+    notifyListeners();
+    return false;
+  }
+
+  /// Retoma simulação se [wasPausedBefore] for false.
+  void resumeAfterPlayerAction(bool wasPausedBefore) {
+    if (!wasPausedBefore && _paused && !_pausedByCrisis) {
+      _paused = false;
+      state.lastRealTimestamp = DateTime.now().millisecondsSinceEpoch;
+      _scheduleUpdate();
+      notifyListeners();
+    }
+  }
+
   void _processTimeStep() {
     if (!_simRunning || _paused || state.gameOver) return;
 
@@ -454,8 +474,22 @@ class GameProvider extends ChangeNotifier {
     }
 
     if (partyPower < nextFlr.recommendedPower * 0.6) return;
+    if (partyPower < nextFlr.recommendedPower * 0.6) return;
+    // Salva estado de fadiga para não contaminar com penalidade de consecutivas
+    final fatigueSnapshot = Map.fromEntries(
+      candidates
+          .take(partySize)
+          .map((n) => MapEntry(n.id, n.lastExpeditionDay)),
+    );
 
     _lastChallenge = _engine.attemptFloor(party);
+
+    // Restaura lastExpeditionDay para que o player não leve penalidade dupla
+    for (final n in _engine.npcs) {
+      if (fatigueSnapshot.containsKey(n.id)) {
+        n.lastExpeditionDay = fatigueSnapshot[n.id]!;
+      }
+    }
   }
 
   // ==================== GETTER DE BONUS DIARIO ====================
@@ -513,17 +547,39 @@ class GameProvider extends ChangeNotifier {
   // ==================== ACOES DO JOGADOR (PRINCIPAL) ====================
 
   /// ACAO PRINCIPAL: Enviar expedição ao proximo andar
-  TowerChallenge? sendExpedition(List<String> partyIds) {
+  /// Retorna null com feedback via [onFailure] se não foi possível executar.
+  TowerChallenge? sendExpedition(
+    List<String> partyIds, {
+    void Function(String reason)? onFailure,
+  }) {
     final floor = _engine.nextFloor;
-    if (floor == null) return null;
-    if (partyIds.length < 2) return null;
+    if (floor == null) {
+      onFailure?.call('Nenhum andar disponível para explorar.');
+      return null;
+    }
+    if (partyIds.length < 2) {
+      onFailure?.call('Selecione ao menos 2 habitantes.');
+      return null;
+    }
 
     final validPartyIds = partyIds.where((id) {
       final npc = _engine.npcs.firstWhereOrNull((n) => n.id == id);
       return npc != null && !npc.isIncapacitated;
     }).toList();
 
-    if (validPartyIds.length < 2) return null;
+    if (validPartyIds.isEmpty) {
+      onFailure?.call(
+        'Todos os habitantes selecionados estão incapacitados (fadiga ≥ 90).',
+      );
+      return null;
+    }
+    if (validPartyIds.length < 2) {
+      onFailure?.call(
+        '${partyIds.length - validPartyIds.length} habitante(s) incapacitado(s). '
+        'Menos de 2 aptos — expedição cancelada.',
+      );
+      return null;
+    }
 
     _lastChallenge = _engine.attemptFloor(validPartyIds);
 
@@ -546,19 +602,34 @@ class GameProvider extends ChangeNotifier {
   /// ACAO PRINCIPAL: Re-explorar andar conquistado para coletar recursos
   FloorExplorationResult? sendReexploration(
     int floorNumber,
-    List<String> partyIds,
-  ) {
-    if (partyIds.isEmpty) return null;
+    List<String> partyIds, {
+    void Function(String reason)? onFailure,
+  }) {
+    if (partyIds.isEmpty) {
+      onFailure?.call('Nenhum habitante selecionado.');
+      return null;
+    }
+
     final floor = _engine.floors.firstWhereOrNull(
       (f) => f.number == floorNumber && f.cleared,
     );
-    if (floor == null) return null;
+    if (floor == null) {
+      onFailure?.call('Andar $floorNumber não está conquistado.');
+      return null;
+    }
 
     final validIds = partyIds.where((id) {
       final npc = _engine.npcs.firstWhereOrNull((n) => n.id == id);
       return npc != null && !npc.isIncapacitated;
     }).toList();
-    if (validIds.isEmpty) return null;
+
+    if (validIds.isEmpty) {
+      onFailure?.call(
+        'Todos os habitantes selecionados estão incapacitados (fadiga ≥ 90). '
+        'Aguarde a recuperação.',
+      );
+      return null;
+    }
 
     final result = _engine.reexploreFloor(floorNumber, validIds);
 
@@ -820,6 +891,59 @@ class GameProvider extends ChangeNotifier {
     }
     return result;
   }
+
+  void rejectRecruit(String survivorId) {
+    _engine.rejectRecruit(survivorId);
+    notifyListeners();
+  }
+
+  // ==================== DIPLOMACIA ====================
+
+  /// Retorna as ofertas diplomáticas disponíveis para uma facção.
+  /// Lista vazia indica: já aliado, em cooldown ou sem relação estabelecida.
+  List<DiplomacyOffer> getDiplomacyOffers(FloorFaction faction) {
+    return _engine.getDiplomacyOffers(faction);
+  }
+
+  /// Executa uma oferta diplomática e retorna texto narrativo do resultado.
+  String executeDiplomacy(FloorFaction faction, DiplomacyOfferType offerType) {
+    final result = _engine.executeDiplomacy(faction, offerType);
+    _saveGame();
+    notifyListeners();
+    return result;
+  }
+
+  /// Dias restantes de cooldown para negociar com a facção (0 = disponível).
+  int diplomacyCooldownDays(FloorFaction faction) {
+    final rel = _engine.state.factionRelations[faction.name];
+    if (rel == null) return 0;
+    final elapsed = _engine.state.currentDay - rel.lastDiplomacyDay;
+    return (7 - elapsed).clamp(0, 7);
+  }
+
+  // ==================== HISTÓRICO DE FACÇÃO ====================
+
+  /// Eventos do log filtrados por facção — usados na timeline de histórico.
+  /// Inclui eventos políticos, descobertas, crises e recrutamentos que
+  /// mencionem o label da facção no título ou descrição.
+  List<GameEvent> eventsForFaction(FloorFaction faction) {
+    if (faction == FloorFaction.none) return [];
+    final label = faction.label;
+    return _engine.events
+        .where(
+          (e) =>
+              (e.type == GameEventType.politicalEvent ||
+                  e.type == GameEventType.discovery ||
+                  e.type == GameEventType.crisis ||
+                  e.type == GameEventType.recruitment ||
+                  e.type == GameEventType.exploration ||
+                  e.type == GameEventType.combat) &&
+              (e.title.contains(label) || e.description.contains(label)),
+        )
+        .toList()
+      ..sort((a, b) => b.day.compareTo(a.day));
+  }
+
   // ==================== SUGESTAO DE TREINO ====================
 
   TrainingSuggestion suggestTraining(

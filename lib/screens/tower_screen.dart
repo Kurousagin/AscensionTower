@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:tower_ascension/models/citadel.dart';
 import 'package:tower_ascension/widgets/collapsible_list.dart';
 import '../providers/game_provider.dart';
 import '../models/npc.dart';
@@ -7,6 +8,8 @@ import '../models/tower.dart';
 import '../models/group_model.dart';
 import '../widgets/theme.dart';
 import '../widgets/terminal_widgets.dart';
+import '../widgets/floor_detail_sheet.dart';
+import '../widgets/pending_recruits_badge.dart';
 
 class TowerScreen extends StatefulWidget {
   const TowerScreen({super.key});
@@ -37,6 +40,21 @@ class _TowerScreenState extends State<TowerScreen> {
               children: [
                 _buildTowerOverview(gp),
                 const SizedBox(height: 12),
+                // ── Banner de survivors aguardando recrutamento ──
+                if (gp.pendingRecruits.isNotEmpty)
+                  PendingRecruitsBanner(
+                    recruits: gp.pendingRecruits,
+                    hasRefuge: gp.citadel.hasBuilding(
+                      BuildingType.wayfareresRefuge,
+                    ),
+                    onTap: () => showModalBottomSheet(
+                      context: context,
+                      backgroundColor: Colors.transparent,
+                      isScrollControlled: true,
+                      builder: (_) => RecruitListSheet(engine: gp.engine),
+                    ),
+                  ),
+                if (gp.pendingRecruits.isNotEmpty) const SizedBox(height: 12),
                 _buildNextFloor(context, gp),
                 const SizedBox(height: 12),
                 _buildCommandInfo(),
@@ -769,64 +787,99 @@ class _TowerScreenState extends State<TowerScreen> {
               floorColor = AppTheme.textDim;
             }
 
-            return Container(
-              margin: const EdgeInsets.only(bottom: 1, left: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: isBoss && isNext
-                      ? AppTheme.red.withValues(alpha: 0.5)
-                      : floorColor.withValues(alpha: 0.2),
+            return GestureDetector(
+              onTap: isCleared
+                  ? () => showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) =>
+                          FloorDetailSheet(floor: floor, engine: gp.engine),
+                    )
+                  : null,
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 1, left: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: isBoss && isNext
+                        ? AppTheme.red.withValues(alpha: 0.5)
+                        : floorColor.withValues(alpha: 0.2),
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                  color: isCleared
+                      ? AppTheme.green.withValues(alpha: 0.03)
+                      : null,
                 ),
-                borderRadius: BorderRadius.circular(2),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 14,
-                    child: TerminalText(
-                      isCleared
-                          ? 'V'
-                          : isNext
-                          ? '>'
-                          : '-',
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      child: TerminalText(
+                        isCleared
+                            ? 'V'
+                            : isNext
+                            ? '>'
+                            : '-',
+                        fontSize: 9,
+                        color: floorColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    TerminalText(
+                      floor.number.toString().padLeft(3, '0'),
                       fontSize: 9,
                       color: floorColor,
                       fontWeight: FontWeight.bold,
                     ),
-                  ),
-                  TerminalText(
-                    floor.number.toString().padLeft(3, '0'),
-                    fontSize: 9,
-                    color: floorColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  const SizedBox(width: 6),
-                  TerminalText(floor.type.icon, fontSize: 8, color: floorColor),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: TerminalText(
-                      '${floor.type.label}${isBoss
-                          ? ' [BOSS]'
-                          : isElite
-                          ? ' [ELITE]'
-                          : ''}',
+                    const SizedBox(width: 6),
+                    TerminalText(
+                      floor.type.icon,
                       fontSize: 8,
-                      color: isBoss
-                          ? (isFloorLocked ? AppTheme.textDim : AppTheme.red)
-                          : isElite
-                          ? (isFloorLocked
-                                ? AppTheme.textDim
-                                : const Color(0xFFFF44FF))
-                          : floorColor,
+                      color: floorColor,
                     ),
-                  ),
-                  TerminalText(
-                    'Dif:${floor.scaledDifficulty.toStringAsFixed(1)}',
-                    fontSize: 7,
-                    color: floorColor,
-                  ),
-                ],
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: TerminalText(
+                        '${floor.type.label}${isBoss
+                            ? ' [BOSS]'
+                            : isElite
+                            ? ' [ELITE]'
+                            : ''}',
+                        fontSize: 8,
+                        color: isBoss
+                            ? (isFloorLocked ? AppTheme.textDim : AppTheme.red)
+                            : isElite
+                            ? (isFloorLocked
+                                  ? AppTheme.textDim
+                                  : const Color(0xFFFF44FF))
+                            : floorColor,
+                      ),
+                    ),
+                    TerminalText(
+                      'Dif:${floor.scaledDifficulty.toStringAsFixed(1)}',
+                      fontSize: 7,
+                      color: floorColor,
+                    ),
+                    // Indicador de habitantes + toque
+                    if (isCleared) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.people_outline,
+                        size: 11,
+                        color: floor.inhabitants.any((i) => i.isActive)
+                            ? AppTheme.cyan
+                            : AppTheme.textDim.withValues(alpha: 0.3),
+                      ),
+                      const SizedBox(width: 2),
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 11,
+                        color: AppTheme.textDim,
+                      ),
+                    ],
+                  ],
+                ),
               ),
             );
           }),
@@ -844,7 +897,6 @@ class _TowerScreenState extends State<TowerScreen> {
     TowerFloor floor,
   ) {
     final selectedIds = <String>{};
-
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.bgCard,
@@ -866,6 +918,16 @@ class _TowerScreenState extends State<TowerScreen> {
           final powerPct = floor.recommendedPower > 0
               ? (totalPower / floor.recommendedPower * 100)
               : 0.0;
+          // Chance real usando a mesma fórmula do engine (com regras, facção, etc.)
+          final successPreview = selectedIds.isNotEmpty
+              ? gp.engine.previewSuccessChance(selectedIds.toList(), floor)
+              : <String, double>{};
+          final realChance = successPreview['chance'] ?? 0.0;
+          final realPower = successPreview['partyPower'] ?? totalPower;
+          final realDifficulty =
+              successPreview['difficulty'] ?? floor.scaledDifficulty;
+          final factionMod = successPreview['factionMod'] ?? 0.0;
+          final hasRulePenalty = (successPreview['rulePenalty'] ?? 0.0) > 0;
           final isReady = selectedIds.length >= 2;
           final totalCost = gp.expeditionCostEstimate(selectedIds.length);
           final hasFood = gp.citadel.resources.food >= totalCost;
@@ -947,9 +1009,11 @@ class _TowerScreenState extends State<TowerScreen> {
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         border: Border.all(
-                          color: powerPct >= 100
+                          color: selectedIds.isEmpty
+                              ? AppTheme.border
+                              : realChance >= 0.70
                               ? AppTheme.green
-                              : powerPct >= 60
+                              : realChance >= 0.45
                               ? AppTheme.yellow
                               : AppTheme.red,
                         ),
@@ -963,14 +1027,18 @@ class _TowerScreenState extends State<TowerScreen> {
                           Row(
                             children: [
                               Icon(
-                                powerPct >= 100
+                                selectedIds.isEmpty
+                                    ? Icons.analytics_outlined
+                                    : realChance >= 0.70
                                     ? Icons.check_circle
-                                    : powerPct >= 60
+                                    : realChance >= 0.45
                                     ? Icons.warning_amber
                                     : Icons.dangerous,
-                                color: powerPct >= 100
+                                color: selectedIds.isEmpty
+                                    ? AppTheme.textDim
+                                    : realChance >= 0.70
                                     ? AppTheme.green
-                                    : powerPct >= 60
+                                    : realChance >= 0.45
                                     ? AppTheme.yellow
                                     : AppTheme.red,
                                 size: 16,
@@ -986,16 +1054,41 @@ class _TowerScreenState extends State<TowerScreen> {
                           ),
                           const SizedBox(height: 8),
 
-                          // Poder
+                          // Poder efetivo (calculado com regras do andar)
                           _analysisRow(
-                            'Poder de Combate',
-                            '${totalPower.toStringAsFixed(1)} / ${floor.recommendedPower.toStringAsFixed(1)} (${powerPct.toStringAsFixed(0)}%)',
-                            powerPct >= 100
-                                ? AppTheme.green
-                                : powerPct >= 60
-                                ? AppTheme.yellow
-                                : AppTheme.red,
+                            'Poder Efetivo',
+                            selectedIds.isNotEmpty
+                                ? '${realPower.toStringAsFixed(1)} vs ${realDifficulty.toStringAsFixed(1)}'
+                                : '${totalPower.toStringAsFixed(1)} / ${floor.recommendedPower.toStringAsFixed(1)}',
+                            selectedIds.isNotEmpty
+                                ? (realPower >= realDifficulty
+                                      ? AppTheme.green
+                                      : realPower >= realDifficulty * 0.6
+                                      ? AppTheme.yellow
+                                      : AppTheme.red)
+                                : (powerPct >= 100
+                                      ? AppTheme.green
+                                      : powerPct >= 60
+                                      ? AppTheme.yellow
+                                      : AppTheme.red),
                           ),
+                          // Chance de sucesso real
+                          if (selectedIds.isNotEmpty)
+                            _analysisRow(
+                              'Chance de Sucesso',
+                              '${(realChance * 100).toStringAsFixed(0)}%'
+                                  '${hasRulePenalty ? ' ⚖ regra penaliza' : ''}'
+                                  '${factionMod < -0.03
+                                      ? ' | facção -${(-factionMod * 100).toStringAsFixed(0)}%'
+                                      : factionMod > 0.03
+                                      ? ' | facção +${(factionMod * 100).toStringAsFixed(0)}%'
+                                      : ''}',
+                              realChance >= 0.70
+                                  ? AppTheme.green
+                                  : realChance >= 0.45
+                                  ? AppTheme.yellow
+                                  : AppTheme.red,
+                            ),
 
                           // Custo
                           _analysisRow(
@@ -1321,7 +1414,7 @@ class _TowerScreenState extends State<TowerScreen> {
                         onTap: isDisabled
                             ? null
                             : () => setModalState(() {
-                                if (selected){
+                                if (selected) {
                                   selectedIds.remove(npc.id);
                                 } else {
                                   selectedIds.add(npc.id);
@@ -1457,7 +1550,10 @@ class _TowerScreenState extends State<TowerScreen> {
                   const SizedBox(height: 16),
 
                   // Alertas finais
-                  if (powerPct < 60 && isReady)
+                  if ((selectedIds.isNotEmpty
+                          ? realChance < 0.35
+                          : powerPct < 60) &&
+                      isReady)
                     Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.all(8),
@@ -1472,7 +1568,7 @@ class _TowerScreenState extends State<TowerScreen> {
                           SizedBox(width: 6),
                           Expanded(
                             child: TerminalText(
-                              'PODER INSUFICIENTE (<60%). Probabilidade de DERROTA muito alta. Mortes certas.',
+                              'CHANCE BAIXA (<35%). Probabilidade de DERROTA muito alta. Mortes certas.',
                               fontSize: 9,
                               color: AppTheme.red,
                             ),
@@ -1920,19 +2016,30 @@ class _TowerScreenState extends State<TowerScreen> {
           ),
         ),
         actions: [
-          TerminalButton(
-            label: 'RECUAR',
-            color: AppTheme.textDim,
-            onPressed: () => Navigator.pop(ctx),
-          ),
+          TerminalButton(label: 'RECUAR', onPressed: () => Navigator.pop(ctx)),
           TerminalButton(
             label: isBoss ? 'ENFRENTAR BOSS' : 'ENVIAR',
             icon: Icons.rocket_launch,
             color: isBoss ? AppTheme.red : AppTheme.orange,
             onPressed: () {
               Navigator.pop(ctx);
-              final result = gp.sendExpedition(partyIds);
-              if (result != null) _showExpeditionResult(context, result);
+              final result = gp.sendExpedition(
+                partyIds,
+                onFailure: (reason) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('⚠ Expedição cancelada: $reason'),
+                      backgroundColor: AppTheme.red,
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                },
+              );
+              if (result != null) {
+                if (!context.mounted) return;
+                _showExpeditionResult(context, result);
+              }
             },
           ),
         ],
@@ -1996,6 +2103,7 @@ class _TowerScreenState extends State<TowerScreen> {
     TowerFloor floor,
   ) {
     final selectedIds = <String>{}; // Mover para fora do StatefulBuilder
+    final wasPaused = gp.pauseForPlayerAction();
 
     showModalBottomSheet(
       context: context,
@@ -2450,6 +2558,9 @@ class _TowerScreenState extends State<TowerScreen> {
                     onPressed: isReady
                         ? () {
                             Navigator.pop(ctx);
+                            final wasPaused = gp.paused;
+                            if (!wasPaused && gp.paused) gp.togglePause();
+
                             final result = gp.sendReexploration(
                               floor.number,
                               selectedIds.toList(),
@@ -2467,7 +2578,7 @@ class _TowerScreenState extends State<TowerScreen> {
           );
         },
       ),
-    );
+    ).whenComplete(() => gp.resumeAfterPlayerAction(wasPaused));
   }
 
   void _showReexploreResultDialog(
@@ -2478,6 +2589,7 @@ class _TowerScreenState extends State<TowerScreen> {
         .map((e) => '${e.key}: +${e.value.toStringAsFixed(0)}')
         .join('\n');
     final hasCasualties = result.casualties.isNotEmpty;
+    final hasEvents = result.expeditionEvents.isNotEmpty;
 
     showDialog(
       context: context,
@@ -2490,38 +2602,78 @@ class _TowerScreenState extends State<TowerScreen> {
           ),
         ),
         title: TerminalText(
-          hasCasualties ? 'AMEACA REATIVADA!' : 'COLETA OK',
+          hasCasualties ? 'AMEAÇA REATIVADA!' : 'COLETA CONCLUÍDA',
           fontSize: 14,
           color: hasCasualties ? AppTheme.red : AppTheme.green,
           fontWeight: FontWeight.bold,
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TerminalText(
-              'Andar ${result.floorNumber}',
-              fontSize: 12,
-              color: AppTheme.textPrimary,
-            ),
-            const SizedBox(height: 8),
-            const TerminalText('Recursos:', fontSize: 10, color: AppTheme.cyan),
-            TerminalText(resStr, fontSize: 10, color: AppTheme.green),
-            if (hasCasualties) ...[
-              const SizedBox(height: 8),
+        content: SingleChildScrollView(
+          // ← evita overflow se tiver muitos eventos
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               TerminalText(
-                'BAIXAS: ${result.casualties.length}',
-                fontSize: 10,
-                color: AppTheme.red,
-                fontWeight: FontWeight.bold,
+                'Andar ${result.floorNumber}',
+                fontSize: 12,
+                color: AppTheme.textPrimary,
               ),
+              const SizedBox(height: 8),
+              const TerminalText(
+                'Recursos:',
+                fontSize: 10,
+                color: AppTheme.cyan,
+              ),
+              TerminalText(resStr, fontSize: 10, color: AppTheme.green),
+
+              // ── Eventos narrativos da expedição ──────────────
+              if (hasEvents) ...[
+                const SizedBox(height: 12),
+                const Divider(color: Colors.white12, height: 1),
+                const SizedBox(height: 10),
+                ...result.expeditionEvents.map(
+                  (e) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: TerminalText(
+                      e,
+                      fontSize: 9.5,
+                      color: _eventColor(e),
+                    ),
+                  ),
+                ),
+              ],
+
+              if (hasCasualties) ...[
+                const SizedBox(height: 8),
+                TerminalText(
+                  'BAIXAS: ${result.casualties.length}',
+                  fontSize: 10,
+                  color: AppTheme.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
         actions: [
           TerminalButton(label: 'FECHAR', onPressed: () => Navigator.pop(ctx)),
         ],
       ),
     );
+  }
+
+  // helper — colore a linha pelo prefixo do evento
+  Color _eventColor(String event) {
+    if (event.startsWith('[ACIDENTE]') || event.startsWith('[DOENCA]')) {
+      // ignore: deprecated_member_use
+      return AppTheme.red.withOpacity(0.85);
+    }
+    if (event.startsWith('[TRAICAO]') || event.startsWith('[CONFLITO]')) {
+      return const Color(0xFFFF8A65);
+    }
+    if (event.startsWith('[RARO]') || event.startsWith('[TALENTO]')) {
+      return const Color(0xFFFFD54F);
+    }
+    return AppTheme.textDim;
   }
 }

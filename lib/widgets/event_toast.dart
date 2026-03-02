@@ -17,6 +17,8 @@ const Set<GameEventType> kToastOnlyEvents = {
   GameEventType.trainingSuggestion,
   GameEventType.loyaltyChange,
   GameEventType.system,
+  GameEventType.discovery,
+  GameEventType.recruitment,
 };
 
 const Set<GameEventType> kCelebrationDialogTypes = {
@@ -436,6 +438,8 @@ Color _colorFor(GameEventType type) {
       return const Color(0xFF88AAFF);
     case GameEventType.celebration:
       return const Color(0xFFFFDD44);
+    case GameEventType.recruitment:
+      return const Color.fromARGB(255, 251, 255, 0);
     case GameEventType.politicalEvent:
       return const Color(0xFFDDAA66);
     default:

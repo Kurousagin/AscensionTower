@@ -173,6 +173,7 @@ enum NpcOrigin {
   thief,
   assassin,
   fraudster,
+  towerDweller, // Habitante da torre
 }
 
 extension NpcOriginExt on NpcOrigin {
@@ -197,6 +198,7 @@ extension NpcOriginExt on NpcOrigin {
     NpcOrigin.fraudster: 'Estelionatário',
     NpcOrigin.bornInTheAbyss: 'Nascido no Abismo',
     NpcOrigin.bornOfChaos: 'Nascido do Caos',
+    NpcOrigin.towerDweller: 'Habitante da torre',
   }[this]!;
   bool get isNaturalBorn =>
       this == NpcOrigin.bornInTheAbyss || this == NpcOrigin.bornOfChaos;

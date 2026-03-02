@@ -1,3 +1,4 @@
+// Move this method inside GameEngine class
 import 'dart:math';
 import 'package:collection/collection.dart';
 import 'package:tower_ascension/models/floor_faction.dart';
@@ -246,9 +247,10 @@ class GameEngine {
     if (overflow.totalPhysical > 0) {
       _addEvent(
         GameEventType.resourceLoss,
-        'Armazem Cheio!',
-        'Recursos excedentes perdidos: '
-            '${_formatOverflow(overflow)}\nAmplie o Armazem para evitar perdas.',
+        'Recursos Estragaram!',
+        'O armazem nao comportou tudo que foi coletado hoje. '
+            'Excedente perdido: ${_formatOverflow(overflow)}\n'
+            'Amplie o Armazem ou reduza as coletas para evitar perdas.',
       );
     }
     for (final npc in aliveNpcs) {
@@ -292,10 +294,10 @@ class GameEngine {
     res.knowledge *= moraleModifier;
   }
 
-  double _softCap(double value, double capStart) {
-    if (value <= capStart) return value;
-    return capStart + (value - capStart) * 0.5;
-  }
+  // double _softCap(double value, double capStart) {
+  //   if (value <= capStart) return value;
+  //   return capStart + (value - capStart) * 0.5;
+  // }
 
   void _processResourceProduction() {
     final res = citadel.resources;
@@ -314,12 +316,9 @@ class GameEngine {
 
     _applyGlobalModifiers(citadel.resources);
 
-    // Agora aplica o soft cap
-    citadel.resources.food = _softCap(citadel.resources.food, 500);
-    citadel.resources.wood = _softCap(citadel.resources.wood, 400);
-    citadel.resources.stone = _softCap(citadel.resources.stone, 400);
-    citadel.resources.iron = _softCap(citadel.resources.iron, 300);
-    citadel.resources.knowledge = _softCap(citadel.resources.knowledge, 250);
+    // Não aplicamos soft cap aqui — o clampToCapacity no final do processDay
+    // é o único ponto de corte. Isso permite que coletas e produção do mesmo dia
+    // se acumulem livremente; o excedente "estraga" apenas ao virar o dia.
   }
 
   double _expProduction({
@@ -1347,8 +1346,6 @@ class GameEngine {
   // ─────────────────────────────────────────────
 
   void _processFactionIncursions() {
-    if (state.currentDay % 14 != 0) return;
-
     for (final relation in state.factionRelations.values) {
       if (!FactionProcessor.shouldIncurse(
         relation: relation,
@@ -1373,13 +1370,13 @@ class GameEngine {
             'Incursões totais desta facção: ${relation.incursionsCaused}.',
         isMajor: severity > 0.7,
       );
+      relation.lastInteractionDay = state.currentDay;
     }
   }
 
   String confirmRecruitSurvivor(String survivorId) {
     final idx = _pendingRecruits.indexWhere((r) => r.id == survivorId);
     if (idx == -1) return 'Survivor não encontrado.';
-
     if (!citadel.hasBuilding(BuildingType.wayfareresRefuge)) {
       return 'Requer Abrigo de Viajantes para recrutar survivors.';
     }
@@ -1387,24 +1384,63 @@ class GameEngine {
     final survivor = _pendingRecruits[idx];
     _pendingRecruits.removeAt(idx);
 
-    // Converte FloorInhabitant → Npc e adiciona ao roster
+    // ✅ Identifica a facção de origem e aplica mudança de standing
+    final originFloor = floors.firstWhereOrNull(
+      (f) => f.inhabitants.any((i) => i.id == survivorId),
+    );
+    if (originFloor != null &&
+        originFloor.controllingFaction != FloorFaction.none) {
+      // Recrutar um membro da facção: pode ser positivo (mostra respeito)
+      // ou negativo (roubou um deles). Aqui varia por facção:
+      final standingDelta = switch (originFloor.controllingFaction) {
+        FloorFaction.bloodMarket => 5.0, // mercado aprecia a transação
+        FloorFaction.ironPact => -8.0, // pacto vê como deserção
+        FloorFaction.towerServants => 3.0, // servos aprovam quem é salvo
+        FloorFaction.silentOrder => 2.0, // ordem é indiferente
+        FloorFaction.voidChildren => _rng.nextDouble() * 20 - 10, // caos
+        _ => 0.0,
+      };
+      _applyFactionStandingChange(
+        faction: originFloor.controllingFaction,
+        delta: standingDelta,
+        affectedFloor: originFloor,
+      );
+    }
+
     final npc = _survivorToNpc(survivor);
     npcs.add(npc);
 
     _addEvent(
       GameEventType.recruitment,
       'Survivor Recrutado',
-      '${npc.name} se juntou à cidadela com lealdade baixa mas combate elevado.',
+      '${npc.name} se juntou à cidadela.',
       involvedIds: [npc.id],
     );
-
     return '${npc.name} se juntou à cidadela.';
   }
 
-  // [COLE NO GameEngine como método privado]
+  void rejectRecruit(String survivorId) {
+    final idx = _pendingRecruits.indexWhere((r) => r.id == survivorId);
+    if (idx == -1) return;
+
+    final survivor = _pendingRecruits[idx];
+    // Remove dos pendentes mas NÃO marca isRecruited=true
+    // → pode ser encontrado novamente
+    _pendingRecruits.removeAt(idx);
+
+    _addEvent(
+      GameEventType.system,
+      'Survivor Dispensado',
+      '${survivor.name} foi dispensado. Pode ser encontrado novamente.',
+    );
+  }
+
   Npc _survivorToNpc(FloorInhabitant survivor) {
     final stats = survivor.survivorStats;
     final npc = Npc.generateRandom(state.generateNpcId(), 1, _rng);
+
+    // Preserva identidade do survivor — nome e origem do andar
+    npc.name = survivor.name;
 
     if (stats != null) {
       npc.attributes.strength = stats.combatPower.clamp(1, 20);
@@ -1435,6 +1471,11 @@ class GameEngine {
     npc.history.add(
       'Survivor recrutado no Abrigo de Viajantes (Dia ${state.currentDay})',
     );
+
+    // Marca o habitante como recrutado no andar de origem —
+    // ele se juntou à cidadela, não está mais lá.
+    // Se for ignorado/descartado, pode ser encontrado novamente em re-explorações futuras.
+    survivor.isRecruited = true;
 
     return npc;
   }
@@ -1485,24 +1526,23 @@ class GameEngine {
     if (faction == FloorFaction.none) {
       return const FactionInteractionResult(faction: FloorFaction.none);
     }
-
     final relation = _getOrCreateFactionRelation(faction);
 
-    // Calcula stats médias do grupo
-    final power = _averagePartyPower();
-    final intel = _averagePartyIntelligence();
+    final party = _resolveParty(partyIds);
+    if (party.isEmpty) return FactionInteractionResult(faction: faction);
+
+    // ✅ Usa helper — sem repetição
+    final stats = _calcPartyStats(party);
     final food = citadel.resources.food;
-    final fame = _averagePartyFame();
-    final luck = _averagePartyLuck();
 
     final result = FactionProcessor.processFloorAttempt(
       faction: faction,
       relation: relation,
-      partyPower: power,
-      partyIntelligence: intel,
+      partyPower: stats.power,
+      partyIntelligence: stats.intel,
       partyResources: food,
-      partyFame: fame,
-      partyLuck: luck,
+      partyFame: stats.fame,
+      partyLuck: stats.luck,
       currentDay: state.currentDay,
     );
 
@@ -1528,48 +1568,100 @@ class GameEngine {
     return result;
   }
 
-  // Stats médias do grupo — helpers para FactionProcessor
-  double _averagePartyPower() {
-    if (aliveNpcs.isEmpty) return 5.0;
-    return aliveNpcs
-            .map((n) => n.attributes.combatPower)
-            .fold(0.0, (a, b) => a + b) /
-        aliveNpcs.length;
+  // Filhos do Vazio devem ter eventos REALMENTE imprevisíveis
+
+  void _voidChildrenChaosEvent(
+    TowerFloor floor,
+    List<Npc> party,
+    FactionRelation relation,
+  ) {
+    final roll = _rng.nextInt(6);
+    switch (roll) {
+      case 0: // Presente bizarro
+        final randomNpc = party[_rng.nextInt(party.length)];
+        randomNpc.attributes.luck += 3;
+        _addEvent(
+          GameEventType.discovery,
+          'Dom do Vazio',
+          'Os Filhos do Vazio presentearam ${randomNpc.name} com algo impossível de descrever. '
+              'Ela(e) parece mais sortudo(a). +3 sorte.',
+        );
+        break;
+      case 1: // Banem aleatoriamente
+        final victim = party[_rng.nextInt(party.length)];
+        victim.attributes.mentalStability -= 15;
+        _addEvent(
+          GameEventType.mentalBreak,
+          'Maldição do Vazio',
+          '${victim.name} foi tocado(a) pelo caos. '
+              '-15 estabilidade mental. Ninguém sabe por quê.',
+        );
+        break;
+      case 2: // Recurso impossível
+        citadel.resources.food += 30;
+        _addEvent(
+          GameEventType.resourceGain,
+          'Generosidade Caótica',
+          'Uma pilha de mantimentos apareceu do nada. '
+              'Os Filhos do Vazio balançaram as cabeças aprovadoramente. +30 comida.',
+        );
+        break;
+      case 3: // Trocam standing por algo
+        relation.standing = _rng.nextDouble() * 40 - 20; // randomiza standing
+        _addEvent(
+          GameEventType.politicalEvent,
+          'Reset Caótico',
+          'Os Filhos do Vazio esqueceram toda a história com vocês. '
+              'Ou fingiram. Standing resetado para ${relation.standing.toStringAsFixed(0)}.',
+        );
+        break;
+      case 4: // NPC some temporariamente
+        final npc = party[_rng.nextInt(party.length)];
+        npc.fatigue = 100; // "desapareceu por um momento"
+        npc.history.add('Desapareceu brevemente no Vazio');
+        _addEvent(
+          GameEventType.crisis,
+          '${npc.name} desaparece',
+          '${npc.name} sumiu por alguns segundos. Voltou. '
+              'Não quer falar. Fadiga máxima.',
+        );
+        break;
+      case 5: // Visão do topo
+        for (final n in party) {
+          n.fame += 10;
+        }
+        _addEvent(
+          GameEventType.celebration,
+          'Os Filhos aprovam',
+          'Por razões incompreensíveis, os Filhos do Vazio erigiram '
+              'estandartes com os rostos do grupo. '
+              '+10 fama para todos. Perturbador.',
+        );
+        break;
+    }
   }
 
-  double _averagePartyIntelligence() {
-    if (aliveNpcs.isEmpty) return 5.0;
-    return aliveNpcs
-            .map((n) => n.attributes.intelligence)
-            .fold(0.0, (a, b) => a + b) /
-        aliveNpcs.length;
-  }
-
-  double _averagePartyFame() {
-    if (aliveNpcs.isEmpty) return 0.0;
-    return aliveNpcs.map((n) => n.fame).fold(0.0, (a, b) => a + b) /
-        aliveNpcs.length;
-  }
-
-  double _averagePartyLuck() {
-    if (aliveNpcs.isEmpty) return 5.0;
-    return aliveNpcs.map((n) => n.attributes.luck).fold(0.0, (a, b) => a + b) /
-        aliveNpcs.length;
-  }
-
-  Map<String, double> _processFactionOnReexplore(
+  Map<String, double> _processFactionOnReexploration(
     TowerFloor floor,
     Map<String, double> resourcesGained,
+    List<Npc> party,
   ) {
     final faction = floor.controllingFaction;
     if (faction == FloorFaction.none) return resourcesGained;
+
+    final power =
+        party.map((n) => n.attributes.combatPower).fold(0.0, (a, b) => a + b) /
+        party.length;
+    final intel =
+        party.map((n) => n.attributes.intelligence).fold(0.0, (a, b) => a + b) /
+        party.length;
 
     final relation = _getOrCreateFactionRelation(faction);
     final factionResult = FactionProcessor.processReexploration(
       faction: faction,
       relation: relation,
-      partyPower: _averagePartyPower(),
-      partyIntelligence: _averagePartyIntelligence(),
+      partyPower: power,
+      partyIntelligence: intel,
       currentDay: state.currentDay,
     );
 
@@ -1579,6 +1671,61 @@ class GameEngine {
         resourcesGained[key] =
             (resourcesGained[key] ?? 0) * factionResult.resourceMod;
       }
+    }
+
+    // Custom faction logic
+    final standing = relation.standing;
+    final narratives = <String>[];
+    if (faction == FloorFaction.bloodMarket && standing >= 50) {
+      if (citadel.resources.iron >= 5) {
+        citadel.resources.iron -= 5;
+        citadel.resources.food += 15 + (standing / 10);
+        narratives.add(
+          '💰 Mercado de Sangue trocou ferro por mantimentos. '
+          '(-5 ferro, +${(15 + standing / 10).toStringAsFixed(0)} comida)',
+        );
+      }
+    }
+    if (faction == FloorFaction.towerServants && standing >= 80) {
+      final drop = _equipmentService.rollDrop(
+        floorNumber: floor.number,
+        tier: max(floor.tier, 3),
+        currentDay: state.currentDay,
+      );
+      if (drop != null) {
+        _inventory.add(drop);
+        narratives.add(
+          '🏛 Servos da Torre presentearam seu grupo: ${drop.name}',
+        );
+      }
+      _addEvent(
+        GameEventType.discovery,
+        'Segredo dos Servos',
+        'Um Servo se ajoelhou e sussurrou: '
+            '"A Torre não é uma prisão. É um filtro. '
+            'Apenas os dignos chegam ao topo." '
+            'Ninguém sabe o que isso significa.',
+      );
+    }
+    if (faction == FloorFaction.silentOrder) {
+      final scribes = party
+          .where((n) => n.profession == Profession.scribe)
+          .toList();
+      for (final scribe in scribes) {
+        scribe.attributes.intelligence = (scribe.attributes.intelligence + 0.5)
+            .clamp(1, 20);
+        citadel.resources.knowledge += 5;
+        scribe.history.add('Estudou nos arquivos da Ordem Silenciosa');
+      }
+      if (scribes.isNotEmpty) {
+        narratives.add(
+          '📚 ${scribes.map((n) => n.name).join(", ")} estudou nos arquivos '
+          'da Ordem. +0.5 inteligência cada, +${scribes.length * 5} conhecimento.',
+        );
+      }
+    }
+    if (faction == FloorFaction.voidChildren) {
+      _voidChildrenChaosEvent(floor, party, relation);
     }
 
     // Atualiza standing
@@ -1591,11 +1738,13 @@ class GameEngine {
     }
 
     // Narrativa da facção (adicionar ao evento de re-exploração)
-    if (factionResult.narrativeLines.isNotEmpty) {
+    final allNarratives = [...factionResult.narrativeLines, ...narratives];
+    if (allNarratives.isNotEmpty) {
       _addEvent(
         GameEventType.discovery,
         'Facção: ${faction.label} — Andar ${floor.number}',
-        factionResult.narrativeLines.join('\n'),
+        allNarratives.join('\n'),
+        isMajor: true,
       );
     }
 
@@ -1626,6 +1775,86 @@ class GameEngine {
     reexploreFloor(floor.number, party);
   }
 
+  /// Retorna as ofertas diplomáticas disponíveis para uma facção
+  List<DiplomacyOffer> getDiplomacyOffers(FloorFaction faction) {
+    final relation = _getOrCreateFactionRelation(faction);
+    if (relation.tier == FactionTier.ally) return []; // já aliado
+    if (state.currentDay - relation.lastDiplomacyDay < 7) return []; // cooldown
+
+    return FactionProcessor.buildDiplomacyOffers(
+      faction: faction,
+      relation: relation,
+      currentResources: citadel.resources,
+      partyPower: _averagePartyPower(),
+    );
+  }
+
+  /// Executa uma oferta diplomática. Retorna narrativa do resultado.
+  String executeDiplomacy(FloorFaction faction, DiplomacyOfferType offerType) {
+    final relation = _getOrCreateFactionRelation(faction);
+    if (state.currentDay - relation.lastDiplomacyDay < 7) {
+      return 'Esta facção não aceita propostas tão seguidas.';
+    }
+
+    final offers = getDiplomacyOffers(faction);
+    final offer = offers.firstWhereOrNull((o) => o.type == offerType);
+    if (offer == null) return 'Oferta indisponível.';
+
+    // Verifica recursos
+    for (final entry in offer.resourceCost.entries) {
+      switch (entry.key) {
+        case 'food':
+          if (citadel.resources.food < entry.value) {
+            return 'Recursos insuficientes.';
+          }
+        case 'iron':
+          if (citadel.resources.iron < entry.value) {
+            return 'Recursos insuficientes.';
+          }
+        case 'wood':
+          if (citadel.resources.wood < entry.value) {
+            return 'Recursos insuficientes.';
+          }
+        case 'knowledge':
+          if (citadel.resources.knowledge < entry.value) {
+            return 'Recursos insuficientes.';
+          }
+      }
+    }
+
+    // Cobra recursos
+    for (final entry in offer.resourceCost.entries) {
+      switch (entry.key) {
+        case 'food':
+          citadel.resources.food -= entry.value;
+        case 'iron':
+          citadel.resources.iron -= entry.value;
+        case 'wood':
+          citadel.resources.wood -= entry.value;
+        case 'knowledge':
+          citadel.resources.knowledge -= entry.value;
+      }
+    }
+
+    // Determina sucesso
+    final success = _rng.nextDouble() < offer.successChance;
+    final delta = success ? offer.standingGain : offer.standingGain * 0.2;
+
+    _applyFactionStandingChange(faction: faction, delta: delta);
+    relation.lastDiplomacyDay = state.currentDay;
+
+    final resultStr = success ? 'SUCESSO' : 'PARCIALMENTE ACEITO';
+    _addEvent(
+      GameEventType.politicalEvent,
+      'Diplomacia: ${faction.label} [$resultStr]',
+      '${offer.description}\nStanding: ${delta > 0 ? '+' : ''}${delta.toStringAsFixed(0)}',
+      isMajor: success && delta >= 15,
+    );
+
+    return success
+        ? '${faction.label} aceitou a proposta. +${delta.toStringAsFixed(0)} standing.'
+        : '${faction.label} foi reticente. +${delta.toStringAsFixed(0)} standing.';
+  }
   // ─────────────────────────────────────────────
   // SISTEMA DE EXPEDIÇÃO HARDCORE
   // ─────────────────────────────────────────────
@@ -1641,6 +1870,152 @@ class GameEngine {
   }
 
   // ── Preview de métricas para UI ────────────────
+
+  // ── Preview de métricas para UI ────────────────
+
+  /// Calcula a chance de sucesso usando a MESMA lógica do attemptFloor,
+  /// sem efeitos colaterais (não altera estado, não mata NPCs, não gasta comida).
+  /// Retorna um mapa com:
+  ///   'chance'        → chance final (0.0–0.95)
+  ///   'partyPower'    → poder efetivo calculado
+  ///   'difficulty'    → dificuldade efetiva (com mirrorRule se aplicável)
+  ///   'factionMod'    → modificador de facção na chance
+  ///   'rulePenalty'   → se alguma regra penalizou o grupo (0 = não, 1 = sim)
+  Map<String, double> previewSuccessChance(
+    List<String> partyIds,
+    TowerFloor floor,
+  ) {
+    final party = _resolveParty(partyIds);
+    if (party.isEmpty) {
+      return {
+        'chance': 0.0,
+        'partyPower': 0.0,
+        'difficulty': floor.scaledDifficulty,
+        'factionMod': 0.0,
+        'rulePenalty': 0.0,
+      };
+    }
+
+    final rule = floor.rule;
+
+    // soloEntry: apenas o NPC mais forte entra
+    List<Npc> effectiveParty = List.from(party);
+    if (rule.type == FloorRuleType.soloEntry && party.isNotEmpty) {
+      effectiveParty = [
+        party.reduce(
+          (a, b) =>
+              a.effectiveCombatPowerWithGear(_inventory) >=
+                  b.effectiveCombatPowerWithGear(_inventory)
+              ? a
+              : b,
+        ),
+      ];
+    }
+
+    double partyPower = 0;
+    bool hadRulePenalty = false;
+
+    for (final npc in effectiveParty) {
+      double power;
+
+      if (rule.type == FloorRuleType.intelligenceOnly) {
+        power = npc.attributes.intelligence * 1.5;
+        if (npc.talentDiscovered &&
+            npc.hiddenTalent == HiddenTalent.runeReader) {
+          power *= 1.4;
+        }
+      } else {
+        power = npc.effectiveCombatPowerWithGear(_inventory);
+        if (npc.talentDiscovered &&
+            npc.hiddenTalent == HiddenTalent.combatGenius) {
+          power *= 1.5;
+        }
+      }
+
+      if (npc.traits.contains(PersonalityTrait.brave)) power *= 1.1;
+      if (npc.traits.contains(PersonalityTrait.coward)) power *= 0.85;
+
+      switch (rule.type) {
+        case FloorRuleType.loyaltyTest:
+          if (npc.loyalty < 40 ||
+              npc.traits.contains(PersonalityTrait.treacherous) ||
+              npc.origin.isDarkOrigin) {
+            power *= 0.6;
+            hadRulePenalty = true;
+          } else if (npc.loyalty > 70 &&
+              npc.traits.contains(PersonalityTrait.loyal)) {
+            power *= 1.3;
+          } else if (npc.loyalty > 60) {
+            power *= 1.15;
+          }
+          break;
+        case FloorRuleType.silenceRequired:
+          if (npc.traits.contains(PersonalityTrait.aggressive)) {
+            power *= 0.45;
+            hadRulePenalty = true;
+          }
+          break;
+        default:
+          break;
+      }
+
+      partyPower += power;
+    }
+
+    // weakLeads
+    if (rule.type == FloorRuleType.weakLeads && effectiveParty.isNotEmpty) {
+      final weakestPower = effectiveParty
+          .map((n) => n.effectiveCombatPowerWithGear(_inventory))
+          .reduce(min);
+      partyPower = weakestPower * effectiveParty.length * 0.75;
+      hadRulePenalty = true;
+    }
+
+    // mirrorRule
+    final effectiveDifficulty = rule.type == FloorRuleType.mirrorRule
+        ? floor.scaledDifficulty + partyPower * 0.25
+        : floor.scaledDifficulty;
+
+    final tributeBonus = rule.type == FloorRuleType.tributeRequired ? 0.1 : 0.0;
+
+    double successChance =
+        ((partyPower / (effectiveDifficulty * effectiveParty.length) * 0.6) +
+                0.2 +
+                tributeBonus)
+            .clamp(0.1, 0.95);
+
+    // Modificador de facção (read-only: apenas lê o standing atual)
+    double factionMod = 0.0;
+    final faction = floor.controllingFaction;
+    if (faction != FloorFaction.none) {
+      final relation = _getOrCreateFactionRelation(faction);
+      final relationCopy = FactionRelation.copyOf(relation);
+      final factionResult = FactionProcessor.processFloorAttempt(
+        faction: faction,
+        relation: relationCopy,
+        partyPower: partyPower,
+        partyIntelligence:
+            party.fold(0.0, (s, n) => s + n.attributes.intelligence) /
+            party.length,
+        partyResources: citadel.resources.food,
+        partyFame: party.fold(0.0, (s, n) => s + n.fame) / party.length,
+        partyLuck:
+            party.fold(0.0, (s, n) => s + n.attributes.luck) / party.length,
+        currentDay: state.currentDay,
+      );
+      factionMod = factionResult.successChanceMod;
+    }
+
+    successChance = (successChance + factionMod).clamp(0.1, 0.95);
+
+    return {
+      'chance': successChance,
+      'partyPower': partyPower,
+      'difficulty': effectiveDifficulty,
+      'factionMod': factionMod,
+      'rulePenalty': hadRulePenalty ? 1.0 : 0.0,
+    };
+  }
 
   double previewGroupSynergy(List<String> partyIds) {
     final party = _resolveParty(partyIds);
@@ -1877,8 +2252,9 @@ class GameEngine {
     }
 
     // Processamentos adicionais (mantidos)
-    _processFactionOnReexplore(floor, result.resourcesGained);
+    _processFactionOnReexploration(floor, result.resourcesGained, party);
     _processInhabitantsOnReexplore(floor, partyIds, result.resourcesGained);
+    _processNpcInhabitantInteraction(floor, party);
 
     // Fama (removido duplicata)
     for (final npc in party.where((n) => n.alive)) {
@@ -1895,7 +2271,10 @@ class GameEngine {
       );
     }
 
-    // Adiciona os recursos no armazém (caso ainda não esteja sendo feito no caller)
+    // Adiciona os recursos SEM cap imediato.
+    // O jogador pode exceder o armazém durante o dia (coletou mais do que cabe).
+    // Ao virar o dia, _processDay chama clampToCapacity e o excedente
+    // é perdido com evento de "recursos estragados".
     for (final entry in result.resourcesGained.entries) {
       final res = Resources();
       switch (entry.key) {
@@ -1915,7 +2294,7 @@ class GameEngine {
           res.knowledge = entry.value;
           break;
       }
-      citadel.resources.addCapped(res, citadel.storageLevel);
+      citadel.resources.add(res);
     }
 
     return result;
@@ -1952,10 +2331,25 @@ class GameEngine {
       }
     }
 
-    // Registra survivors recrutáveis
+    // Registra survivors recrutáveis com chance probabilística —
+    // não aparecem em toda re-exploração, apenas ocasionalmente.
+    // Se já está pendente (jogador ainda não decidiu), não duplica.
     for (final survivor in encounterResult.recruitableSurvivors) {
-      if (!_pendingRecruits.any((r) => r.id == survivor.id)) {
+      if (_pendingRecruits.any((r) => r.id == survivor.id)) continue;
+
+      // Chance base: 35% por re-exploração, sobe para 55% com Abrigo de Viajantes
+      final encounterChance = citadel.hasBuilding(BuildingType.wayfareresRefuge)
+          ? 0.55
+          : 0.35;
+
+      if (_rng.nextDouble() < encounterChance) {
         _pendingRecruits.add(survivor);
+        _addEvent(
+          GameEventType.recruitment,
+          'Sobrevivente Encontrado',
+          '${survivor.name} foi avistado no Andar ${floor.number}. '
+              'Está disposto a se juntar à cidadela.',
+        );
       }
     }
 
@@ -1969,6 +2363,176 @@ class GameEngine {
       );
     }
   }
+
+  // ─────────────────── Interação NPCS habitantes ──────────────────────────
+  void _processNpcInhabitantInteraction(TowerFloor floor, List<Npc> party) {
+    for (final inhabitant in floor.inhabitants.where((i) => i.isActive)) {
+      // Só processa se houver NPC compatível com o habitante
+      final compatibleNpc = _findCompatibleNpc(party, inhabitant);
+      if (compatibleNpc == null) continue;
+      if (_rng.nextDouble() > 0.40) continue; // 40% de chance por visita
+
+      _applyInhabitantInteraction(compatibleNpc, inhabitant, floor);
+    }
+  }
+
+  Npc? _findCompatibleNpc(List<Npc> party, FloorInhabitant inhabitant) {
+    // Comerciante → NPC com charisma alta ou profissão merchant
+    if (inhabitant.id.contains('trader') || inhabitant.id.contains('smith')) {
+      return party.firstWhereOrNull(
+        (n) => n.attributes.charisma > 7 || n.profession == Profession.merchant,
+      );
+    }
+    // Eremita / Anomalia → NPC com intelligence alta ou scribe
+    if (inhabitant.id.contains('hermit') ||
+        inhabitant.category == InhabitantCategory.anomaly) {
+      return party.firstWhereOrNull(
+        (n) =>
+            n.attributes.intelligence > 7 || n.profession == Profession.scribe,
+      );
+    }
+    // Survivor → qualquer um (afinidade mais alta escolhida)
+    if (inhabitant.category == InhabitantCategory.survivor) {
+      return party.reduce(
+        (a, b) => a.attributes.charisma > b.attributes.charisma ? a : b,
+      );
+    }
+    return party.isNotEmpty ? party[_rng.nextInt(party.length)] : null;
+  }
+
+  void _applyInhabitantInteraction(
+    Npc npc,
+    FloorInhabitant inhabitant,
+    TowerFloor floor,
+  ) {
+    switch (inhabitant.category) {
+      case InhabitantCategory.resident:
+        _residentInteraction(npc, inhabitant, floor);
+        break;
+      case InhabitantCategory.survivor:
+        _survivorInteraction(npc, inhabitant);
+        break;
+      case InhabitantCategory.anomaly:
+        _anomalyInteraction(npc, inhabitant, floor);
+        break;
+    }
+  }
+
+  void _residentInteraction(
+    Npc npc,
+    FloorInhabitant inhabitant,
+    TowerFloor floor,
+  ) {
+    // Comerciante troca informação ou itens
+    if (inhabitant.id.contains('trader')) {
+      final gain = _rng.nextDouble() < 0.5;
+      if (gain) {
+        citadel.resources.knowledge += 2 + npc.attributes.charisma * 0.3;
+        npc.fame += 2;
+        npc.history.add(
+          'Trocou informações com ${inhabitant.name} no Andar ${floor.number}',
+        );
+        _addEvent(
+          GameEventType.discovery,
+          '${npc.name} negocia com ${inhabitant.name}',
+          '"${inhabitant.effect.loreText}" — '
+              'O comerciante compartilhou rotas seguras. +conhecimento',
+          involvedIds: [npc.id],
+        );
+      }
+    }
+
+    // Ferreiro Mudo melhora equipamento passivamente
+    if (inhabitant.id.contains('smith') && npc.equippedWeaponId != null) {
+      npc.attributes.strength = (npc.attributes.strength + 0.2).clamp(1, 20);
+      npc.history.add(
+        'Ferreiro Mudo aprimorou seu arsenal no Andar ${floor.number}',
+      );
+      _addEvent(
+        GameEventType.training,
+        '${npc.name} aprende com o Ferreiro',
+        'O ferreiro não falou. Apenas mostrou como segurar a arma. '
+            '${npc.name} entendeu. +0.2 força',
+        involvedIds: [npc.id],
+      );
+    }
+
+    // Eremita afeta mental stability
+    if (inhabitant.id.contains('hermit')) {
+      npc.attributes.mentalStability = (npc.attributes.mentalStability + 5)
+          .clamp(0, 100);
+      npc.history.add('Conversou com o Eremita da Torre — algo se assentou');
+      _addEvent(
+        GameEventType.discovery,
+        '${npc.name} e o Eremita',
+        '"${inhabitant.effect.loreText}" — '
+            '${npc.name} saiu do andar mais calmo que entrou. +5 estabilidade mental.',
+        involvedIds: [npc.id],
+      );
+    }
+  }
+
+  void _survivorInteraction(Npc npc, FloorInhabitant survivor) {
+    // NPC compartilha comida / constrói relacionamento
+    if (citadel.resources.food > 20) {
+      citadel.resources.food -= 3;
+      survivor.disposition = InhabitantDisposition.friendly;
+      npc.history.add('Compartilhou comida com ${survivor.name}');
+      _addEvent(
+        GameEventType.discovery,
+        '${npc.name} cuida de ${survivor.name}',
+        '${npc.name} deixou parte do rancho. '
+            '${survivor.name} olhou com algo parecido com esperança.',
+        involvedIds: [npc.id],
+      );
+    }
+  }
+
+  void _anomalyInteraction(Npc npc, FloorInhabitant anomaly, TowerFloor floor) {
+    // NPCs com alta inteligência ou luck têm respostas diferentes
+    final isScholar = npc.attributes.intelligence > 8;
+    final isLucky = npc.attributes.luck > 8;
+
+    if (isScholar) {
+      npc.attributes.intelligence = (npc.attributes.intelligence + 0.3).clamp(
+        1,
+        20,
+      );
+      citadel.resources.knowledge += 3;
+      npc.history.add('Estudou ${anomaly.name} no Andar ${floor.number}');
+      _addEvent(
+        GameEventType.discovery,
+        '${npc.name} documenta a anomalia',
+        '"${anomaly.effect.loreText}" — '
+            '${npc.name} preencheu três páginas de anotações. +0.3 inteligência, +3 conhecimento.',
+        involvedIds: [npc.id],
+      );
+    } else if (isLucky) {
+      // Lucky NPCs têm visões
+      npc.fame += 5;
+      npc.history.add('Teve uma visão com ${anomaly.name}');
+      _addEvent(
+        GameEventType.discovery,
+        '${npc.name} — Visão da Anomalia',
+        '"${anomaly.effect.loreText}" — '
+            '${npc.name} ficou parado por minutos. Depois disse: "Eu vi o topo." +5 fama.',
+        involvedIds: [npc.id],
+      );
+    } else {
+      // NPC comum: abalo mental leve mas ganho de lore
+      npc.attributes.mentalStability = (npc.attributes.mentalStability - 5)
+          .clamp(0, 100);
+      npc.traumas.add('Encontrou ${anomaly.name} no Andar ${floor.number}');
+      _addEvent(
+        GameEventType.discovery,
+        '${npc.name} se perturba',
+        '"${anomaly.effect.loreText}" — '
+            '${npc.name} não quer falar sobre o que viu. −5 estabilidade mental.',
+        involvedIds: [npc.id],
+      );
+    }
+  }
+
   // ── Eventos aleatórios de expedição ────────────
 
   List<String> _processExpeditionEvents(
@@ -2601,19 +3165,8 @@ class GameEngine {
       rng: _rng,
       generateEventId: () => state.eventIdCounter++,
     );
-    // Corrige o dayImprisoned das novas celas (o service usa 0 como placeholder)
-    for (final cell in _prisonService.cells) {
-      if (cell.dayImprisoned == 0) {
-        // Recria a célula com o dia correto — como dayImprisoned é final,
-        // precisamos substituir. Fazemos isso via serialização inline.
-        final idx = _prisonService.cells.indexOf(cell);
-        if (idx != -1) {
-          _prisonService.cells
-              as dynamic; // acesso direto não disponível — use o workaround abaixo
-        }
-      }
-    }
 
+    // Registra eventos gerados pelo serviço de prisão
     for (final event in trialEvents) {
       events.add(event);
       _dayEvents.add(event);
@@ -2627,10 +3180,9 @@ class GameEngine {
     for (final cell in _prisonService.cells) {
       final npc = npcs.firstWhereOrNull((n) => n.id == cell.npcId);
       if (npc == null) continue;
-      // Prisão degrada sanidade e lealdade lentamente
-      npc.attributes.mentalStability -= 1.5;
-      npc.loyalty -= 0.5;
-      // Profissão forçada como idle
+      npc.attributes.mentalStability = (npc.attributes.mentalStability - 1.5)
+          .clamp(0, 100);
+      npc.loyalty = (npc.loyalty - 0.5).clamp(0, 100);
       npc.profession = Profession.idle;
     }
 
@@ -2639,7 +3191,7 @@ class GameEngine {
     for (final npcId in released) {
       final npc = npcs.firstWhereOrNull((n) => n.id == npcId);
       if (npc == null) continue;
-      npc.loyalty -= 5; // ressentimento pós-prisão
+      npc.loyalty = (npc.loyalty - 5).clamp(0, 100);
       npc.traumas.add('Cumpriu pena de prisao no dia ${state.currentDay}');
       _addEvent(
         GameEventType.politicalEvent,
@@ -2901,6 +3453,7 @@ class GameEngine {
           GameEventType.celebration,
           'Celebracao',
           'Os moradores organizaram uma festa. Moral restaurada.',
+          isMajor: true,
         );
         break;
       case 3:
@@ -2909,6 +3462,7 @@ class GameEngine {
           GameEventType.resourceLoss,
           'Tempestade',
           'Uma tempestade danificou estruturas. -10 madeira.',
+          isMajor: true,
         );
         break;
       case 4:
@@ -4810,7 +5364,7 @@ class GameEngine {
       npcs.firstWhereOrNull((n) => n.id == id)?.groupId = null;
     }
     _addEvent(
-      GameEventType.groupFormed,
+      GameEventType.groupDissolved,
       'Grupo "${group.name}" Dissolvido',
       'Membros estao livres.',
       involvedIds: group.memberIds,
@@ -5048,6 +5602,21 @@ class GameEngine {
   // ─────────────────────────────────────────────
   // HELPERS PRIVADOS
   // ─────────────────────────────────────────────
+
+  ({double power, double intel, double fame, double luck}) _calcPartyStats(
+    List<Npc> party,
+  ) {
+    if (party.isEmpty) return (power: 0.0, intel: 0.0, fame: 0.0, luck: 0.0);
+    final len = party.length.toDouble();
+    return (
+      power: party.fold(0.0, (s, n) => s + n.attributes.combatPower) / len,
+      intel: party.fold(0.0, (s, n) => s + n.attributes.intelligence) / len,
+      fame: party.fold(0.0, (s, n) => s + n.fame) / len,
+      luck: party.fold(0.0, (s, n) => s + n.attributes.luck) / len,
+    );
+  }
+
+  double _averagePartyPower() => _calcPartyStats(aliveNpcs).power;
 
   int _countProfession(Profession p) =>
       aliveNpcs.where((n) => n.profession == p).length;
@@ -5440,15 +6009,10 @@ class GameEngine {
     }
 
     if (trained.isNotEmpty) {
-      events.add(
-        GameEvent(
-          id: 'train_env_${state.currentDay}',
-          day: state.currentDay,
-          type: GameEventType.training,
-          title: 'Treinamento Ambiental',
-          description:
-              'NPCs se desenvolveram através das instalações da cidadela:\\n${trained.take(8).join('\\n')}',
-        ),
+      _addEvent(
+        GameEventType.training,
+        'Treinamento Ambiental',
+        'NPCs se desenvolveram através das instalações da cidadela:\n${trained.take(8).join('\n')}',
       );
     }
   }
@@ -5468,15 +6032,11 @@ class GameEngine {
           20,
         );
         npc.history.add('Sobrevivente veterano - ganhou resistência');
-        events.add(
-          GameEvent(
-            id: 'vet_${npc.id}_${state.currentDay}',
-            day: state.currentDay,
-            type: GameEventType.discovery,
-            title: 'Veterano Resiliente',
-            description:
-                '${npc.name} sobreviveu ${npc.daysSurvived} dias. Resistência permanente aumentada.',
-          ),
+        _addEvent(
+          GameEventType.system,
+          'Veterano Resiliente',
+          '${npc.name} sobreviveu ${npc.daysSurvived} dias. Resistência permanente aumentada.',
+          involvedIds: [npc.id],
         );
       }
 
@@ -5492,14 +6052,11 @@ class GameEngine {
         npc.traits.add(PersonalityTrait.pragmatic);
         npc.traumas.clear();
         npc.history.add('Superou traumas do passado - ficou mais forte');
-        events.add(
-          GameEvent(
-            id: 'ptg_${npc.id}_${state.currentDay}',
-            day: state.currentDay,
-            type: GameEventType.mentalBreak,
-            title: 'Crescimento Pós-Traumático',
-            description: '${npc.name} superou traumas e emergiu mais forte!',
-          ),
+        _addEvent(
+          GameEventType.system,
+          'Crescimento Pós-Traumático',
+          '${npc.name} enfrentou traumas e emergiu mais forte! Resiliência mental e física aumentada.',
+          involvedIds: [npc.id],
         );
       }
 
@@ -5516,15 +6073,10 @@ class GameEngine {
         npc.attributes.agility = (npc.attributes.agility + 0.25).clamp(1, 20);
         npc.attributes.luck = (npc.attributes.luck + 0.1).clamp(1, 20);
         npc.history.add('Veterano de ${npc.floorsCleared} andares');
-        events.add(
-          GameEvent(
-            id: 'tower_vet_${npc.id}_${state.currentDay}',
-            day: state.currentDay,
-            type: GameEventType.discovery,
-            title: 'Veterano da Torre',
-            description:
-                '${npc.name} conquistou ${npc.floorsCleared} andares. Poderes de combate aumentados!',
-          ),
+        _addEvent(
+          GameEventType.system,
+          'Veterano da Torre',
+          '${npc.name} conquistou ${npc.floorsCleared} andares. Poderes de combate aumentados!',
         );
       }
     }
@@ -5581,15 +6133,10 @@ class GameEngine {
     }
 
     if (trained.isNotEmpty && rng.nextDouble() < 0.5) {
-      events.add(
-        GameEvent(
-          id: 'morale_bonus_${state.currentDay}',
-          day: state.currentDay,
-          type: GameEventType.resourceGain,
-          title: 'Moral Alta Inspira Crescimento',
-          description:
-              'A felicidade da cidadela (${moral.toStringAsFixed(0)}) impulsiona o desenvolvimento:\\n${trained.take(5).join(', ')}',
-        ),
+      _addEvent(
+        GameEventType.resourceGain,
+        'Moral Alta Inspira Crescimento',
+        'A felicidade da cidadela (${moral.toStringAsFixed(0)}) impulsiona o desenvolvimento:\n${trained.take(5).join(', ')}',
       );
     }
   }
@@ -5631,15 +6178,12 @@ class GameEngine {
         npc.fame += 5;
         npc.history.add('Talento descoberto: ${npc.hiddenTalent.label}');
         _applyTalentDiscoveryBonus(npc);
-        events.add(
-          GameEvent(
-            id: 'talent_disc_${npc.id}_${state.currentDay}',
-            day: state.currentDay,
-            type: GameEventType.discovery,
-            title: 'Talento Oculto Revelado!',
-            description:
-                '${npc.name} revelou seu talento: ${npc.hiddenTalent.label}\\n${npc.hiddenTalent.description}',
-          ),
+        _addEvent(
+          GameEventType.discovery,
+          'Talento Oculto Revelado!',
+          '${npc.name} revelou seu talento: ${npc.hiddenTalent.label}\n${npc.hiddenTalent.description}',
+          involvedIds: [npc.id],
+          isMajor: true,
         );
         citadel.resources.morale = (citadel.resources.morale + 2).clamp(0, 100);
       }

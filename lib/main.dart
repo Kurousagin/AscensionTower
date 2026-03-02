@@ -13,6 +13,7 @@ import 'screens/groups_screen.dart';
 import 'widgets/theme.dart';
 import 'widgets/event_toast.dart';
 import 'screens/prison_screen.dart';
+import 'screens/faction_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,6 +64,7 @@ class _AppShellState extends State<AppShell> {
       screens: [
         _NavItem(1, 'A TORRE', Icons.cell_tower),
         _NavItem(4, 'ESQUADROES', Icons.groups_outlined),
+        _NavItem(8, 'FACCOES', Icons.account_balance_outlined),
       ],
     ),
     _NavGroup(
@@ -97,6 +99,7 @@ class _AppShellState extends State<AppShell> {
     CitadelLedgerScreen(),
     PrisonScreen(),
     CodexScreen(),
+    FactionScreen(), // index 8
   ];
 
   static const _titles = [
@@ -108,6 +111,7 @@ class _AppShellState extends State<AppShell> {
     'REGISTROS',
     'JUSTICA',
     'CODEX',
+    'FACCOES',
   ];
 
   // Qual grupo contém a tela atual

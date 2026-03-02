@@ -848,16 +848,37 @@ class TowerFloor {
           ? (_bossRules[i] ?? FloorRule.none)
           : _generateProceduralRule(i, type, rng);
 
-      // ── Habitantes ───────────────────────────────────────────
+      // ── Habitantes ───────────────────────────────────────────────────────
       final inhabitantSeed = i * 13 + tierIdx * 7;
       if (rng.nextDouble() < _inhabitantChance(i)) {
-        floor.inhabitants.add(
-          InhabitantFactory.generateForFloor(
-            floorNumber: i,
-            tier: tierIdx + 1,
-            seed: inhabitantSeed,
-          ),
+        final inhabitant = InhabitantFactory.generateForFloor(
+          floorNumber: i,
+          tier: tierIdx + 1,
+          seed: inhabitantSeed,
         );
+        // ✅ FIX: vincula o habitante à facção que controla o andar
+        if (faction != FloorFaction.none) {
+          // Anomalias são entidades neutras — sem afiliação
+          // Survivors e residents refletem o ambiente do andar
+          if (inhabitant.category != InhabitantCategory.anomaly) {
+            inhabitant.factionAffiliation = faction.name;
+          }
+        }
+        floor.inhabitants.add(inhabitant);
+      }
+
+      // Bosses e elites têm chance adicional de survivor
+      if ((isBoss || isElite) && rng.nextDouble() < 0.40) {
+        final extra = InhabitantFactory.generateForFloor(
+          floorNumber: i,
+          tier: tierIdx + 1,
+          seed: inhabitantSeed + 1,
+        );
+        if (faction != FloorFaction.none &&
+            extra.category != InhabitantCategory.anomaly) {
+          extra.factionAffiliation = faction.name;
+        }
+        floor.inhabitants.add(extra);
       }
       // Bosses e elites têm chance adicional de survivor
       if ((isBoss || isElite) && rng.nextDouble() < 0.40) {

@@ -6,6 +6,8 @@ import '../widgets/terminal_widgets.dart';
 import '../models/game_event.dart';
 import '../models/npc.dart';
 import '../models/citadel.dart';
+import '../models/floor_faction.dart';
+import '../widgets/pending_recruits_badge.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -28,6 +30,21 @@ class DashboardScreen extends StatelessWidget {
                 const SizedBox(height: 12),
                 _buildSimControl(gp),
                 const SizedBox(height: 12),
+                // ── Survivors aguardando recrutamento ──
+                if (gp.pendingRecruits.isNotEmpty)
+                  Builder(
+                    builder: (ctx) => PendingRecruitsBanner(
+                      recruits: gp.pendingRecruits,
+                      hasRefuge: gp.citadel.hasBuilding(BuildingType.wayfareresRefuge),
+                      onTap: () => showModalBottomSheet(
+                        context: ctx,
+                        backgroundColor: Colors.transparent,
+                        isScrollControlled: true,
+                        builder: (_) => RecruitListSheet(engine: gp.engine),
+                      ),
+                    ),
+                  ),
+                if (gp.pendingRecruits.isNotEmpty) const SizedBox(height: 12),
                 _buildResourcePanel(res),
                 const SizedBox(height: 12),
                 _buildAlerts(gp),
@@ -594,7 +611,7 @@ class DashboardScreen extends StatelessWidget {
         ),
       );
     }
-    // Alerta de armazem cheio
+    // ── Alerta de armazem cheio ──
     if (!gp.citadel.hasInfiniteStorage &&
         gp.citadel.resources.anyAtCapacity(gp.citadel.storageLevel)) {
       alerts.add(
@@ -604,7 +621,49 @@ class DashboardScreen extends StatelessWidget {
             const SizedBox(width: 4),
             Expanded(
               child: TerminalText(
-                'Armazem no limite! Recursos excedentes serao perdidos. Amplie o armazem.',
+                'Armazem no limite! Recursos coletados hoje excedem a capacidade e estragarao ao virar o dia. Amplie o Armazem.',
+                fontSize: 9,
+                color: AppTheme.orange,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    // ── Alertas de facções hostis / em guerra ──
+    final hostileFactions = gp.state.factionRelations.values
+        .where((r) => r.tier == FactionTier.atWar || r.tier == FactionTier.bloodFeud)
+        .toList();
+    for (final rel in hostileFactions) {
+      alerts.add(
+        Row(
+          children: [
+            const Icon(Icons.local_fire_department, size: 12, color: AppTheme.red),
+            const SizedBox(width: 4),
+            Expanded(
+              child: TerminalText(
+                'GUERRA: ${rel.faction.label} esta em conflito ativo! Incursoes a cada 14 dias.',
+                fontSize: 9,
+                color: AppTheme.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final hostileOnly = gp.state.factionRelations.values
+        .where((r) => r.tier == FactionTier.hostile)
+        .toList();
+    if (hostileOnly.isNotEmpty) {
+      alerts.add(
+        Row(
+          children: [
+            const Icon(Icons.warning_amber, size: 12, color: AppTheme.orange),
+            const SizedBox(width: 4),
+            Expanded(
+              child: TerminalText(
+                '${hostileOnly.length} faccao(oes) hostil(is): ${hostileOnly.map((r) => r.faction.label).join(', ')}. Melhore as relacoes.',
                 fontSize: 9,
                 color: AppTheme.orange,
               ),
