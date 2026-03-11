@@ -117,6 +117,8 @@ class _CitadelLedgerScreenState extends State<CitadelLedgerScreen>
           _filterChip('DECRETO', RecordCategory.political),
           _filterChip('HONRARIA', RecordCategory.honor),
           _filterChip('PUNICAO', RecordCategory.punishment),
+          _filterChip('⚔ Guerra', RecordCategory.war),
+          _filterChip('📖 Lore', RecordCategory.lore),
         ],
       ),
     );
@@ -273,12 +275,20 @@ class _CitadelLedgerScreenState extends State<CitadelLedgerScreen>
     final color = Color(
       int.parse(record.category.colorHex.replaceFirst('#', '0xFF')),
     );
+    final isLore = record.category == RecordCategory.lore;
+    final isGuerra = record.category == RecordCategory.war;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
         color: AppTheme.bgCard,
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(
+          color: isLore
+              ? AppTheme.blue
+              : isGuerra
+              ? AppTheme.red
+              : AppTheme.border,
+        ),
       ),
       foregroundDecoration: BoxDecoration(
         border: Border(left: BorderSide(color: color, width: 3)),
@@ -314,11 +324,24 @@ class _CitadelLedgerScreenState extends State<CitadelLedgerScreen>
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: TerminalText(
-                    record.title,
-                    fontSize: 10,
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.bold,
+                  child: Row(
+                    children: [
+                      if (isLore) ...[
+                        const Text('📖', style: TextStyle(fontSize: 12)),
+                        const SizedBox(width: 4),
+                      ] else if (isGuerra) ...[
+                        const Text('⚔', style: TextStyle(fontSize: 12)),
+                        const SizedBox(width: 4),
+                      ],
+                      Expanded(
+                        child: TerminalText(
+                          record.title,
+                          fontSize: 10,
+                          color: AppTheme.textPrimary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 if (record.isSigned) ...[

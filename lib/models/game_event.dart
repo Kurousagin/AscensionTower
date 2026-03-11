@@ -27,6 +27,10 @@ enum GameEventType {
   floorReexplore,
   loyaltyChange,
   politicalEvent, recruitment,
+  warEvent,
+  tradeEvent,
+  questEvent,
+  factionEvent,
 }
 
 extension GameEventTypeExt on GameEventType {
@@ -84,6 +88,14 @@ extension GameEventTypeExt on GameEventType {
         return 'Politica Interna';
       case GameEventType.recruitment:
         return 'Recrutamento';
+      case GameEventType.warEvent:
+        return 'Guerra';
+      case GameEventType.tradeEvent:
+        return 'Comercio';
+      case GameEventType.questEvent:
+        return 'Missao';
+      case GameEventType.factionEvent:
+        return 'Faccao';
     }
   }
 
@@ -141,8 +153,35 @@ extension GameEventTypeExt on GameEventType {
         return '#DDAA66';
       case GameEventType.recruitment:
         return '#66DD88';
+      case GameEventType.warEvent:
+        return '#FF2200';
+      case GameEventType.tradeEvent:
+        return '#FFAA44';
+      case GameEventType.questEvent:
+        return '#44AAFF';
+      case GameEventType.factionEvent:
+        return '#AA66FF';
     }
   }
+}
+
+/// Helper genérico para retornar dados de eventos dos serviços ao GameEngine.
+class ServiceEvent {
+  final GameEventType type;
+  final String title;
+  final String description;
+  final List<String> involvedNpcIds;
+  final bool isMajor;
+  final double extraFoodGain;
+
+  const ServiceEvent({
+    required this.type,
+    required this.title,
+    required this.description,
+    this.involvedNpcIds = const [],
+    this.isMajor = false,
+    this.extraFoodGain = 0,
+  });
 }
 
 class GameEvent {

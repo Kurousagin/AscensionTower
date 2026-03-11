@@ -11,6 +11,8 @@ enum RecordCategory {
   exile,
   punishment,
   decree,
+  war,
+  lore,
 }
 
 extension RecordCategoryExt on RecordCategory {
@@ -26,6 +28,8 @@ extension RecordCategoryExt on RecordCategory {
       case RecordCategory.exile: return 'EXILIO';
       case RecordCategory.punishment: return 'PUNICAO';
       case RecordCategory.decree: return 'ORDEM';
+      case RecordCategory.war: return 'GUERRA';
+      case RecordCategory.lore: return 'LORE';
     }
   }
 
@@ -41,6 +45,8 @@ extension RecordCategoryExt on RecordCategory {
       case RecordCategory.exile: return '#FF8844';
       case RecordCategory.punishment: return '#FF4466';
       case RecordCategory.decree: return '#88CCFF';
+      case RecordCategory.war: return '#FF2200';
+      case RecordCategory.lore: return '#44DDFF';
     }
   }
 }

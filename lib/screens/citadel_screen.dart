@@ -161,7 +161,7 @@ class CitadelScreen extends StatelessWidget {
     if (!isInfinite) {
       if (maxUsage >= 1.0) {
         storageBorderColor = AppTheme.red;
-      } else if (maxUsage >= 0.8){
+      } else if (maxUsage >= 0.8) {
         storageBorderColor = AppTheme.orange;
       } else if (maxUsage >= 0.6) {
         storageBorderColor = AppTheme.yellow;
@@ -284,11 +284,11 @@ class CitadelScreen extends StatelessWidget {
             'Pesquisa e evolucao',
           ),
           TerminalText(
-            'Bônus diário: +${gp.dailyFoodBonus.toStringAsFixed(1)} comida, '
-            '+${gp.dailyWoodBonus.toStringAsFixed(1)} madeira, '
-            '+${gp.dailyIronBonus.toStringAsFixed(1)} ferro, '
-            '+${gp.dailyAdvancedBonus.toStringAsFixed(1)} avançado, '
-            '+${gp.dailyResearchBonus.toStringAsFixed(1)} conhecimento',
+            'Bônus diário: +${gp.dailyFoodBonus.toStringAsFixed(1)} comida  '
+            '+${gp.dailyWoodBonus.toStringAsFixed(1)} madeira  '
+            '+${gp.dailyIronBonus.toStringAsFixed(1)} ferro  '
+            '+${gp.dailyResearchBonus.toStringAsFixed(1)} conhecimento  '
+            '+${gp.dailyMoraleBonus.toStringAsFixed(1)} moral',
             fontSize: 9,
             color: AppTheme.green,
           ),

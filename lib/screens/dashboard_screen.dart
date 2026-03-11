@@ -8,6 +8,7 @@ import '../models/npc.dart';
 import '../models/citadel.dart';
 import '../models/floor_faction.dart';
 import '../widgets/pending_recruits_badge.dart';
+import '../services/quest_service.dart' show QuestService;
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -30,12 +31,18 @@ class DashboardScreen extends StatelessWidget {
                 const SizedBox(height: 12),
                 _buildSimControl(gp),
                 const SizedBox(height: 12),
+                if (gp.aliveNpcs.isNotEmpty) ...[
+                  _buildNpcDestaque(gp),
+                  const SizedBox(height: 12),
+                ],
                 // ── Survivors aguardando recrutamento ──
                 if (gp.pendingRecruits.isNotEmpty)
                   Builder(
                     builder: (ctx) => PendingRecruitsBanner(
                       recruits: gp.pendingRecruits,
-                      hasRefuge: gp.citadel.hasBuilding(BuildingType.wayfareresRefuge),
+                      hasRefuge: gp.citadel.hasBuilding(
+                        BuildingType.wayfareresRefuge,
+                      ),
                       onTap: () => showModalBottomSheet(
                         context: ctx,
                         backgroundColor: Colors.transparent,
@@ -47,6 +54,10 @@ class DashboardScreen extends StatelessWidget {
                 if (gp.pendingRecruits.isNotEmpty) const SizedBox(height: 12),
                 _buildResourcePanel(res),
                 const SizedBox(height: 12),
+                if (gp.activeQuests.isNotEmpty) ...[
+                  _buildActiveQuestsWidget(gp),
+                  const SizedBox(height: 12),
+                ],
                 _buildAlerts(gp),
                 const SizedBox(height: 12),
                 _buildQuickStats(gp),
@@ -191,6 +202,247 @@ class DashboardScreen extends StatelessWidget {
         color: color,
         fontWeight: FontWeight.bold,
       ),
+    );
+  }
+
+  Widget _buildNpcDestaque(GameProvider gp) {
+    if (gp.aliveNpcs.isEmpty) {
+      return SizedBox.shrink();
+    }
+
+    final npc = gp.aliveNpcs.firstWhere(
+      (n) => n.betrayalRisk > 60,
+      orElse: () => gp.aliveNpcs.firstWhere(
+        (n) => n.attributes.mentalStability < 20,
+        orElse: () => gp.aliveNpcs.firstWhere(
+          (n) => n.fatigue > 80,
+          orElse: () => gp.aliveNpcs.firstWhere(
+            (n) => n.floorsCleared > 15,
+            orElse: () =>
+                gp.aliveNpcs[gp.state.currentDay * 31 % gp.aliveNpcs.length],
+          ),
+        ),
+      ),
+    );
+
+    final borderColor =
+        npc.attributes.mentalStability < 20 || npc.betrayalRisk > 60
+        ? AppTheme.red
+        : npc.fatigue > 70
+        ? AppTheme.orange
+        : npc.loyalty > 70
+        ? AppTheme.green
+        : AppTheme.cyan;
+
+    final statusBadge = npc.betrayalRisk > 60
+        ? ('⚠ RISCO', AppTheme.orange)
+        : npc.attributes.mentalStability < 30
+        ? ('⚡ INSTÁVEL', AppTheme.red)
+        : npc.fatigue > 80
+        ? ('😴 EXAUSTO', AppTheme.yellow)
+        : npc.floorsCleared > 15
+        ? ('⚔ VETERANO', AppTheme.cyan)
+        : (null, null);
+
+    final sanidadeColor = npc.attributes.mentalStability > 60
+        ? AppTheme.green
+        : npc.attributes.mentalStability > 30
+        ? AppTheme.yellow
+        : AppTheme.red;
+    final fadigaColor = npc.fatigue < 30
+        ? AppTheme.textSecondary
+        : npc.fatigue < 50
+        ? AppTheme.yellow
+        : npc.fatigue < 70
+        ? AppTheme.orange
+        : AppTheme.red;
+    final loyaltyColor = npc.loyalty > 60
+        ? AppTheme.green
+        : npc.loyalty > 30
+        ? AppTheme.yellow
+        : AppTheme.red;
+
+    return TerminalCard(
+      title: 'HABITANTE EM DESTAQUE — Dia ${gp.state.currentDay}',
+      borderColor: borderColor,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TerminalText(
+                  'HABITANTE EM DESTAQUE — Dia ${gp.state.currentDay}',
+                  fontSize: 9,
+                  color: AppTheme.textDim,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(Icons.person, size: 14, color: AppTheme.cyan),
+              const SizedBox(width: 6),
+              Expanded(
+                child: TerminalText(
+                  npc.name,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              if (statusBadge.$1 != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusBadge.$2!.withValues(alpha: 0.1),
+                    border: Border.all(color: statusBadge.$2!),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                  child: TerminalText(
+                    statusBadge.$1!,
+                    fontSize: 8,
+                    color: statusBadge.$2!,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          TerminalText(
+            _npcQuoteDestaque(npc),
+            fontSize: 9,
+            color: AppTheme.textSecondary,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildBarCompact(
+                      'Sanidade',
+                      npc.attributes.mentalStability / 100,
+                      sanidadeColor,
+                    ),
+                    const SizedBox(height: 4),
+                    _buildBarCompact('Fadiga', npc.fatigue / 100, fadigaColor),
+                    const SizedBox(height: 4),
+                    _buildBarCompact(
+                      'Lealdade',
+                      npc.loyalty / 100,
+                      loyaltyColor,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              ...npc.traits.take(2).map((trait) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  margin: const EdgeInsets.only(right: 4),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: AppTheme.purple.withValues(alpha: 0.4),
+                    ),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                  child: TerminalText(
+                    trait.label,
+                    fontSize: 8,
+                    color: AppTheme.purple,
+                  ),
+                );
+              }),
+              const Spacer(),
+              ElevatedButton(
+                onPressed: null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.bgCard,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(2),
+                    side: const BorderSide(color: AppTheme.border),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                ),
+                child: const TerminalText(
+                  'Ver Habitante',
+                  fontSize: 8,
+                  color: AppTheme.textDim,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _npcQuoteDestaque(Npc npc) {
+    if (npc.attributes.mentalStability < 20 && npc.traumas.isNotEmpty) {
+      return '"Não consigo mais."';
+    }
+    if (npc.attributes.mentalStability < 20) {
+      return '"Algo está errado comigo."';
+    }
+    if (npc.betrayalRisk > 60) {
+      return '"Ninguém aqui merece minha lealdade."';
+    }
+    if (npc.betrayalRisk > 30 && npc.loyalty < 30) {
+      return '"Estou observando. Esperando."';
+    }
+    if (npc.fatigue > 80) {
+      return '"Preciso descansar."';
+    }
+    if (npc.fatigue > 50 && npc.floorsCleared > 10) {
+      return '"Cada andar pesa mais."';
+    }
+    if (npc.partnerId != null && npc.loyalty > 70) {
+      return '"Faço isso por quem eu amo."';
+    }
+    if (npc.traumas.isNotEmpty) {
+      return '"Carrego o que vi lá em cima."';
+    }
+    if (npc.floorsCleared > 20) {
+      return '"Já vi coisas que você não quer saber."';
+    }
+    return '"Estou pronto. Para o que vier."';
+  }
+
+  Widget _buildBarCompact(String label, double fraction, Color color) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 60,
+          child: TerminalText(label, fontSize: 8, color: AppTheme.textDim),
+        ),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: fraction.clamp(0, 1),
+              minHeight: 4,
+              backgroundColor: AppTheme.border,
+              valueColor: AlwaysStoppedAnimation(color),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -539,6 +791,57 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildActiveQuestsWidget(GameProvider gp) {
+    final quests = gp.activeQuests;
+    return TerminalCard(
+      title:
+          'MISSOES ATIVAS (${quests.length}/${QuestService.maxActiveQuests})',
+      borderColor: AppTheme.blue,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: quests.map((q) {
+          final daysLeft = q.dayLimit - gp.state.currentDay;
+          final urgentColor = daysLeft <= 5 ? AppTheme.orange : AppTheme.blue;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  margin: const EdgeInsets.only(top: 3, right: 6),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: urgentColor,
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TerminalText(
+                        q.title,
+                        fontSize: 9,
+                        color: urgentColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      TerminalText(
+                        '${q.type.name.toUpperCase()} — ${daysLeft > 0 ? "$daysLeft dias restantes" : "EXPIRA HOJE"}',
+                        fontSize: 7,
+                        color: AppTheme.textDim,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   Widget _buildAlerts(GameProvider gp) {
     final alerts = <Widget>[];
     final suspicious = gp.suspiciousNpcs;
@@ -632,13 +935,19 @@ class DashboardScreen extends StatelessWidget {
     }
     // ── Alertas de facções hostis / em guerra ──
     final hostileFactions = gp.state.factionRelations.values
-        .where((r) => r.tier == FactionTier.atWar || r.tier == FactionTier.bloodFeud)
+        .where(
+          (r) => r.tier == FactionTier.atWar || r.tier == FactionTier.bloodFeud,
+        )
         .toList();
     for (final rel in hostileFactions) {
       alerts.add(
         Row(
           children: [
-            const Icon(Icons.local_fire_department, size: 12, color: AppTheme.red),
+            const Icon(
+              Icons.local_fire_department,
+              size: 12,
+              color: AppTheme.red,
+            ),
             const SizedBox(width: 4),
             Expanded(
               child: TerminalText(

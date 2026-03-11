@@ -6,6 +6,7 @@ import '../providers/game_provider.dart';
 import '../models/npc.dart';
 import '../models/tower.dart';
 import '../models/group_model.dart';
+import '../models/floor_faction.dart';
 import '../widgets/theme.dart';
 import '../widgets/terminal_widgets.dart';
 import '../widgets/floor_detail_sheet.dart';
@@ -778,6 +779,16 @@ class _TowerScreenState extends State<TowerScreen> {
             final isFloorLocked =
                 floor.number > gp.state.highestFloorCleared + 1;
 
+            final isContested =
+                isCleared &&
+                gp.engine.warService.isFloorContested(floor.number);
+            final warForFloor = isContested
+                ? gp.engine.warService.activeWars.firstWhere(
+                    (w) => w.contestedFloors.contains(floor.number),
+                    orElse: () => gp.engine.warService.activeWars.first,
+                  )
+                : null;
+
             Color floorColor;
             if (isCleared) {
               floorColor = AppTheme.green;
@@ -786,6 +797,8 @@ class _TowerScreenState extends State<TowerScreen> {
             } else {
               floorColor = AppTheme.textDim;
             }
+
+            if (isContested) floorColor = AppTheme.red;
 
             return GestureDetector(
               onTap: isCleared
@@ -797,89 +810,141 @@ class _TowerScreenState extends State<TowerScreen> {
                           FloorDetailSheet(floor: floor, engine: gp.engine),
                     )
                   : null,
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 1, left: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: isBoss && isNext
-                        ? AppTheme.red.withValues(alpha: 0.5)
-                        : floorColor.withValues(alpha: 0.2),
+              child: Stack(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 1, left: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: isContested
+                            ? AppTheme.red.withValues(alpha: 0.6)
+                            : isBoss && isNext
+                            ? AppTheme.red.withValues(alpha: 0.5)
+                            : floorColor.withValues(alpha: 0.2),
+                      ),
+                      borderRadius: BorderRadius.circular(2),
+                      color: isContested
+                          ? AppTheme.red.withValues(alpha: 0.05)
+                          : isCleared
+                          ? AppTheme.green.withValues(alpha: 0.03)
+                          : null,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            if (isContested) _WarPulse(),
+                            SizedBox(
+                              width: 14,
+                              child: TerminalText(
+                                isCleared
+                                    ? 'V'
+                                    : isNext
+                                    ? '>'
+                                    : '-',
+                                fontSize: 9,
+                                color: floorColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            TerminalText(
+                              floor.number.toString().padLeft(3, '0'),
+                              fontSize: 9,
+                              color: floorColor,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            const SizedBox(width: 6),
+                            TerminalText(
+                              floor.type.icon,
+                              fontSize: 8,
+                              color: floorColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: TerminalText(
+                                '${floor.type.label}${isBoss
+                                    ? ' [BOSS]'
+                                    : isElite
+                                    ? ' [ELITE]'
+                                    : ''}',
+                                fontSize: 8,
+                                color: isBoss
+                                    ? (isFloorLocked
+                                          ? AppTheme.textDim
+                                          : AppTheme.red)
+                                    : isElite
+                                    ? (isFloorLocked
+                                          ? AppTheme.textDim
+                                          : const Color(0xFFFF44FF))
+                                    : floorColor,
+                              ),
+                            ),
+                            TerminalText(
+                              'Dif:${floor.scaledDifficulty.toStringAsFixed(1)}',
+                              fontSize: 7,
+                              color: floorColor,
+                            ),
+                            // Indicador de habitantes + toque
+                            if (isCleared) ...[
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.people_outline,
+                                size: 11,
+                                color: floor.inhabitants.any((i) => i.isActive)
+                                    ? AppTheme.cyan
+                                    : AppTheme.textDim.withValues(alpha: 0.3),
+                              ),
+                              if (isContested) ...[
+                                const SizedBox(width: 4),
+                                const Text('⚔', style: TextStyle(fontSize: 10)),
+                              ],
+                              const SizedBox(width: 2),
+                              const Icon(
+                                Icons.chevron_right,
+                                size: 11,
+                                color: AppTheme.textDim,
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (isContested)
+                          TerminalText(
+                            '${warForFloor!.aggressor.label} x ${warForFloor.defender.label}',
+                            fontSize: 7,
+                            color: AppTheme.red.withValues(alpha: 0.7),
+                          ),
+                      ],
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(2),
-                  color: isCleared
-                      ? AppTheme.green.withValues(alpha: 0.03)
-                      : null,
-                ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 14,
-                      child: TerminalText(
-                        isCleared
-                            ? 'V'
-                            : isNext
-                            ? '>'
-                            : '-',
-                        fontSize: 9,
-                        color: floorColor,
-                        fontWeight: FontWeight.bold,
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: AnimatedOpacity(
+                        opacity: isContested ? 0.12 : 0.0,
+                        duration: const Duration(milliseconds: 800),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(2),
+                            gradient: LinearGradient(
+                              colors: [
+                                AppTheme.red.withValues(alpha: 0.8),
+                                Colors.transparent,
+                                AppTheme.orange.withValues(alpha: 0.4),
+                              ],
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                    TerminalText(
-                      floor.number.toString().padLeft(3, '0'),
-                      fontSize: 9,
-                      color: floorColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    const SizedBox(width: 6),
-                    TerminalText(
-                      floor.type.icon,
-                      fontSize: 8,
-                      color: floorColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: TerminalText(
-                        '${floor.type.label}${isBoss
-                            ? ' [BOSS]'
-                            : isElite
-                            ? ' [ELITE]'
-                            : ''}',
-                        fontSize: 8,
-                        color: isBoss
-                            ? (isFloorLocked ? AppTheme.textDim : AppTheme.red)
-                            : isElite
-                            ? (isFloorLocked
-                                  ? AppTheme.textDim
-                                  : const Color(0xFFFF44FF))
-                            : floorColor,
-                      ),
-                    ),
-                    TerminalText(
-                      'Dif:${floor.scaledDifficulty.toStringAsFixed(1)}',
-                      fontSize: 7,
-                      color: floorColor,
-                    ),
-                    // Indicador de habitantes + toque
-                    if (isCleared) ...[
-                      const SizedBox(width: 4),
-                      Icon(
-                        Icons.people_outline,
-                        size: 11,
-                        color: floor.inhabitants.any((i) => i.isActive)
-                            ? AppTheme.cyan
-                            : AppTheme.textDim.withValues(alpha: 0.3),
-                      ),
-                      const SizedBox(width: 2),
-                      const Icon(
-                        Icons.chevron_right,
-                        size: 11,
-                        color: AppTheme.textDim,
-                      ),
-                    ],
-                  ],
-                ),
+                  ),
+                ],
               ),
             );
           }),
@@ -1483,6 +1548,16 @@ class _TowerScreenState extends State<TowerScreen> {
                                     fontSize: 8,
                                     color: fatigueColor,
                                   ),
+                                  if (npc.consecutiveExpeditions > 1) ...[
+                                    const SizedBox(width: 4),
+                                    TerminalText(
+                                      '×${npc.consecutiveExpeditions}',
+                                      fontSize: 8,
+                                      color: npc.consecutiveExpeditions >= 3
+                                          ? AppTheme.red
+                                          : AppTheme.orange,
+                                    ),
+                                  ],
                                   const SizedBox(width: 6),
                                   TerminalText(
                                     'PWR:${power.toStringAsFixed(1)}',
@@ -2485,20 +2560,20 @@ class _TowerScreenState extends State<TowerScreen> {
                                   ),
                                 ],
                               ),
-                              if (isTooYoung)
-                                const Padding(
-                                  padding: EdgeInsets.only(left: 20, top: 2),
-                                  child: TerminalText(
-                                    '[JOVEM DEMAIS - NAO PODE PARTICIPAR]',
-                                    fontSize: 7,
-                                    color: AppTheme.red,
-                                  ),
-                                )
-                              else if (isDisabled)
+                              if (npc.isIncapacitated)
                                 const Padding(
                                   padding: EdgeInsets.only(left: 20, top: 2),
                                   child: TerminalText(
                                     '[INCAPACITADO - NAO PODE PARTICIPAR]',
+                                    fontSize: 7,
+                                    color: AppTheme.red,
+                                  ),
+                                )
+                              else if (isTooYoung)
+                                const Padding(
+                                  padding: EdgeInsets.only(left: 20, top: 2),
+                                  child: TerminalText(
+                                    '[JOVEM DEMAIS - NAO PODE PARTICIPAR]',
                                     fontSize: 7,
                                     color: AppTheme.red,
                                   ),
@@ -2675,5 +2750,52 @@ class _TowerScreenState extends State<TowerScreen> {
       return const Color(0xFFFFD54F);
     }
     return AppTheme.textDim;
+  }
+}
+
+class _WarPulse extends StatefulWidget {
+  const _WarPulse();
+
+  @override
+  State<_WarPulse> createState() => _WarPulseState();
+}
+
+class _WarPulseState extends State<_WarPulse>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _animation = Tween<double>(begin: 0.4, end: 1.0).animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Opacity(
+          opacity: _animation.value,
+          child: Icon(
+            Icons.local_fire_department,
+            size: 10,
+            color: AppTheme.red,
+          ),
+        );
+      },
+    );
   }
 }

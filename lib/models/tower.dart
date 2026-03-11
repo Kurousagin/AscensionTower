@@ -861,7 +861,7 @@ class TowerFloor {
           // Anomalias são entidades neutras — sem afiliação
           // Survivors e residents refletem o ambiente do andar
           if (inhabitant.category != InhabitantCategory.anomaly) {
-            inhabitant.factionAffiliation = faction.name;
+            inhabitant.factionAffiliation = faction;
           }
         }
         floor.inhabitants.add(inhabitant);
@@ -876,7 +876,7 @@ class TowerFloor {
         );
         if (faction != FloorFaction.none &&
             extra.category != InhabitantCategory.anomaly) {
-          extra.factionAffiliation = faction.name;
+          extra.factionAffiliation = faction;
         }
         floor.inhabitants.add(extra);
       }

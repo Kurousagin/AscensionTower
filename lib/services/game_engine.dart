@@ -14,6 +14,10 @@ import 'equipment_service.dart';
 import '../models/citadel_record.dart';
 import '../models/prison.dart';
 import '../services/prison_service.dart';
+import '../services/faction_service.dart';
+import '../services/war_service.dart';
+import '../services/trade_service.dart';
+import '../services/quest_service.dart';
 
 class GameEngine {
   final Random _rng;
@@ -33,6 +37,7 @@ class GameEngine {
 
   // ======== Facções ==================
   // Survivors encontrados nos andares, aguardando recrutamento
+  // (mantido por compatibilidade — FactionService agora gerencia _pendingRecruits)
   final List<FloorInhabitant> _pendingRecruits = [];
 
   List<FloorInhabitant> get pendingRecruits =>
@@ -41,6 +46,18 @@ class GameEngine {
   final EquipmentService _equipmentService = EquipmentService();
   final List<Equipment> _inventory = [];
   final PrisonService _prisonService = PrisonService();
+
+  // ====== Novos Serviços ==================
+  late final FactionService _factionService = FactionService(_rng);
+  late final WarService _warService = WarService(_rng);
+  late final TradeService _tradeService = TradeService(_rng);
+  late final QuestService _questService = QuestService(_rng);
+
+  // ── Accessors para novos serviços ──
+  FactionService get factionService => _factionService;
+  WarService get warService => _warService;
+  TradeService get tradeService => _tradeService;
+  QuestService get questService => _questService;
 
   // ====== Registro Oficial da Cidadela ==================
   final List<CitadelRecord> _records = [];
@@ -113,6 +130,11 @@ class GameEngine {
     _records.clear();
     _recordIdCounter = 0;
     _prisonService.clear();
+    _factionService.clear();
+    _warService.clear();
+    _tradeService.clear();
+    _questService.clear();
+    _pendingRecruits.clear();
 
     // Gerar 15 Primordiais
     for (int i = 0; i < 15; i++) {
@@ -241,6 +263,80 @@ class GameEngine {
 
     _processFameGains();
     _processFactionIncursions();
+
+    // ── Novos serviços ──
+    // Expiração de tratados (diário)
+    for (final ev in _factionService.processTreatyExpiration(
+      factionRelations: state.factionRelations,
+      currentDay: state.currentDay,
+    )) {
+      _addEvent(ev.type, ev.title, ev.description, isMajor: ev.isMajor);
+    }
+
+    // Recompensas de aliança (diário, só dispara uma vez)
+    for (final ev in _factionService.processFactionRewards(
+      factionRelations: state.factionRelations,
+      citadel: citadel,
+      currentDay: state.currentDay,
+    )) {
+      _addEvent(ev.type, ev.title, ev.description, isMajor: ev.isMajor);
+      if (ev.extraFoodGain != null && ev.extraFoodGain! > 0) {
+        citadel.resources.food += ev.extraFoodGain!;
+      }
+    }
+    // Guerras (diário)
+    for (final ev in _warService.processWars(
+      currentDay: state.currentDay,
+      floors: floors,
+      factionRelations: state.factionRelations,
+    )) {
+      _addEvent(ev.type, ev.title, ev.description, isMajor: ev.isMajor);
+    }
+
+    // ← ADICIONA AQUI
+    for (final floor in floors.where(
+      (f) => f.cleared && f.inhabitants.isNotEmpty,
+    )) {
+      final isContested = _warService.isFloorContested(floor.number);
+      FloorFaction? contestingFaction;
+      if (isContested && _warService.activeWars.isNotEmpty) {
+        final war = _warService.activeWars.firstWhere(
+          (w) => w.contestedFloors.contains(floor.number),
+          orElse: () => _warService.activeWars.first,
+        );
+        contestingFaction = war.aggressor;
+      }
+      InhabitantProcessor.updateForWarState(
+        inhabitants: floor.inhabitants,
+        isContested: isContested,
+        contestingFaction: contestingFaction,
+      );
+    }
+
+    // Ofertas de comércio (a cada 7 dias)
+    if (state.currentDay % 7 == 0) {
+      _tradeService.refreshOffers(
+        floors: floors,
+        factionRelations: state.factionRelations,
+        currentDay: state.currentDay,
+      );
+    }
+
+    // Geração de missões (a cada 5 dias)
+    if (state.currentDay % 5 == 0) {
+      _questService.generateQuests(
+        floors: floors,
+        factionRelations: state.factionRelations,
+        currentDay: state.currentDay,
+        activeWars: _warService.activeWars,
+      );
+    }
+
+    // Expiração de missões (diário)
+    for (final ev in _questService.processExpiration(state.currentDay)) {
+      _addEvent(ev.type, ev.title, ev.description, isMajor: ev.isMajor);
+    }
+
     if (state.currentDay % 7 == 0) _autonomousGroupFormation();
 
     final overflow = citadel.resources.clampToCapacity(citadel.storageLevel);
@@ -429,6 +525,16 @@ class GameEngine {
         res.knowledge += knowledgeProduction * tierBonus;
         break;
 
+      // 🏫 SCHOOL
+      case BuildingType.school:
+        final schoolProduction = _expProduction(
+          level: level,
+          base: 1,
+          growth: 1.6,
+        );
+
+        res.knowledge += schoolProduction * tierBonus;
+        break;
       // ⛪ TEMPLE
       case BuildingType.temple:
         final moraleBoost = _expProduction(
@@ -451,6 +557,10 @@ class GameEngine {
 
         res.morale += moraleBoost;
         break;
+      // 🏛 MONUMENT
+      case BuildingType.monument:
+        res.morale += 5.0;
+        break;
 
       default:
         break;
@@ -459,7 +569,14 @@ class GameEngine {
 
   void _processResourceConsumption() {
     final consumption = population * 1.5;
-    citadel.resources.food -= consumption;
+    // Aplica redução do granary
+    final granaryReduction = citadel.buildings
+        .where((b) => b.type == BuildingType.granary)
+        .fold(0.0, (sum, b) => sum + b.foodConsumptionReduction);
+    final effectiveConsumption =
+        consumption * (1.0 - granaryReduction.clamp(0.0, 0.50));
+
+    citadel.resources.food -= effectiveConsumption;
 
     if (citadel.resources.food < 0) {
       citadel.resources.food = 0;
@@ -690,7 +807,7 @@ class GameEngine {
         _addEvent(
           GameEventType.mentalBreak,
           'Colapso Mental',
-          '${npc.name} se trancou em isolamento total.',
+          '${npc.name} se trancou. ${npc.traumas.isNotEmpty ? "Os traumas acumulados foram longe demais." : "Ninguém sabe o que aconteceu."}',
           involvedIds: [npc.id],
         );
         break;
@@ -709,7 +826,7 @@ class GameEngine {
         _addEvent(
           GameEventType.betrayal,
           'Rebeliao',
-          '${npc.name} se revoltou e destruiu suprimentos!',
+          '${npc.name} destruiu suprimentos e gritou que "${npc.loyalty < 20 ? 'nunca pertenceu a este lugar' : 'isso não é o que foi prometido'}".',
           involvedIds: [npc.id],
         );
         break;
@@ -719,7 +836,7 @@ class GameEngine {
           _addEvent(
             GameEventType.death,
             'Sacrificio Suicida',
-            '${npc.name} partiu sozinho para a Torre. Nao voltou.',
+            '${npc.name} partiu sozinho. ${npc.floorsCleared > 5 ? "Havia sobrevivido a ${npc.floorsCleared} andares. Não foi suficiente." : "Nunca chegou a conhecer a torre de verdade."}',
             involvedIds: [npc.id],
             isMajor: true,
           );
@@ -729,7 +846,7 @@ class GameEngine {
           _addEvent(
             GameEventType.mentalBreak,
             'Tentativa de Fuga',
-            '${npc.name} tentou escalar as paredes. Encontrado inconsciente.',
+            '${npc.name} tentou escalar as paredes externas. ${npc.partnerId != null ? "Gritou um nome antes de perder a consciência." : "Encontrado sozinho, inconsciente."}',
             involvedIds: [npc.id],
           );
         }
@@ -741,7 +858,7 @@ class GameEngine {
         _addEvent(
           GameEventType.mentalBreak,
           'Depressao Profunda',
-          '${npc.name} parou de comer e falar.',
+          '${npc.name} parou de comer. Parou de falar. ${npc.traits.isNotEmpty ? "O(a) ${npc.traits.first.label} que todos conheciam desapareceu." : "Como se tivesse apagado."}',
           involvedIds: [npc.id],
         );
         break;
@@ -752,7 +869,7 @@ class GameEngine {
         _addEvent(
           GameEventType.mentalBreak,
           'Surto Agressivo',
-          '${npc.name} atacou outros moradores.',
+          '${npc.name} atacou outros moradores sem motivo aparente. ${npc.floorsCleared > 0 ? "Veterano(a) de ${npc.floorsCleared} andares. A torre cobra seu preço." : "A pressão foi longe demais."}',
           involvedIds: [npc.id],
         );
     }
@@ -1842,6 +1959,11 @@ class GameEngine {
 
     _applyFactionStandingChange(faction: faction, delta: delta);
     relation.lastDiplomacyDay = state.currentDay;
+    // Ativa tratado se proposta de não-agressão foi aceita
+    if (offerType == DiplomacyOfferType.proposeNonAggression && success) {
+      relation.hasTreaty = true;
+      relation.treatyStartDay = state.currentDay;
+    }
 
     final resultStr = success ? 'SUCESSO' : 'PARCIALMENTE ACEITO';
     _addEvent(
@@ -2015,6 +2137,17 @@ class GameEngine {
       'factionMod': factionMod,
       'rulePenalty': hadRulePenalty ? 1.0 : 0.0,
     };
+  }
+
+  /// Calcula a produção diária real de todos os edifícios sem alterar estado.
+  /// Usa a mesma lógica de _applyBuildingProduction — garante que UI e engine
+  /// mostrem sempre o mesmo valor.
+  Resources previewDailyProduction() {
+    final res = Resources();
+    for (final building in citadel.buildings) {
+      _applyBuildingProduction(building, res);
+    }
+    return res;
   }
 
   double previewGroupSynergy(List<String> partyIds) {
@@ -2360,6 +2493,7 @@ class GameEngine {
         'Fragmento de Lore — Andar ${floor.number}',
         encounterResult.loreFragments.join('\n'),
         involvedIds: partyIds,
+        isMajor: true,
       );
     }
   }
@@ -5762,8 +5896,18 @@ class GameEngine {
         break;
 
       case GameEventType.discovery:
-        if (event.title.contains('Talento')) {
+        if (event.isMajor && event.title.contains('Lore')) {
+          cat = RecordCategory.lore;
+          signed = false;
+        } else if (event.title.contains('Talento')) {
           cat = RecordCategory.honor;
+          signed = true;
+        }
+        break;
+
+      case GameEventType.warEvent:
+        if (event.isMajor) {
+          cat = RecordCategory.war;
           signed = true;
         }
         break;
@@ -5829,6 +5973,11 @@ class GameEngine {
     'activeTrainings': activeTrainings.map((m) => m.toJson()).toList(),
     'trainingMissionCounter': _trainingMissionCounter,
     'pendingRecruits': _pendingRecruits.map((r) => r.toJson()).toList(),
+    // ── Novos serviços ──
+    'factionService': _factionService.toJson(),
+    'warService': _warService.toJson(),
+    'tradeService': _tradeService.toJson(),
+    'questService': _questService.toJson(),
   };
 
   void loadFromJson(Map<String, dynamic> json) {
@@ -5887,6 +6036,15 @@ class GameEngine {
           (e) => FloorInhabitant.fromJson(e as Map<String, dynamic>),
         ),
       );
+    // ── Novos serviços (compatível com saves antigos — campos ausentes = estado limpo) ──
+    final factionJson = json['factionService'] as Map<String, dynamic>?;
+    if (factionJson != null) _factionService.loadFromJson(factionJson);
+    final warJson = json['warService'] as Map<String, dynamic>?;
+    if (warJson != null) _warService.loadFromJson(warJson);
+    final tradeJson = json['tradeService'] as Map<String, dynamic>?;
+    if (tradeJson != null) _tradeService.loadFromJson(tradeJson);
+    final questJson = json['questService'] as Map<String, dynamic>?;
+    if (questJson != null) _questService.loadFromJson(questJson);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

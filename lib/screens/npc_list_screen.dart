@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tower_ascension/models/equipment.dart';
@@ -189,221 +190,251 @@ class _NpcListScreenState extends State<NpcListScreen> {
   }
 
   Widget _buildNpcTile(BuildContext context, Npc npc, GameProvider gp) {
-    final mentalColor = npc.attributes.mentalStability > 60
+    final (statusIcon, statusColor) = _npcStatusIcon(npc);
+    final sanidadeColor = npc.attributes.mentalStability > 60
         ? AppTheme.green
         : npc.attributes.mentalStability > 30
         ? AppTheme.yellow
         : AppTheme.red;
+    final fadigaColor = npc.fatigue < 30
+        ? AppTheme.textSecondary
+        : npc.fatigue < 50
+        ? AppTheme.yellow
+        : npc.fatigue < 70
+        ? AppTheme.orange
+        : AppTheme.red;
+
+    // Determine border color
+    final borderColor = !npc.alive
+        ? AppTheme.red
+        : npc.betrayalRisk > 60
+        ? AppTheme.orange
+        : AppTheme.border;
 
     return GestureDetector(
       onTap: () => _showNpcDetail(context, npc, gp),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 4),
+        margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: npc.alive
-              ? AppTheme.bgCard
-              : AppTheme.bgCard.withValues(alpha: 0.5),
-          border: Border.all(
-            color: npc.alive
-                ? (npc.attributes.mentalStability < 20
-                      ? AppTheme.red.withValues(alpha: 0.5)
-                      : AppTheme.border)
-                : AppTheme.red.withValues(alpha: 0.2),
-          ),
+          color: AppTheme.bgCard,
+          border: Border.all(color: borderColor),
           borderRadius: BorderRadius.circular(4),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ROW 1 — header with icon, name, and badge
             Row(
               children: [
+                Icon(statusIcon, size: 14, color: statusColor),
+                const SizedBox(width: 6),
                 Expanded(
                   child: TerminalText(
                     npc.name,
                     fontSize: 11,
+                    fontWeight: FontWeight.bold,
                     color: npc.alive
                         ? AppTheme.textPrimary
-                        : AppTheme.red.withValues(alpha: 0.5),
-                    fontWeight: FontWeight.bold,
+                        : AppTheme.red.withValues(alpha: 0.6),
                   ),
                 ),
-                // ── Parceiro no cabeçalho do card ──
-                if (npc.partnerId != null)
-                  Builder(builder: (_) {
-                    final partner = gp.allNpcs
-                        .where((n) => n.id == npc.partnerId)
-                        .firstOrNull;
-                    if (partner == null) return const SizedBox.shrink();
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            partner.alive
-                                ? Icons.favorite
-                                : Icons.heart_broken,
-                            size: 10,
-                            color: partner.alive
-                                ? AppTheme.pink
-                                : AppTheme.textDim,
-                          ),
-                          const SizedBox(width: 3),
-                          TerminalText(
-                            partner.name.split(' ').first, // só primeiro nome
-                            fontSize: 9,
-                            color: partner.alive
-                                ? AppTheme.pink
-                                : AppTheme.textDim,
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                TerminalText(
-                  npc.alive ? 'G${npc.generation}' : 'MORTO',
-                  fontSize: 9,
-                  color: npc.alive ? AppTheme.textDim : AppTheme.red,
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 8,
-              runSpacing: 2,
-              children: [
-                TerminalText(
-                  'Origem: ${npc.origin.label}',
-                  fontSize: 9,
-                  color: AppTheme.cyan,
-                ),
-                TerminalText(
-                  'Funcao: ${npc.profession.label}',
-                  fontSize: 9,
-                  color: AppTheme.textSecondary,
-                ),
-                TerminalText(
-                  '${npc.age} anos',
-                  fontSize: 9,
-                  color: AppTheme.textDim,
-                ),
-                // Filhos no card (compacto)
-                if (npc.childrenIds.isNotEmpty)
-                  TerminalText(
-                    '${npc.childrenIds.length} filho(s)',
-                    fontSize: 9,
-                    color: AppTheme.green.withValues(alpha: 0.8),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 3),
-            Wrap(
-              spacing: 10,
-              runSpacing: 2,
-              children: [
-                TerminalText(
-                  'Poder: ${npc.effectiveCombatPowerWithGear(gp.equippedOn(npc.id)).toStringAsFixed(1)}',
-                  fontSize: 9,
-                  color: AppTheme.orange,
-                ),
-                TerminalText(
-                  'Sanidade: ${npc.attributes.mentalStability.toStringAsFixed(0)}%',
-                  fontSize: 9,
-                  color: mentalColor,
-                ),
-                _fatigueTag(npc),
-                if (npc.fame > 0)
-                  TerminalText(
-                    'Fama: ${npc.fame.toStringAsFixed(0)}',
-                    fontSize: 9,
-                    color: AppTheme.yellow,
-                  ),
-                if (npc.fame < 0)
-                  TerminalText(
-                    'Infame: ${npc.fame.toStringAsFixed(0)}',
-                    fontSize: 9,
-                    color: AppTheme.red,
-                  ),
-                TerminalText(
-                  'Leal: ${npc.loyalty.toStringAsFixed(0)}%',
-                  fontSize: 9,
-                  color: npc.loyalty > 60
-                      ? AppTheme.green
-                      : npc.loyalty > 30
-                      ? AppTheme.yellow
-                      : AppTheme.red,
-                ),
-              ],
-            ),
-            if (npc.talentDiscovered && npc.hiddenTalent != HiddenTalent.none)
-              Padding(
-                padding: const EdgeInsets.only(top: 3),
-                child: TerminalText(
-                  'Talento: ${npc.hiddenTalent.label}',
-                  fontSize: 9,
-                  color: AppTheme.purple,
-                ),
-              ),
-            if (npc.isSuspicious || npc.betrayalRisk > 30)
-              Padding(
-                padding: const EdgeInsets.only(top: 3),
-                child: Row(
-                  children: [
-                    TerminalText(
-                      'ALERTA: Risco de traicao ${npc.betrayalRisk.toStringAsFixed(0)}%',
-                      fontSize: 9,
+                // Badge widget
+                if (!npc.alive)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.red.withValues(alpha: 0.1),
+                      border: Border.all(color: AppTheme.red),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: const TerminalText(
+                      'MORTO',
+                      fontSize: 8,
                       color: AppTheme.red,
                     ),
-                    if (npc.origin.isDarkOrigin)
-                      TerminalText(
-                        ' [${npc.origin.label}]',
-                        fontSize: 9,
-                        color: AppTheme.red,
+                  )
+                else if (npc.betrayalRisk > 60)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.orange.withValues(alpha: 0.1),
+                      border: Border.all(color: AppTheme.orange),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: const TerminalText(
+                      '⚠ RISCO',
+                      fontSize: 8,
+                      color: AppTheme.orange,
+                    ),
+                  )
+                else if (npc.groupId != null)
+                  Builder(
+                    builder: (_) {
+                      final group = gp.groups
+                          .where((g) => g.id == npc.groupId)
+                          .firstOrNull;
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.cyan.withValues(alpha: 0.1),
+                          border: Border.all(color: AppTheme.cyan),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                        child: TerminalText(
+                          group?.name ?? 'Grupo',
+                          fontSize: 8,
+                          color: AppTheme.cyan,
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 5),
+
+            // ROW 2 — quote
+            TerminalText(_npcQuote(npc), fontSize: 9, color: AppTheme.textDim),
+            const SizedBox(height: 6),
+
+            // ROW 3 — bars (sanidade and fadiga)
+            _buildBar(
+              'Sanidade',
+              npc.attributes.mentalStability / 100,
+              sanidadeColor,
+            ),
+            const SizedBox(height: 4),
+            _buildBar('Fadiga', npc.fatigue / 100, fadigaColor),
+            const SizedBox(height: 6),
+
+            // ROW 4 — traits + loyalty/risk
+            Row(
+              children: [
+                ...npc.traits.take(2).map((trait) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 2,
+                    ),
+                    margin: const EdgeInsets.only(right: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: AppTheme.purple.withValues(alpha: 0.4),
                       ),
-                  ],
-                ),
-              ),
-            if (npc.groupId != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 3),
-                child: Builder(
-                  builder: (_) {
-                    final group = gp.groups
-                        .where((g) => g.id == npc.groupId)
-                        .firstOrNull;
-                    return TerminalText(
-                      'Grupo: ${group?.name ?? "Desconhecido"}',
-                      fontSize: 9,
-                      color: AppTheme.blue,
-                    );
-                  },
-                ),
-              ),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: TerminalText(
+                      trait.label,
+                      fontSize: 8,
+                      color: AppTheme.purple,
+                    ),
+                  );
+                }),
+                const Spacer(),
+                if (npc.loyalty > 60)
+                  const TerminalText(
+                    'Lealdade ▲',
+                    fontSize: 8,
+                    color: AppTheme.green,
+                  ),
+                if (npc.betrayalRisk > 30) ...[
+                  if (npc.loyalty > 60) const SizedBox(width: 4),
+                  TerminalText(
+                    'Risco ⚠',
+                    fontSize: 8,
+                    color: npc.betrayalRisk > 60
+                        ? AppTheme.red
+                        : AppTheme.orange,
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _fatigueTag(Npc npc) {
-    Color color;
-    if (npc.fatigue >= 90) {
-      color = const Color(0xFFFF0044);
-    } else if (npc.fatigue >= 70) {
-      color = AppTheme.red;
-    } else if (npc.fatigue >= 50) {
-      color = AppTheme.orange;
-    } else if (npc.fatigue >= 30) {
-      color = AppTheme.yellow;
-    } else {
-      color = AppTheme.green;
-    }
-    return TerminalText(
-      'Fadiga: ${npc.fatigue.toStringAsFixed(0)}%',
-      fontSize: 9,
-      color: color,
+  Widget _buildBar(String label, double fraction, Color color) {
+    return Row(
+      children: [
+        TerminalText(label, fontSize: 8, color: AppTheme.textDim),
+        const SizedBox(width: 4),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: fraction.clamp(0, 1),
+              minHeight: 4,
+              backgroundColor: AppTheme.border,
+              valueColor: AlwaysStoppedAnimation(color),
+            ),
+          ),
+        ),
+      ],
     );
+  }
+
+  String _npcQuote(Npc npc) {
+    if (npc.attributes.mentalStability < 20 && npc.traumas.isNotEmpty) {
+      return '"Não consigo mais."';
+    }
+    if (npc.attributes.mentalStability < 20) {
+      return '"Algo está errado comigo."';
+    }
+    if (npc.betrayalRisk > 60) {
+      return '"Ninguém aqui merece minha lealdade."';
+    }
+    if (npc.betrayalRisk > 30 && npc.loyalty < 30) {
+      return '"Estou observando. Esperando."';
+    }
+    if (npc.fatigue > 80) {
+      return '"Preciso descansar. Não aguento mais subir."';
+    }
+    if (npc.fatigue > 50 && npc.floorsCleared > 10) {
+      return '"Cada andar pesa mais que o anterior."';
+    }
+    if (npc.partnerId != null && npc.loyalty > 70) {
+      return '"Faço isso por quem eu amo."';
+    }
+    if (npc.traumas.isNotEmpty && npc.floorsCleared > 5) {
+      return '"Carrego o que vi lá em cima."';
+    }
+    if (npc.floorsCleared > 20) {
+      return '"Já vi coisas que você não quer saber."';
+    }
+    if (npc.floorsCleared > 5) {
+      return '"A torre muda quem sobe."';
+    }
+    return '"Estou pronto. Para o que vier."';
+  }
+
+  (IconData, Color) _npcStatusIcon(Npc npc) {
+    if (!npc.alive) {
+      return (Icons.close, AppTheme.red);
+    }
+    if (npc.attributes.mentalStability < 20) {
+      return (Icons.warning_amber, AppTheme.red);
+    }
+    if (npc.betrayalRisk > 60) {
+      return (Icons.remove_red_eye, AppTheme.orange);
+    }
+    if (npc.fatigue > 80) {
+      return (Icons.battery_1_bar, AppTheme.yellow);
+    }
+    if (npc.groupId != null) {
+      return (Icons.groups, AppTheme.cyan);
+    }
+    return (Icons.person_outline, AppTheme.textSecondary);
   }
 
   void _showNpcDetail(BuildContext context, Npc npc, GameProvider gp) {
@@ -563,6 +594,10 @@ class _NpcListScreenState extends State<NpcListScreen> {
                       : AppTheme.textDim,
                 ),
               ],
+              if (npc.talentDiscovered && _hasSpecialCapabilities(npc)) ...[
+  const CyanDivider(label: 'CAPACIDADES'),
+  ..._buildCapabilities(npc),
+],
               const CyanDivider(label: 'FUNCAO NA CIDADELA'),
               TerminalText(
                 'Funcao atual: ${npc.profession.label}',
@@ -687,24 +722,102 @@ class _NpcListScreenState extends State<NpcListScreen> {
                   fontSize: 9,
                   color: AppTheme.green,
                 ),
+              // ── Relacionamentos ──
+              if (npc.relationships.isNotEmpty) ...[
+                const CyanDivider(label: 'VINCULOS'),
+                ...npc.relationships
+                    .where((r) => r.affinity.abs() > 0.2)
+                    .take(6)
+                    .map((r) {
+                      final target = gp.allNpcs.firstWhereOrNull(
+                        (n) => n.id == r.targetId,
+                      );
+                      if (target == null) return const SizedBox.shrink();
+                      final color = r.affinity > 0.6
+                          ? AppTheme.green
+                          : r.affinity > 0.2
+                          ? AppTheme.yellow
+                          : AppTheme.red;
+                      final icon = r.type == 'parceiro'
+                          ? '♥'
+                          : r.type == 'familiar'
+                          ? '⌂'
+                          : r.affinity > 0.3
+                          ? '+'
+                          : '−';
+                      final label = r.affinity > 0.6
+                          ? 'proximo'
+                          : r.affinity > 0.2
+                          ? 'amigavel'
+                          : 'hostil';
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            TerminalText('$icon ', fontSize: 9, color: color),
+                            TerminalText(
+                              target.name,
+                              fontSize: 9,
+                              color: target.alive
+                                  ? AppTheme.textPrimary
+                                  : AppTheme.textDim,
+                            ),
+                            if (!target.alive)
+                              TerminalText(
+                                ' ✝',
+                                fontSize: 9,
+                                color: AppTheme.red,
+                              ),
+                            const Spacer(),
+                            TerminalText(label, fontSize: 8, color: color),
+                            TerminalText(
+                              '  ${(r.affinity * 100).toStringAsFixed(0)}%',
+                              fontSize: 8,
+                              color: AppTheme.textDim,
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+              ],
               if (npc.traumas.isNotEmpty) ...[
                 const CyanDivider(label: 'TRAUMAS'),
                 ...npc.traumas.map(
                   (t) => TerminalText('- $t', fontSize: 9, color: AppTheme.red),
                 ),
               ],
-              if (gp.equippedOn(npc.id).isNotEmpty) ...[
-                const CyanDivider(label: 'EQUIPAMENTOS'),
-                ...gp
-                    .equippedOn(npc.id)
-                    .map(
-                      (eq) => TerminalText(
-                        '${eq.slot.label}: ${eq.name} (${eq.rarity.label})',
-                        fontSize: 9,
-                        color: AppTheme.cyan,
-                      ),
-                    ),
-              ],
+              const CyanDivider(label: 'EQUIPAMENTOS'),
+              Row(
+                children: [
+                  _EquipSlot(
+                    label: 'ARMA',
+                    icon: '⚔',
+                    equipment: gp
+                        .equippedOn(npc.id)
+                        .firstWhereOrNull(
+                          (e) => e.slot == EquipmentSlot.weapon,
+                        ),
+                  ),
+                  const SizedBox(width: 8),
+                  _EquipSlot(
+                    label: 'ARMOR',
+                    icon: '🛡',
+                    equipment: gp
+                        .equippedOn(npc.id)
+                        .firstWhereOrNull((e) => e.slot == EquipmentSlot.armor),
+                  ),
+                  const SizedBox(width: 8),
+                  _EquipSlot(
+                    label: 'ACESS.',
+                    icon: '💍',
+                    equipment: gp
+                        .equippedOn(npc.id)
+                        .firstWhereOrNull(
+                          (e) => e.slot == EquipmentSlot.accessory,
+                        ),
+                  ),
+                ],
+              ),
               if (npc.history.isNotEmpty) ...[
                 const CyanDivider(label: 'HISTORICO'),
                 ...npc.history.reversed
@@ -723,4 +836,133 @@ class _NpcListScreenState extends State<NpcListScreen> {
       ),
     );
   }
+}
+
+class _EquipSlot extends StatelessWidget {
+  final String label;
+  final String icon;
+  final Equipment? equipment;
+  const _EquipSlot({
+    required this.label,
+    required this.icon,
+    required this.equipment,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final eq = equipment;
+    final rarityColor = eq == null
+        ? AppTheme.border
+        : switch (eq.rarity) {
+            EquipmentRarity.common => AppTheme.textDim,
+            EquipmentRarity.uncommon => AppTheme.green,
+            EquipmentRarity.rare => AppTheme.blue,
+            EquipmentRarity.epic => AppTheme.purple,
+            EquipmentRarity.legendary => AppTheme.yellow,
+            _ => AppTheme.textDim,
+          };
+
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          border: Border.all(color: rarityColor.withValues(alpha: 0.5)),
+          borderRadius: BorderRadius.circular(3),
+          color: rarityColor.withValues(alpha: 0.04),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(icon, style: const TextStyle(fontSize: 10)),
+                const SizedBox(width: 4),
+                TerminalText(label, fontSize: 7, color: AppTheme.textDim),
+              ],
+            ),
+            const SizedBox(height: 4),
+            if (eq == null)
+              TerminalText('—', fontSize: 8, color: AppTheme.textDim)
+            else ...[
+              TerminalText(
+                eq.name,
+                fontSize: 8,
+                color: rarityColor,
+                fontWeight: FontWeight.bold,
+              ),
+              const SizedBox(height: 2),
+              TerminalText(
+                eq.bonusSummary,
+                fontSize: 7,
+                color: AppTheme.textSecondary,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+bool _hasSpecialCapabilities(Npc npc) {
+  final a = npc.attributes;
+  return a.canHealAfterBattle ||
+      a.canEvadeCombat ||
+      a.canCraftMedicine ||
+      a.canTameCreatures ||
+      a.canRevealSecrets ||
+      a.immuneToSanityLoss ||
+      a.equipmentBonusMultiplier > 1.0 ||
+      a.combatPowerMultiplier > 1.0 ||
+      a.groupMortalityReduction > 0 ||
+      a.groupMoraleBonus > 0 ||
+      a.groupSynergyBonus > 0;
+}
+
+List<Widget> _buildCapabilities(Npc npc) {
+  final a = npc.attributes;
+  final caps = <(String, String, Color)>[];
+
+  if (a.canHealAfterBattle) {
+    caps.add(('✚', 'Cura aliados após batalha', AppTheme.green));
+  }
+  if (a.canEvadeCombat) {
+    caps.add(('◈', 'Pode evadir combate', AppTheme.blue));
+  }
+  if (a.canCraftMedicine) {
+    caps.add(('⚗', 'Cria medicamentos', AppTheme.green));
+  }
+  if (a.canTameCreatures) {
+    caps.add(('⬡', 'Domina criaturas', AppTheme.yellow));
+  }
+  if (a.canRevealSecrets) {
+    caps.add(('◉', 'Revela segredos da Torre', AppTheme.purple));
+  }
+  if (a.immuneToSanityLoss) {
+    caps.add(('◇', 'Imune à perda de sanidade', AppTheme.cyan));
+  }
+  if (a.equipmentBonusMultiplier > 1.0) {
+    caps.add(('⚒', 'Equipamentos ${a.equipmentBonusMultiplier.toStringAsFixed(1)}x eficientes', AppTheme.orange));
+  }
+  if (a.combatPowerMultiplier > 1.0) {
+    caps.add(('⚡', 'Poder de combate ${a.combatPowerMultiplier.toStringAsFixed(1)}x', AppTheme.red));
+  }
+  if (a.groupMortalityReduction > 0) {
+    caps.add(('☯', '−${(a.groupMortalityReduction * 100).toStringAsFixed(0)}% mortalidade do grupo', AppTheme.green));
+  }
+  if (a.groupMoraleBonus > 0) {
+    caps.add(('♦', '+${(a.groupMoraleBonus * 100).toStringAsFixed(0)}% moral do grupo', AppTheme.yellow));
+  }
+  if (a.groupSynergyBonus > 0) {
+    caps.add(('∞', '+${(a.groupSynergyBonus * 100).toStringAsFixed(0)}% sinergia', AppTheme.cyan));
+  }
+
+  return caps.map((c) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Row(children: [
+      TerminalText('${c.$1} ', fontSize: 10, color: c.$3),
+      Expanded(
+        child: TerminalText(c.$2, fontSize: 9, color: AppTheme.textSecondary),
+      ),
+    ]),
+  )).toList();
 }

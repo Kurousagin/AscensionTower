@@ -11,13 +11,17 @@
 //     backgroundColor: Colors.transparent,
 //     builder: (_) => FloorDetailSheet(floor: floor, engine: engine),
 //   );
-
+import 'package:provider/provider.dart';
+import 'package:tower_ascension/providers/game_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:tower_ascension/models/citadel.dart';
 import 'package:tower_ascension/models/tower.dart';
 import 'package:tower_ascension/models/floor_faction.dart';
 import 'package:tower_ascension/models/floor_inhabitant.dart';
 import 'package:tower_ascension/services/game_engine.dart';
+import 'package:tower_ascension/widgets/theme.dart';
+import 'package:tower_ascension/widgets/terminal_widgets.dart'
+    show TerminalButton, TerminalText;
 
 class FloorDetailSheet extends StatelessWidget {
   final TowerFloor floor;
@@ -60,15 +64,22 @@ class FloorDetailSheet extends StatelessWidget {
                     if (floor.controllingFaction != FloorFaction.none)
                       _FactionBadge(
                         faction: floor.controllingFaction,
-                        relation: engine.state.factionRelations[
-                            floor.controllingFaction.name],
+                        relation: engine
+                            .state
+                            .factionRelations[floor.controllingFaction.name],
                       ),
                     const SizedBox(height: 20),
+                    // ── Banner de guerra ──
+                    if (engine.warService.isFloorContested(floor.number)) ...[
+                      const SizedBox(height: 8),
+                      _WarPenaltyBanner(
+                        floorNumber: floor.number,
+                        engine: engine,
+                      ),
+                    ],
                     _SectionLabel(
                       label: 'HABITANTES',
-                      count: floor.inhabitants
-                          .where((i) => i.isActive)
-                          .length,
+                      count: floor.inhabitants.where((i) => i.isActive).length,
                     ),
                     const SizedBox(height: 8),
                     if (floor.inhabitants.isEmpty ||
@@ -77,10 +88,14 @@ class FloorDetailSheet extends StatelessWidget {
                     else
                       ...floor.inhabitants
                           .where((i) => i.isActive)
-                          .map((i) => _InhabitantCard(
-                                inhabitant: i,
-                                engine: engine,
-                              )),
+                          .map(
+                            (i) =>
+                                _InhabitantCard(inhabitant: i, engine: engine),
+                          ),
+                    const SizedBox(height: 20),
+                    _QuestSection(floorNumber: floor.number, engine: engine),
+                    const SizedBox(height: 16),
+                    _TradeSection(floorNumber: floor.number, engine: engine),
                     // Tags temporárias (anomalias ativas)
                     if (floor.temporaryTags.isNotEmpty) ...[
                       const SizedBox(height: 16),
@@ -136,10 +151,7 @@ class _FloorHeader extends StatelessWidget {
             border: Border.all(color: Colors.white12),
           ),
           child: Center(
-            child: Text(
-              floor.type.icon,
-              style: const TextStyle(fontSize: 22),
-            ),
+            child: Text(floor.type.icon, style: const TextStyle(fontSize: 22)),
           ),
         ),
         const SizedBox(width: 14),
@@ -178,8 +190,11 @@ class _FloorHeader extends StatelessWidget {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.warning_amber_rounded,
-                        size: 13, color: Color(0xFFFFB74D)),
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 13,
+                      color: Color(0xFFFFB74D),
+                    ),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
@@ -413,8 +428,9 @@ class _InhabitantCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _categoryColor(inhabitant.category);
     final isRecruitable = inhabitant.isRecruitable;
-    final isPendingRecruit = engine.pendingRecruits
-        .any((r) => r.id == inhabitant.id);
+    final isPendingRecruit = engine.pendingRecruits.any(
+      (r) => r.id == inhabitant.id,
+    );
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -450,8 +466,7 @@ class _InhabitantCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 6),
-                        _DispositionChip(
-                            disposition: inhabitant.disposition),
+                        _DispositionChip(disposition: inhabitant.disposition),
                       ],
                     ),
                     Text(
@@ -465,8 +480,8 @@ class _InhabitantCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (inhabitant.factionAffiliation != null)
-                _FactionMiniTag(affiliation: inhabitant.factionAffiliation!),
+              if (inhabitant.factionAffiliation != FloorFaction.none)
+                _FactionMiniTag(affiliation: inhabitant.factionAffiliation),
             ],
           ),
           const SizedBox(height: 8),
@@ -508,8 +523,10 @@ class _InhabitantCard extends StatelessWidget {
           ] else if (isRecruitable) ...[
             const SizedBox(height: 10),
             _RecruitHint(
-                hasRefuge: engine.citadel.hasBuilding(
-                    BuildingType.wayfareresRefuge)),
+              hasRefuge: engine.citadel.hasBuilding(
+                BuildingType.wayfareresRefuge,
+              ),
+            ),
           ],
         ],
       ),
@@ -575,15 +592,12 @@ class _DispositionChip extends StatelessWidget {
 }
 
 class _FactionMiniTag extends StatelessWidget {
-  final String affiliation;
+  final FloorFaction affiliation;
   const _FactionMiniTag({required this.affiliation});
 
   @override
   Widget build(BuildContext context) {
-    final faction = FloorFaction.values.firstWhere(
-      (f) => f.name == affiliation,
-      orElse: () => FloorFaction.none,
-    );
+    final faction = affiliation;
     if (faction == FloorFaction.none) return const SizedBox.shrink();
     final color = _factionColor(faction);
     return Container(
@@ -676,10 +690,7 @@ class _TraitPill extends StatelessWidget {
       ),
       child: Text(
         _traitLabel(trait),
-        style: const TextStyle(
-          color: Colors.white54,
-          fontSize: 9.5,
-        ),
+        style: const TextStyle(color: Colors.white54, fontSize: 9.5),
       ),
     );
   }
@@ -706,8 +717,7 @@ class _RecruitPendingBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF66DD88).withOpacity(0.1),
         borderRadius: BorderRadius.circular(7),
-        border: Border.all(
-            color: const Color(0xFF66DD88).withOpacity(0.4)),
+        border: Border.all(color: const Color(0xFF66DD88).withOpacity(0.4)),
       ),
       child: const Row(
         mainAxisSize: MainAxisSize.min,
@@ -744,8 +754,7 @@ class _RecruitHint extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.person_add_outlined,
-              size: 13, color: Colors.amber),
+          const Icon(Icons.person_add_outlined, size: 13, color: Colors.amber),
           const SizedBox(width: 6),
           Text(
             hasRefuge
@@ -756,6 +765,335 @@ class _RecruitHint extends StatelessWidget {
               fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Quest Section ─────────────────────────────────────────────────────────
+
+class _QuestSection extends StatefulWidget {
+  final int floorNumber;
+  final GameEngine engine;
+  const _QuestSection({required this.floorNumber, required this.engine});
+
+  @override
+  State<_QuestSection> createState() => _QuestSectionState();
+}
+
+class _TradeSection extends StatefulWidget {
+  final int floorNumber;
+  final GameEngine engine;
+  const _TradeSection({required this.floorNumber, required this.engine});
+
+  @override
+  State<_TradeSection> createState() => _TradeSectionState();
+}
+
+class _TradeSectionState extends State<_TradeSection> {
+  @override
+  Widget build(BuildContext context) {
+    final offers = widget.engine.tradeService.offersForFloor(
+      widget.floorNumber,
+    );
+    if (offers.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionLabel(label: 'COMÉRCIO', count: offers.length),
+        const SizedBox(height: 8),
+        ...offers.map((offer) => _buildTradeCard(context, offer)),
+      ],
+    );
+  }
+
+  Widget _buildTradeCard(BuildContext context, TradeOffer offer) {
+    final standing =
+        widget
+            .engine
+            .state
+            .factionRelations[offer.merchantFaction.name]
+            ?.standing ??
+        0.0;
+    final canAfford = offer.cost.entries.every((e) {
+      final res = widget.engine.citadel.resources;
+      return switch (e.key) {
+        'food' => res.food >= e.value,
+        'iron' => res.iron >= e.value,
+        'wood' => res.wood >= e.value,
+        'stone' => res.stone >= e.value,
+        'knowledge' => res.knowledge >= e.value,
+        _ => false,
+      };
+    });
+    final hasStanding = standing >= offer.standingRequirement;
+    final canTrade = canAfford && hasStanding;
+
+    final costStr = offer.cost.entries
+        .map((e) => '${e.value} ${e.key}')
+        .join(', ');
+    final rewardStr = offer.reward.entries
+        .map((e) => '${e.value} ${e.key}')
+        .join(', ');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: canTrade
+              ? AppTheme.orange.withValues(alpha: 0.6)
+              : AppTheme.border,
+        ),
+        borderRadius: BorderRadius.circular(3),
+        color: canTrade ? AppTheme.orange.withValues(alpha: 0.03) : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: AppTheme.orange.withValues(alpha: 0.6),
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+                child: TerminalText(
+                  offer.merchantFaction.shortLabel,
+                  fontSize: 7,
+                  color: AppTheme.orange,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              if (!hasStanding)
+                TerminalText(
+                  'Standing insuf.',
+                  fontSize: 7,
+                  color: AppTheme.red,
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const TerminalText(
+                'Paga: ',
+                fontSize: 8,
+                color: AppTheme.textDim,
+              ),
+              TerminalText(costStr, fontSize: 8, color: AppTheme.red),
+            ],
+          ),
+          Row(
+            children: [
+              const TerminalText(
+                'Recebe: ',
+                fontSize: 8,
+                color: AppTheme.textDim,
+              ),
+              TerminalText(rewardStr, fontSize: 8, color: AppTheme.green),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TerminalButton(
+              label: 'TROCAR',
+              color: canTrade ? AppTheme.orange : AppTheme.textDim,
+              onPressed: canTrade
+                  ? () {
+                      final result = context.read<GameProvider>().executeTrade(
+                        offer.id,
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(result.message),
+                          backgroundColor: result.success
+                              ? Colors.green[900]
+                              : Colors.red[900],
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                      setState(() {});
+                    }
+                  : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuestSectionState extends State<_QuestSection> {
+  @override
+  Widget build(BuildContext context) {
+    final quests = widget.engine.questService
+        .questsForFloor(widget.floorNumber)
+        .where((q) => q.isAvailable || q.isActive)
+        .toList();
+
+    if (quests.isEmpty) return SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionLabel(label: 'MISSÕES', count: quests.length),
+        const SizedBox(height: 8),
+        ...quests.map((q) => _buildQuestCard(q)),
+      ],
+    );
+  }
+
+  Widget _buildQuestCard(FloorQuest quest) {
+    final borderColor = quest.title.startsWith('GUERRA:')
+        ? AppTheme.red
+        : quest.title.startsWith('ZONA DE GUERRA:')
+        ? AppTheme.orange
+        : AppTheme.border;
+    final badgeLabel = quest.title.startsWith('GUERRA:')
+        ? '⚔ GUERRA'
+        : quest.title.startsWith('ZONA DE GUERRA:')
+        ? '🔥 ZONA'
+        : quest.type.name.toUpperCase();
+    final badgeColor = quest.title.startsWith('GUERRA:')
+        ? AppTheme.red
+        : quest.title.startsWith('ZONA DE GUERRA:')
+        ? AppTheme.orange
+        : AppTheme.cyan;
+
+    final daysLeft = quest.dayLimit - widget.engine.state.currentDay;
+    final deadlineColor = daysLeft <= 0
+        ? AppTheme.red
+        : daysLeft <= 3
+        ? AppTheme.red
+        : daysLeft <= 7
+        ? AppTheme.yellow
+        : AppTheme.textDim;
+
+    final rewards = quest.resourceReward.entries
+        .map((e) => '${e.value} ${e.key}')
+        .join(', ');
+    final rewardStr = [
+      if (rewards.isNotEmpty) rewards,
+      if (quest.standingReward > 0)
+        '+${quest.standingReward.toStringAsFixed(0)} standing',
+    ].join('  ');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141420),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor.withOpacity(0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: badgeColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: badgeColor.withOpacity(0.5)),
+                ),
+                child: Text(
+                  badgeLabel,
+                  style: TextStyle(
+                    color: badgeColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  quest.title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                daysLeft <= 3 ? '⚠ ' : '',
+                style: TextStyle(color: deadlineColor, fontSize: 11),
+              ),
+              Text(
+                daysLeft <= 0 ? 'EXPIRADO' : '$daysLeft d',
+                style: TextStyle(
+                  color: deadlineColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            quest.description,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.6),
+              fontSize: 11.5,
+              height: 1.4,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Recompensa: $rewardStr',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.55),
+                  fontSize: 11,
+                ),
+              ),
+              if (quest.isAvailable)
+                TerminalButton(
+                  label: 'ACEITAR',
+                  color: AppTheme.cyan,
+                  onPressed: () {
+                    try {
+                      widget.engine.questService.acceptQuest(
+                        quest.id,
+                        widget.engine.state.currentDay,
+                      );
+                      setState(() {});
+                    } catch (e) {
+                      // Handle error (e.g., show snackbar)
+                      debugPrint('Failed to accept quest: $e');
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Falha ao aceitar missão: $e'),
+                            backgroundColor: AppTheme.red,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                )
+              else if (quest.isActive)
+                TerminalButton(
+                  label: 'EM CURSO',
+                  color: AppTheme.green,
+                  onPressed: null,
+                ),
+            ],
           ),
         ],
       ),
@@ -780,24 +1118,29 @@ class _AnomalyTagsRow extends StatelessWidget {
           spacing: 6,
           runSpacing: 6,
           children: tags
-              .map((t) => Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFAA88FF).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                          color: const Color(0xFFAA88FF).withOpacity(0.3)),
+              .map(
+                (t) => Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFAA88FF).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: const Color(0xFFAA88FF).withOpacity(0.3),
                     ),
-                    child: Text(
-                      '✦ ${_tagLabel(t)}',
-                      style: const TextStyle(
-                        color: Color(0xFFAA88FF),
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  ),
+                  child: Text(
+                    '✦ ${_tagLabel(t)}',
+                    style: const TextStyle(
+                      color: Color(0xFFAA88FF),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
                     ),
-                  ))
+                  ),
+                ),
+              )
               .toList(),
         ),
       ],
@@ -829,14 +1172,11 @@ class _FloorStats extends StatelessWidget {
         Row(
           children: [
             _StatItem(
-                label: 'Re-explorado',
-                value: '${floor.timesReexplored}x'),
-            _StatItem(
-                label: 'Conquistas',
-                value: '${floor.timesCleared}x'),
-            _StatItem(
-                label: 'Mortos',
-                value: '${floor.deadOnFloor.length}'),
+              label: 'Re-explorado',
+              value: '${floor.timesReexplored}x',
+            ),
+            _StatItem(label: 'Conquistas', value: '${floor.timesCleared}x'),
+            _StatItem(label: 'Mortos', value: '${floor.deadOnFloor.length}'),
           ],
         ),
       ],
@@ -915,6 +1255,64 @@ String _categoryLabel(InhabitantCategory category) {
     InhabitantCategory.survivor => 'SURVIVOR',
     InhabitantCategory.anomaly => 'ANOMALIA',
   };
+}
+
+class _WarPenaltyBanner extends StatelessWidget {
+  final int floorNumber;
+  final GameEngine engine;
+  const _WarPenaltyBanner({required this.floorNumber, required this.engine});
+
+  @override
+  Widget build(BuildContext context) {
+    final war = engine.warService.activeWars.firstWhere(
+      (w) => w.contestedFloors.contains(floorNumber),
+    );
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF2200).withValues(alpha: 0.08),
+        border: Border.all(
+          color: const Color(0xFFFF2200).withValues(alpha: 0.5),
+        ),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('⚔', style: TextStyle(fontSize: 12)),
+              const SizedBox(width: 6),
+              TerminalText(
+                'ZONA DE GUERRA',
+                fontSize: 9,
+                color: const Color(0xFFFF4444),
+                fontWeight: FontWeight.bold,
+              ),
+              const Spacer(),
+              TerminalText(
+                '${war.aggressor.shortLabel} vs ${war.defender.shortLabel}',
+                fontSize: 8,
+                color: const Color(0xFFFF8888),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          TerminalText(
+            '−40% recursos coletados  •  +30% mortalidade',
+            fontSize: 8,
+            color: const Color(0xFFFF6666),
+          ),
+          const SizedBox(height: 4),
+          TerminalText(
+            'Duração: dia ${war.startDay} → dia ${war.startDay + war.duration}',
+            fontSize: 8,
+            color: AppTheme.textDim,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 Color _tierColor(FactionTier tier) {

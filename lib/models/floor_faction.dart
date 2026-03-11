@@ -1,5 +1,6 @@
 // floor_faction.dart
 // Sistema de Facções — Geopolítica Vertical da Torre
+import 'package:flutter/material.dart';
 //
 // DESIGN:
 //   - FloorFaction: enum das facções disponíveis
@@ -46,6 +47,24 @@ class DiplomacyOffer {
 }
 
 extension FloorFactionExt on FloorFaction {
+  Color get color => {
+    FloorFaction.none: const Color(0xFF666666),
+    FloorFaction.ironPact: const Color(0xFFCC4444),
+    FloorFaction.silentOrder: const Color(0xFF4488CC),
+    FloorFaction.bloodMarket: const Color(0xFFCC8844),
+    FloorFaction.voidChildren: const Color(0xFF8844CC),
+    FloorFaction.towerServants: const Color(0xFF44CCAA),
+  }[this]!;
+
+  IconData get icon => {
+    FloorFaction.none: Icons.help_outline,
+    FloorFaction.ironPact: Icons.shield,
+    FloorFaction.silentOrder: Icons.auto_stories,
+    FloorFaction.bloodMarket: Icons.storefront,
+    FloorFaction.voidChildren: Icons.blur_on,
+    FloorFaction.towerServants: Icons.account_balance,
+  }[this]!;
+
   String get label => const {
     FloorFaction.none: 'Neutro',
     FloorFaction.ironPact: 'Pacto de Ferro',
@@ -116,7 +135,9 @@ class FactionRelation {
   bool hasTreaty;
   int lastInteractionDay;
   int incursionsCaused; // quantas incursões essa facção já fez
-  int lastDiplomacyDay = 0;
+  int lastDiplomacyDay;
+  int treatyStartDay;
+  Set<String> rewardsGranted;
 
   FactionRelation({
     required this.faction,
@@ -125,7 +146,11 @@ class FactionRelation {
     this.hasTreaty = false,
     this.lastInteractionDay = 0,
     this.incursionsCaused = 0,
-  }) : standing = standing ?? faction.initialStanding;
+    this.treatyStartDay = 0,
+    this.lastDiplomacyDay = 0, // ← linha nova
+    Set<String>? rewardsGranted,
+  }) : standing = standing ?? faction.initialStanding,
+       rewardsGranted = rewardsGranted ?? {};
 
   // Tier de relacionamento legível
   FactionTier get tier {
@@ -146,6 +171,9 @@ class FactionRelation {
       hasTreaty: original.hasTreaty,
       lastInteractionDay: original.lastInteractionDay,
       incursionsCaused: original.incursionsCaused,
+      treatyStartDay: original.treatyStartDay,
+      lastDiplomacyDay: original.lastDiplomacyDay, // ← linha nova
+      rewardsGranted: Set.from(original.rewardsGranted),
     );
   }
 
@@ -156,6 +184,9 @@ class FactionRelation {
     'hasTreaty': hasTreaty,
     'lastInteractionDay': lastInteractionDay,
     'incursionsCaused': incursionsCaused,
+    'treatyStartDay': treatyStartDay,
+    'lastDiplomacyDay': lastDiplomacyDay, // ← linha nova
+    'rewardsGranted': rewardsGranted.toList(),
   };
 
   factory FactionRelation.fromJson(Map<String, dynamic> json) {
@@ -172,6 +203,11 @@ class FactionRelation {
       hasTreaty: json['hasTreaty'] as bool? ?? false,
       lastInteractionDay: json['lastInteractionDay'] as int? ?? 0,
       incursionsCaused: json['incursionsCaused'] as int? ?? 0,
+      treatyStartDay: json['treatyStartDay'] as int? ?? 0,
+      lastDiplomacyDay: json['lastDiplomacyDay'] as int? ?? 0, // ← linha nova
+      rewardsGranted: Set<String>.from(
+        (json['rewardsGranted'] as List<dynamic>? ?? []),
+      ),
     );
   }
 }
@@ -191,6 +227,16 @@ enum FactionTier {
 }
 
 extension FactionTierExt on FactionTier {
+  Color get color => {
+    FactionTier.ally: const Color(0xFF44FF88),
+    FactionTier.friendly: const Color(0xFF88FF44),
+    FactionTier.neutral: const Color(0xFF888888),
+    FactionTier.cautious: const Color(0xFFFFDD44),
+    FactionTier.hostile: const Color(0xFFFF8844),
+    FactionTier.atWar: const Color(0xFFFF4444),
+    FactionTier.bloodFeud: const Color(0xFFCC0000),
+  }[this]!;
+
   String get label => const {
     FactionTier.ally: 'Aliado',
     FactionTier.friendly: 'Amigável',
@@ -413,17 +459,18 @@ class FactionProcessor {
       narratives.add(
         '🤝 ${faction.label} permite livre acesso. (+10% recursos)',
       );
-    } else if (standing <= -30) {
-      resourceMod = 0.70;
-      standingDelta = -1; // re-explorar território inimigo piora relação
-      narratives.add(
-        '⚠️ ${faction.label} interfere na coleta. (−30% recursos, −1 standing)',
-      );
     } else if (standing <= -60) {
+      // ← mais severo primeiro
       resourceMod = 0.40;
       standingDelta = -2;
       narratives.add(
         '🩸 ${faction.label} sabota ativamente. (−60% recursos, −2 standing)',
+      );
+    } else if (standing <= -30) {
+      resourceMod = 0.70;
+      standingDelta = -1;
+      narratives.add(
+        '⚠️ ${faction.label} interfere na coleta. (−30% recursos, −1 standing)',
       );
     }
 
@@ -447,6 +494,7 @@ class FactionProcessor {
     required int currentDay,
     required int incursionCooldownDays,
   }) {
+    if (relation.hasTreaty) return false; // ← linha nova
     if (relation.standing > -60) return false;
     if (currentDay % incursionCooldownDays != 0) return false;
     return true;
@@ -578,7 +626,7 @@ class FactionProcessor {
     if (faction == FloorFaction.voidChildren) {
       offers.add(
         DiplomacyOffer(
-          type: DiplomacyOfferType.proposeNonAggression,
+          type: DiplomacyOfferType.payTribute, // ← tipo trocado
           resourceCost: const {'food': 5},
           standingGain: 20,
           successChance: food >= 5 ? 0.50 : 0.0,
@@ -651,5 +699,79 @@ class FactionProcessor {
     }
 
     return base;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// FactionWar — guerra entre duas facções
+// ---------------------------------------------------------------------------
+
+class FactionWar {
+  final String id;
+  final FloorFaction aggressor;
+  final FloorFaction defender;
+  final int startDay;
+  int duration;
+  List<int> contestedFloors;
+  double aggressorStrength;
+  double defenderStrength;
+  FloorFaction? playerSidedWith;
+  bool resolved;
+  FloorFaction? winner;
+
+  FactionWar({
+    required this.id,
+    required this.aggressor,
+    required this.defender,
+    required this.startDay,
+    this.duration = 20,
+    List<int>? contestedFloors,
+    this.aggressorStrength = 50.0,
+    this.defenderStrength = 50.0,
+    this.playerSidedWith,
+    this.resolved = false,
+    this.winner,
+  }) : contestedFloors = contestedFloors ?? [];
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'aggressor': aggressor.name,
+    'defender': defender.name,
+    'startDay': startDay,
+    'duration': duration,
+    'contestedFloors': contestedFloors,
+    'aggressorStrength': aggressorStrength,
+    'defenderStrength': defenderStrength,
+    'playerSidedWith': playerSidedWith?.name,
+    'resolved': resolved,
+    'winner': winner?.name,
+  };
+
+  factory FactionWar.fromJson(Map<String, dynamic> json) {
+    FloorFaction? parseFaction(String? name) {
+      if (name == null) return null;
+      return FloorFaction.values.firstWhere(
+        (e) => e.name == name,
+        orElse: () => FloorFaction.none,
+      );
+    }
+
+    return FactionWar(
+      id: json['id'] as String? ?? 'war_unknown',
+      aggressor:
+          parseFaction(json['aggressor'] as String?) ?? FloorFaction.none,
+      defender: parseFaction(json['defender'] as String?) ?? FloorFaction.none,
+      startDay: json['startDay'] as int? ?? 0,
+      duration: json['duration'] as int? ?? 20,
+      contestedFloors: (json['contestedFloors'] as List<dynamic>? ?? [])
+          .map((e) => e as int)
+          .toList(),
+      aggressorStrength:
+          (json['aggressorStrength'] as num?)?.toDouble() ?? 50.0,
+      defenderStrength: (json['defenderStrength'] as num?)?.toDouble() ?? 50.0,
+      playerSidedWith: parseFaction(json['playerSidedWith'] as String?),
+      resolved: json['resolved'] as bool? ?? false,
+      winner: parseFaction(json['winner'] as String?),
+    );
   }
 }

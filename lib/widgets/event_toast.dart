@@ -19,6 +19,12 @@ const Set<GameEventType> kToastOnlyEvents = {
   GameEventType.system,
   GameEventType.discovery,
   GameEventType.recruitment,
+  GameEventType.questEvent,
+  GameEventType.tradeEvent,
+  GameEventType.groupFormed,
+  GameEventType.groupDissolved,
+  GameEventType.combat,
+  GameEventType.exploration,
 };
 
 const Set<GameEventType> kCelebrationDialogTypes = {
@@ -32,6 +38,7 @@ const Set<GameEventType> kCrisisDialogTypes = {
   GameEventType.crisis,
   GameEventType.emergencySummon,
   GameEventType.mentalBreak,
+  GameEventType.warEvent,
   // GameEventType.betrayal, // descomente se quiser dialog de crise também
 };
 
@@ -40,6 +47,10 @@ bool isCelebrationEvent(GameEvent e) =>
 
 bool isCrisisEvent(GameEvent e) =>
     e.isMajor && kCrisisDialogTypes.contains(e.type);
+
+const Set<GameEventType> kLoreDialogTypes = {GameEventType.discovery};
+
+bool isLoreEvent(GameEvent e) => e.isMajor && kLoreDialogTypes.contains(e.type);
 
 bool isToastEvent(GameEvent e) =>
     !e.isMajor && kToastOnlyEvents.contains(e.type);
@@ -62,10 +73,12 @@ class ToastController extends ChangeNotifier {
 
   final List<GameEvent> _celebrationQueue = [];
   final List<GameEvent> _crisisQueue = [];
+  final List<GameEvent> _loreQueue = [];
 
   List<GameEvent> get pendingCelebrations =>
       List.unmodifiable(_celebrationQueue);
   List<GameEvent> get pendingCrises => List.unmodifiable(_crisisQueue);
+  List<GameEvent> get pendingLore => List.unmodifiable(_loreQueue);
 
   void consumeCelebration() {
     if (_celebrationQueue.isNotEmpty) _celebrationQueue.removeAt(0);
@@ -75,8 +88,17 @@ class ToastController extends ChangeNotifier {
     if (_crisisQueue.isNotEmpty) _crisisQueue.removeAt(0);
   }
 
+  void consumeLore() {
+    if (_loreQueue.isNotEmpty) _loreQueue.removeAt(0);
+  }
+
   // ── Show single ─────────────────────────────────────────────
   void show(GameEvent event) {
+    if (isLoreEvent(event)) {
+      _loreQueue.add(event);
+      notifyListeners();
+      return;
+    }
     if (isCelebrationEvent(event)) {
       _celebrationQueue.add(event);
       notifyListeners();
@@ -96,7 +118,9 @@ class ToastController extends ChangeNotifier {
   // ── Show batch ──────────────────────────────────────────────
   void showBatch(List<GameEvent> events) {
     for (final e in events) {
-      if (isCelebrationEvent(e)) {
+      if (isLoreEvent(e)) {
+        _loreQueue.add(e);
+      } else if (isCelebrationEvent(e)) {
         _celebrationQueue.add(e);
       } else if (isCrisisEvent(e)) {
         _crisisQueue.add(e);
@@ -104,14 +128,19 @@ class ToastController extends ChangeNotifier {
     }
 
     final toasts = events
-        .where((e) =>
-            isToastEvent(e) &&
-            !isCelebrationEvent(e) &&
-            !isCrisisEvent(e))
+        .where(
+          (e) =>
+              isToastEvent(e) &&
+              !isLoreEvent(e) &&
+              !isCelebrationEvent(e) &&
+              !isCrisisEvent(e),
+        )
         .toList();
 
     if (toasts.isEmpty &&
-        (_celebrationQueue.isNotEmpty || _crisisQueue.isNotEmpty)) {
+        (_loreQueue.isNotEmpty ||
+            _celebrationQueue.isNotEmpty ||
+            _crisisQueue.isNotEmpty)) {
       notifyListeners();
       return;
     }
@@ -151,9 +180,7 @@ class ToastEntry {
   bool get isBatch => batch != null;
 
   ToastEntry(GameEvent e) : event = e, batch = null;
-  ToastEntry.batch(List<GameEvent> events)
-      : batch = events,
-        event = null;
+  ToastEntry.batch(List<GameEvent> events) : batch = events, event = null;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -190,42 +217,53 @@ class _EventToastOverlayState extends State<EventToastOverlay>
     _ctrl.addListener(_onToastChange);
   }
 
-void _onToastChange() {
-  // PRIORIDADE MÁXIMA: Crise
-  if (_ctrl.pendingCrises.isNotEmpty && mounted) {
-    final event = _ctrl.pendingCrises.first;
+  bool _crisisDialogOpen = false;
 
-    // Consome TODAS as crises de uma vez (evita spam)
-    while (_ctrl.pendingCrises.isNotEmpty) {
+  void _onToastChange() {
+    // PRIORIDADE MÁXIMA: Crise
+    if (_ctrl.pendingCrises.isNotEmpty && mounted && !_crisisDialogOpen) {
+      final event = _ctrl.pendingCrises.first;
       _ctrl.consumeCrisis();
+
+      final gp = Provider.of<GameProvider>(context, listen: false);
+      gp.pauseForCrisis();
+
+      _crisisDialogOpen = true; // ← guard
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          CrisisDialog.show(context, event).then((_) {
+            _crisisDialogOpen = false;
+            _onToastChange();
+          });
+        }
+      });
+      return;
+    }
+    // Depois lore
+    if (_ctrl.pendingLore.isNotEmpty && mounted) {
+      final event = _ctrl.pendingLore.first;
+      _ctrl.consumeLore();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showLoreDialog(context, event);
+      });
+    }
+    // Depois celebrações normais
+    if (_ctrl.pendingCelebrations.isNotEmpty && mounted) {
+      final event = _ctrl.pendingCelebrations.first;
+      _ctrl.consumeCelebration();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) CelebrationDialog.show(context, event);
+      });
     }
 
-    // Pausa automática da simulação
-    final gp = Provider.of<GameProvider>(context, listen: false);
-    gp.pauseForCrisis();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) CrisisDialog.show(context, event);
-    });
-    return; // não processa celebração nem toast enquanto tem crise
+    if (_ctrl.current != null) {
+      _anim.forward(from: 0);
+    } else {
+      _anim.reverse();
+    }
+    setState(() {});
   }
 
-  // Depois celebrações normais
-  if (_ctrl.pendingCelebrations.isNotEmpty && mounted) {
-    final event = _ctrl.pendingCelebrations.first;
-    _ctrl.consumeCelebration();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) CelebrationDialog.show(context, event);
-    });
-  }
-
-  if (_ctrl.current != null) {
-    _anim.forward(from: 0);
-  } else {
-    _anim.reverse();
-  }
-  setState(() {});
-}
   @override
   void dispose() {
     _ctrl.removeListener(_onToastChange);
@@ -260,6 +298,97 @@ void _onToastChange() {
       return _BatchToast(events: entry.batch!);
     }
     return _SingleToast(event: entry.event!);
+  }
+
+  void _showLoreDialog(BuildContext context, GameEvent event) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      barrierColor: Colors.black87,
+      transitionDuration: const Duration(milliseconds: 400),
+      pageBuilder: (_, __, ___) => Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 24),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F0F14),
+            border: Border.all(color: const Color(0xFF44DDFF), width: 1),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.auto_stories,
+                    size: 14,
+                    color: Color(0xFF44DDFF),
+                  ),
+                  const SizedBox(width: 8),
+                  TerminalText(
+                    'FRAGMENTO DE LORE',
+                    fontSize: 10,
+                    color: const Color(0xFF44DDFF),
+                    fontWeight: FontWeight.bold,
+                  ),
+                  const Spacer(),
+                  TerminalText(
+                    'DIA ${event.day}',
+                    fontSize: 8,
+                    color: AppTheme.textDim,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Container(
+                height: 1,
+                color: const Color(0xFF44DDFF).withValues(alpha: 0.3),
+              ),
+              const SizedBox(height: 12),
+              TerminalText(
+                event.title,
+                fontSize: 11,
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.bold,
+              ),
+              const SizedBox(height: 8),
+              TerminalText(
+                event.description,
+                fontSize: 9,
+                color: AppTheme.textSecondary,
+              ),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: const Color(0xFF44DDFF).withValues(alpha: 0.5),
+                      ),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: const TerminalText(
+                      'REGISTRAR',
+                      fontSize: 9,
+                      color: Color(0xFF44DDFF),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -440,8 +569,14 @@ Color _colorFor(GameEventType type) {
       return const Color(0xFFFFDD44);
     case GameEventType.recruitment:
       return const Color.fromARGB(255, 251, 255, 0);
+    case GameEventType.warEvent:
+      return const Color(0xFFFF2200);
     case GameEventType.politicalEvent:
       return const Color(0xFFDDAA66);
+    case GameEventType.questEvent:
+      return const Color(0xFF44AAFF);
+    case GameEventType.tradeEvent:
+      return const Color(0xFFFFAA44);
     default:
       return const Color(0xFF888888);
   }

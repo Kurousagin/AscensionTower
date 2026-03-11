@@ -16,6 +16,9 @@ import '../services/equipment_service.dart'; // ← ADICIONADO [FASE 1]
 import '../models/citadel_record.dart';
 import '../widgets/event_toast.dart';
 import '../services/prison_service.dart';
+import '../services/war_service.dart';
+import '../services/trade_service.dart';
+import '../services/quest_service.dart';
 
 class GameProvider extends ChangeNotifier {
   final GameEngine _engine = GameEngine();
@@ -115,6 +118,16 @@ class GameProvider extends ChangeNotifier {
   /// Relações com cada facção da torre. Chave = FloorFaction.name.
   Map<String, FactionRelation> get factionRelations =>
       _engine.state.factionRelations;
+
+  // ── Novos serviços ────────────────────────────────────
+  WarService get warService => _engine.warService;
+  TradeService get tradeService => _engine.tradeService;
+  QuestService get questService => _engine.questService;
+
+  List<FactionWar> get activeWars => _engine.warService.activeWars;
+  List<TradeOffer> get allTradeOffers => _engine.tradeService.allOffers;
+  List<FloorQuest> get activeQuests => _engine.questService.activeQuests;
+  List<FloorQuest> get availableQuests => _engine.questService.availableQuests;
 
   /// Custo estimado de comida para expedicao ao proximo andar
   double expeditionCostEstimate(int npcCount) {
@@ -493,57 +506,18 @@ class GameProvider extends ChangeNotifier {
   }
 
   // ==================== GETTER DE BONUS DIARIO ====================
-  double get dailyFoodBonus {
-    double total = 0.0;
-    for (final farm in citadel.buildings.where(
-      (b) => b.type == BuildingType.farm,
-    )) {
-      total += farm.bonus;
-    }
-    // Adicione outros edifícios que dão comida, se houver
-    return total;
-  }
+  // Produção diária real — usa a mesma lógica do engine (fazendeiros,
+  // sinergia, população, tier). Garante que UI e simulação mostrem
+  // sempre o mesmo valor.
+  Resources get _dailyProduction => _engine.previewDailyProduction();
 
-  double get dailyWoodBonus {
-    double total = 0.0;
-    for (final wood in citadel.buildings.where(
-      (b) => b.type == BuildingType.woodworking,
-    )) {
-      total += wood.bonus;
-    }
-    return total;
-  }
-
-  double get dailyIronBonus {
-    double total = 0.0;
-    for (final forge in citadel.buildings.where(
-      (b) => b.type == BuildingType.forge,
-    )) {
-      total += forge.bonus;
-    }
-    return total;
-  }
-
-  double get dailyAdvancedBonus {
-    double total = 0.0;
-    for (final adv in citadel.buildings.where(
-      (b) => b.type == BuildingType.workshop,
-    )) {
-      total += adv.bonus;
-    }
-    return total;
-  }
-
-  double get dailyResearchBonus {
-    double total = 0.0;
-    for (final lab in citadel.buildings.where(
-      (b) => b.type == BuildingType.library,
-    )) {
-      total += lab.bonus;
-    }
-    return total;
-  }
-
+  double get dailyFoodBonus => _dailyProduction.food;
+  double get dailyWoodBonus => _dailyProduction.wood;
+  double get dailyIronBonus => _dailyProduction.iron;
+  double get dailyAdvancedBonus =>
+      _dailyProduction.iron + _dailyProduction.wood;
+  double get dailyResearchBonus => _dailyProduction.knowledge;
+  double get dailyMoraleBonus => _dailyProduction.morale;
   // ==================== ACOES DO JOGADOR (PRINCIPAL) ====================
 
   /// ACAO PRINCIPAL: Enviar expedição ao proximo andar
@@ -896,6 +870,52 @@ class GameProvider extends ChangeNotifier {
     _engine.rejectRecruit(survivorId);
     notifyListeners();
   }
+
+  // ==================== GUERRAS ====================
+
+  String sideWithFaction(String warId, FloorFaction faction) {
+    final result = _engine.warService.sideWithFaction(
+      warId: warId,
+      faction: faction,
+      factionRelations: _engine.state.factionRelations,
+    );
+    _saveGame();
+    notifyListeners();
+    return result;
+  }
+
+  // ==================== COMERCIO ====================
+
+  TradeResult executeTrade(String offerId) {
+    final result = _engine.tradeService.executeTrade(
+      offerId: offerId,
+      citadel: _engine.citadel,
+      factionRelations: _engine.state.factionRelations,
+    );
+    if (result.success) {
+      _saveGame();
+      notifyListeners();
+    }
+    return result;
+  }
+
+  List<TradeOffer> tradeOffersForFloor(int floorNumber) =>
+      _engine.tradeService.offersForFloor(floorNumber);
+
+  // ==================== MISSOES ====================
+
+  String acceptQuest(String questId, int currentDay) {
+    final result = _engine.questService.acceptQuest(
+      questId,
+      _engine.state.currentDay,
+    );
+    _saveGame();
+    notifyListeners();
+    return result;
+  }
+
+  List<FloorQuest> questsForFloor(int floorNumber) =>
+      _engine.questService.questsForFloor(floorNumber);
 
   // ==================== DIPLOMACIA ====================
 

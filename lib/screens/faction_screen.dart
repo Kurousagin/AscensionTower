@@ -8,6 +8,7 @@ import '../models/game_event.dart';
 import '../widgets/theme.dart';
 import '../widgets/terminal_widgets.dart';
 import '../widgets/pending_recruits_badge.dart';
+// FactionWar is from floor_faction.dart (already imported)
 
 class FactionScreen extends StatefulWidget {
   const FactionScreen({super.key});
@@ -18,7 +19,7 @@ class FactionScreen extends StatefulWidget {
 
 class _FactionScreenState extends State<FactionScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabCtrl = TabController(length: 3, vsync: this);
+  late final TabController _tabCtrl = TabController(length: 4, vsync: this);
   int? _expandedIdx;
 
   @override
@@ -54,6 +55,7 @@ class _FactionScreenState extends State<FactionScreen>
                     Tab(text: 'RELACOES'),
                     Tab(text: 'DIPLOMACIA'),
                     Tab(text: 'TERRITORIOS'),
+                    Tab(text: 'HISTORICO'),
                   ],
                 ),
               ),
@@ -71,6 +73,7 @@ class _FactionScreenState extends State<FactionScreen>
                     ),
                     _DiplomacyTab(relations: relations),
                     const _TerritoryTab(),
+                    const _WarHistoryTab(),
                   ],
                 ),
               ),
@@ -182,7 +185,7 @@ class _RelationsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final gp = Provider.of<GameProvider>(context, listen: false);
+    final gp = Provider.of<GameProvider>(context);
     final knownNames = gp.state.factionRelations.keys.toSet();
     final unknown = FloorFaction.values
         .where((f) => f != FloorFaction.none && !knownNames.contains(f.name))
@@ -192,6 +195,7 @@ class _RelationsTab extends StatelessWidget {
           (r) => r.tier == FactionTier.atWar || r.tier == FactionTier.bloodFeud,
         )
         .toList();
+    final activeWars = gp.activeWars;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -199,6 +203,10 @@ class _RelationsTab extends StatelessWidget {
         children: [
           if (warFactions.isNotEmpty) ...[
             _buildWarAlert(warFactions),
+            const SizedBox(height: 10),
+          ],
+          if (activeWars.isNotEmpty) ...[
+            _buildActiveWarsSection(context, gp, activeWars),
             const SizedBox(height: 10),
           ],
           if (relations.isEmpty)
@@ -237,6 +245,118 @@ class _RelationsTab extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildActiveWarsSection(
+    BuildContext context,
+    GameProvider gp,
+    List<FactionWar> wars,
+  ) {
+    return TerminalCard(
+      title: 'GUERRAS ATIVAS (${wars.length})',
+      borderColor: AppTheme.orange,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: wars.map((war) {
+          final aggressorColor = _factionColor(war.aggressor);
+          final defenderColor = _factionColor(war.defender);
+          final playerSided = war.playerSidedWith;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      _factionIcon(war.aggressor),
+                      size: 11,
+                      color: aggressorColor,
+                    ),
+                    const SizedBox(width: 4),
+                    TerminalText(
+                      war.aggressor.shortLabel,
+                      fontSize: 9,
+                      color: aggressorColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: TerminalText(
+                        'vs',
+                        fontSize: 8,
+                        color: AppTheme.textDim,
+                      ),
+                    ),
+                    Icon(
+                      _factionIcon(war.defender),
+                      size: 11,
+                      color: defenderColor,
+                    ),
+                    const SizedBox(width: 4),
+                    TerminalText(
+                      war.defender.shortLabel,
+                      fontSize: 9,
+                      color: defenderColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    const Spacer(),
+                  ],
+                ),
+                if (playerSided != null) ...[
+                  const SizedBox(height: 6),
+                  _buildAllianceStatusPanel(war, playerSided),
+                ],
+                if (war.contestedFloors.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  TerminalText(
+                    'Andares contestados: ${war.contestedFloors.join(", ")}',
+                    fontSize: 7,
+                    color: AppTheme.textDim,
+                  ),
+                ],
+                const SizedBox(height: 4),
+                _buildWarProgressBar(war, gp.state.currentDay),
+                if (playerSided == null) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      _WarInterventionButton(
+                        label: 'Apoiar ${war.aggressor.shortLabel}',
+                        color: aggressorColor,
+                        onTap: () {
+                          final result = gp.sideWithFaction(
+                            war.id,
+                            war.aggressor,
+                          );
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text(result)));
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      _WarInterventionButton(
+                        label: 'Apoiar ${war.defender.shortLabel}',
+                        color: defenderColor,
+                        onTap: () {
+                          final result = gp.sideWithFaction(
+                            war.id,
+                            war.defender,
+                          );
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text(result)));
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -654,7 +774,7 @@ class _TerritoryTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final gp = Provider.of<GameProvider>(context, listen: false);
+    final gp = Provider.of<GameProvider>(context);
     final floorMap = {for (final f in gp.floors) f.number: f};
     final countByFaction = <FloorFaction, int>{};
     for (final f in gp.floors) {
@@ -663,6 +783,12 @@ class _TerritoryTab extends StatelessWidget {
             (countByFaction[f.controllingFaction] ?? 0) + 1;
       }
     }
+    // Andares contestados pelas guerras ativas
+    final contestedFloors = <int>{};
+    for (final war in gp.activeWars) {
+      contestedFloors.addAll(war.contestedFloors);
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -687,8 +813,40 @@ class _TerritoryTab extends StatelessWidget {
               ],
             ),
           ),
+          if (contestedFloors.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: AppTheme.orange.withValues(alpha: 0.4),
+                ),
+                borderRadius: BorderRadius.circular(4),
+                color: AppTheme.orange.withValues(alpha: 0.05),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber,
+                    size: 11,
+                    color: AppTheme.orange,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: TerminalText(
+                      'Andares contestados (−40% recursos, +30% mortalidade): ${(contestedFloors.toList()..sort()).join(", ")}',
+                      fontSize: 8,
+                      color: AppTheme.orange,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
-          TerminalCard(child: _buildGrid(context, gp, floorMap)),
+          TerminalCard(
+            child: _buildGrid(context, gp, floorMap, contestedFloors),
+          ),
           const SizedBox(height: 10),
           TerminalCard(
             title: 'LEGENDA',
@@ -703,6 +861,7 @@ class _TerritoryTab extends StatelessWidget {
     BuildContext context,
     GameProvider gp,
     Map<int, dynamic> floorMap,
+    Set<int> contestedFloors,
   ) {
     final nextFloorNum = gp.state.highestFloorCleared + 1;
     return GridView.builder(
@@ -721,17 +880,22 @@ class _TerritoryTab extends StatelessWidget {
         final isCleared = floor?.cleared == true;
         final isNext = floorNum == nextFloorNum;
         final isBoss = floorNum % 10 == 0;
+        final isContested = contestedFloors.contains(floorNum);
         final color = _factionColor(faction);
-        final rel =
-            gp.state.factionRelations[faction.toString().split('.').last];
+        final rel = gp.state.factionRelations[faction.name];
+
         final standing = rel?.standing ?? 0.0;
         final fillOpacity = faction == FloorFaction.none
             ? 0.0
             : (0.15 + (standing + 100) / 200 * 0.45).clamp(0.10, 0.60);
-        final cellColor = isCleared
+        final cellColor = isContested
+            ? AppTheme.orange.withValues(alpha: 0.25)
+            : isCleared
             ? color.withValues(alpha: fillOpacity)
             : AppTheme.bgElevated.withValues(alpha: 0.85);
-        final borderColor = isNext
+        final borderColor = isContested
+            ? AppTheme.orange.withValues(alpha: 0.8)
+            : isNext
             ? AppTheme.cyan.withValues(alpha: 0.9)
             : isBoss && isCleared
             ? AppTheme.yellow.withValues(alpha: 0.55)
@@ -745,7 +909,10 @@ class _TerritoryTab extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               color: cellColor,
-              border: Border.all(color: borderColor, width: isNext ? 1.5 : 0.5),
+              border: Border.all(
+                color: borderColor,
+                width: isNext || isContested ? 1.5 : 0.5,
+              ),
               borderRadius: BorderRadius.circular(1),
             ),
             child: Center(
@@ -757,6 +924,8 @@ class _TerritoryTab extends StatelessWidget {
                   fontWeight: isBoss ? FontWeight.bold : FontWeight.normal,
                   color: isNext
                       ? AppTheme.cyan
+                      : isContested
+                      ? AppTheme.orange
                       : isCleared
                       ? Colors.white.withValues(alpha: 0.75)
                       : Colors.white.withValues(alpha: 0.15),
@@ -796,7 +965,7 @@ class _TerritoryTab extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             TerminalText(
-              floor.description as String,
+              floor.description,
               fontSize: 8,
               color: AppTheme.textSecondary,
             ),
@@ -921,8 +1090,8 @@ class _TerritoryTab extends StatelessWidget {
         ...factions.map((faction) {
           final color = _factionColor(faction);
           final count = countByFaction[faction] ?? 0;
-          final rel =
-              gp.state.factionRelations[faction.toString().split('.').last];
+          final rel = gp.state.factionRelations[faction.name];
+
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Row(
@@ -1415,6 +1584,40 @@ class _FactionRow extends StatelessWidget {
                   ),
                 ],
               ),
+              if (relation.hasTreaty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: AppTheme.green.withValues(alpha: 0.5),
+                    ),
+                    borderRadius: BorderRadius.circular(3),
+                    color: AppTheme.green.withValues(alpha: 0.08),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.handshake,
+                        size: 11,
+                        color: AppTheme.green,
+                      ),
+                      const SizedBox(width: 5),
+                      // Precisa de currentDay — passar via engine ou Consumer interno
+                      TerminalText(
+                        'TRATADO ATIVO',
+                        fontSize: 8,
+                        color: AppTheme.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               if (faction.primaryAttribute.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 TerminalText(
@@ -1485,30 +1688,264 @@ class _FactionRow extends StatelessWidget {
   };
 }
 
-Color _factionColor(FloorFaction faction) => switch (faction) {
-  FloorFaction.ironPact => const Color(0xFFFF6B6B),
-  FloorFaction.silentOrder => AppTheme.cyan,
-  FloorFaction.bloodMarket => AppTheme.yellow,
-  FloorFaction.voidChildren => AppTheme.purple,
-  FloorFaction.towerServants => AppTheme.green,
-  FloorFaction.none => AppTheme.textDim,
-};
+class _WarHistoryTab extends StatelessWidget {
+  const _WarHistoryTab();
 
-IconData _factionIcon(FloorFaction faction) => switch (faction) {
-  FloorFaction.ironPact => Icons.shield,
-  FloorFaction.silentOrder => Icons.auto_stories,
-  FloorFaction.bloodMarket => Icons.storefront,
-  FloorFaction.voidChildren => Icons.blur_on,
-  FloorFaction.towerServants => Icons.castle,
-  FloorFaction.none => Icons.remove,
-};
+  @override
+  Widget build(BuildContext context) {
+    final gp = Provider.of<GameProvider>(context);
+    final history = gp.engine.warService.warHistory;
 
-Color _tierColor(FactionTier tier) => switch (tier) {
-  FactionTier.ally => AppTheme.green,
-  FactionTier.friendly => AppTheme.cyan,
-  FactionTier.neutral => AppTheme.textSecondary,
-  FactionTier.cautious => AppTheme.yellow,
-  FactionTier.hostile => AppTheme.orange,
-  FactionTier.atWar => AppTheme.red,
-  FactionTier.bloodFeud => const Color(0xFFCC0000),
-};
+    if (history.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: TerminalText(
+            'Nenhuma guerra resolvida ainda.\nAs guerras aparecem quando duas facções\ndisputam territórios na Torre.',
+            fontSize: 9,
+            color: AppTheme.textDim,
+          ),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: history.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (_, i) {
+        final war = history[history.length - 1 - i]; // mais recente primeiro
+        final winner = war.winner;
+        final loser = winner == null
+            ? null
+            : (winner == war.aggressor ? war.defender : war.aggressor);
+        final winnerColor = winner != null
+            ? _factionColor(winner)
+            : AppTheme.textDim;
+
+        return Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            border: Border.all(color: AppTheme.border),
+            borderRadius: BorderRadius.circular(4),
+            color: AppTheme.bgElevated,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.emoji_events, size: 12, color: winnerColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: TerminalText(
+                      winner != null
+                          ? '${winner.label} venceu'
+                          : 'Guerra sem resultado',
+                      fontSize: 10,
+                      color: winnerColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  TerminalText(
+                    'Dia ${war.startDay}–${war.startDay + war.duration}',
+                    fontSize: 7,
+                    color: AppTheme.textDim,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              TerminalText(
+                '${war.aggressor.label}  vs  ${war.defender.label}',
+                fontSize: 9,
+                color: AppTheme.textSecondary,
+              ),
+              if (loser != null)
+                TerminalText(
+                  'Derrotado: ${loser.label}',
+                  fontSize: 8,
+                  color: AppTheme.red,
+                ),
+              if (war.contestedFloors.isNotEmpty)
+                TerminalText(
+                  'Andares disputados: ${war.contestedFloors.join(", ")}',
+                  fontSize: 8,
+                  color: AppTheme.textDim,
+                ),
+              if (war.playerSidedWith != null)
+                TerminalText(
+                  'Você apoiou: ${war.playerSidedWith!.label}',
+                  fontSize: 8,
+                  color: AppTheme.cyan,
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+Widget _buildAllianceStatusPanel(FactionWar war, FloorFaction playerSided) {
+  final alliedStrength = playerSided == war.aggressor
+      ? war.aggressorStrength
+      : war.defenderStrength;
+  final enemyStrength = playerSided == war.aggressor
+      ? war.defenderStrength
+      : war.aggressorStrength;
+
+  final statusMessage = () {
+    if (alliedStrength >= enemyStrength * 1.3) {
+      return '"Vocês estão dominando."';
+    } else if (alliedStrength >= enemyStrength) {
+      return '"A situação está equilibrada."';
+    } else if (alliedStrength >= enemyStrength * 0.7) {
+      return '"O inimigo está avançando."';
+    } else {
+      return '"A situação é crítica. Reforce o apoio."';
+    }
+  }();
+
+  return Container(
+    padding: const EdgeInsets.all(6),
+    decoration: BoxDecoration(
+      border: Border.all(color: AppTheme.cyan.withValues(alpha: 0.3)),
+      borderRadius: BorderRadius.circular(3),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.shield, size: 10, color: AppTheme.cyan),
+            const SizedBox(width: 4),
+            TerminalText(
+              'SUA ALIANÇA — ${playerSided.shortLabel}',
+              fontSize: 8,
+              color: AppTheme.cyan,
+              fontWeight: FontWeight.bold,
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TerminalText(
+                    'Força aliada:',
+                    fontSize: 7,
+                    color: AppTheme.textDim,
+                  ),
+                  const SizedBox(height: 2),
+                  _buildStrengthBar(alliedStrength, AppTheme.green),
+                  const SizedBox(height: 2),
+                  TerminalText(
+                    alliedStrength.toStringAsFixed(0),
+                    fontSize: 7,
+                    color: AppTheme.green,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TerminalText(
+                    'Força inimiga:',
+                    fontSize: 7,
+                    color: AppTheme.textDim,
+                  ),
+                  const SizedBox(height: 2),
+                  _buildStrengthBar(enemyStrength, AppTheme.red),
+                  const SizedBox(height: 2),
+                  TerminalText(
+                    enemyStrength.toStringAsFixed(0),
+                    fontSize: 7,
+                    color: AppTheme.red,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        TerminalText(statusMessage, fontSize: 7, color: AppTheme.yellow),
+      ],
+    ),
+  );
+}
+
+Widget _buildStrengthBar(double strength, Color color) {
+  final clamped = (strength / 100).clamp(0.0, 1.0);
+  return SizedBox(
+    height: 4,
+    child: LinearProgressIndicator(
+      value: clamped,
+      backgroundColor: AppTheme.bgCard,
+      valueColor: AlwaysStoppedAnimation<Color>(color),
+      minHeight: 4,
+    ),
+  );
+}
+
+Widget _buildWarProgressBar(FactionWar war, int currentDay) {
+  final daysElapsed = currentDay - war.startDay;
+  final fraction = (daysElapsed / war.duration).clamp(0.0, 1.0);
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      TerminalText(
+        'Duração: $daysElapsed / ${war.duration} dias',
+        fontSize: 7,
+        color: AppTheme.textDim,
+      ),
+      const SizedBox(height: 2),
+      SizedBox(
+        height: 3,
+        child: LinearProgressIndicator(
+          value: fraction,
+          backgroundColor: AppTheme.bgCard,
+          valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.orange),
+          minHeight: 3,
+        ),
+      ),
+    ],
+  );
+}
+
+// UI helpers — delegam para as extensões em floor_faction.dart
+Color _factionColor(FloorFaction faction) => faction.color;
+IconData _factionIcon(FloorFaction faction) => faction.icon;
+Color _tierColor(FactionTier tier) => tier.color;
+
+class _WarInterventionButton extends StatelessWidget {
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  const _WarInterventionButton({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          border: Border.all(color: color.withValues(alpha: 0.5)),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: TerminalText(label, fontSize: 8, color: color),
+      ),
+    );
+  }
+}

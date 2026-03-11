@@ -9,8 +9,8 @@ class CrisisDialog extends StatefulWidget {
   final GameEvent event;
   const CrisisDialog({super.key, required this.event});
 
-  static void show(BuildContext context, GameEvent event) {
-    showGeneralDialog(
+  static Future<void> show(BuildContext context, GameEvent event) {
+   return showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: '',

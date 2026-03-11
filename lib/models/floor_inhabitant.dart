@@ -1,5 +1,6 @@
 // floor_inhabitant.dart
 // Sistema de Habitantes — Andares como Zonas Vivas
+import 'package:tower_ascension/models/floor_faction.dart';
 //
 // DESIGN:
 //   - FloorInhabitant é serializado dentro de TowerFloor (já tem toJson/fromJson)
@@ -124,11 +125,10 @@ class FloorInhabitant {
   // Estado de persistência
   bool isRecruited;
   bool hasDeparted;
+  bool loreRevealed;
 
-  // ── Stub de facção (será preenchido quando FloorFaction for implementado) ──
-  // Deixado como String? para não criar dependência antes do sistema existir.
-  // Quando implementar facções, troque por FloorFaction? factionAffiliation.
-  String? factionAffiliation; // ex: 'ironPact', 'silentOrder'
+  // ── Afiliação de facção ─────────────────────────────────────────────────
+  FloorFaction factionAffiliation;
 
   FloorInhabitant({
     required this.id,
@@ -140,7 +140,8 @@ class FloorInhabitant {
     this.survivorStats,
     this.isRecruited = false,
     this.hasDeparted = false,
-    this.factionAffiliation,
+    this.loreRevealed = false,
+    this.factionAffiliation = FloorFaction.none,
   });
 
   bool get isActive => !isRecruited && !hasDeparted;
@@ -162,7 +163,8 @@ class FloorInhabitant {
     'survivorStats': survivorStats?.toJson(),
     'isRecruited': isRecruited,
     'hasDeparted': hasDeparted,
-    'factionAffiliation': factionAffiliation,
+    'loreRevealed': loreRevealed,
+    'factionAffiliation': factionAffiliation.name,
   };
 
   factory FloorInhabitant.fromJson(Map<String, dynamic> json) {
@@ -187,7 +189,11 @@ class FloorInhabitant {
           : null,
       isRecruited: json['isRecruited'] as bool? ?? false,
       hasDeparted: json['hasDeparted'] as bool? ?? false,
-      factionAffiliation: json['factionAffiliation'] as String?,
+      loreRevealed: json['loreRevealed'] as bool? ?? false,
+      factionAffiliation: FloorFaction.values.firstWhere(
+        (e) => e.name == (json['factionAffiliation'] as String? ?? 'none'),
+        orElse: () => FloorFaction.none,
+      ),
     );
   }
 }
@@ -255,15 +261,19 @@ class InhabitantProcessor {
           }
 
           if (inhabitant.effect.type == EffectType.loreFragment &&
-              inhabitant.effect.loreText.isNotEmpty) {
+              inhabitant.effect.loreText.isNotEmpty &&
+              !inhabitant.loreRevealed) {
             lore.add(inhabitant.effect.loreText);
+            inhabitant.loreRevealed = true;
           }
           break;
 
         case InhabitantCategory.survivor:
           narratives.add(inhabitant.description);
-          if (inhabitant.effect.loreText.isNotEmpty) {
+          if (inhabitant.effect.loreText.isNotEmpty &&
+              !inhabitant.loreRevealed) {
             lore.add(inhabitant.effect.loreText);
+            inhabitant.loreRevealed = true;
           }
 
           if (hasWayfareresRefuge && inhabitant.isRecruitable) {
@@ -279,8 +289,10 @@ class InhabitantProcessor {
 
         case InhabitantCategory.anomaly:
           narratives.add(inhabitant.description);
-          if (inhabitant.effect.loreText.isNotEmpty) {
+          if (inhabitant.effect.loreText.isNotEmpty &&
+              !inhabitant.loreRevealed) {
             lore.add(inhabitant.effect.loreText);
+            inhabitant.loreRevealed = true;
           }
           // floorModTag é aplicado pelo GameEngine diretamente no TowerFloor
           break;
@@ -330,6 +342,49 @@ class InhabitantProcessor {
         case InhabitantCategory.anomaly:
           // Anomalias são imunes a facções
           break;
+      }
+    }
+  }
+
+  /// Atualiza disposição e partida dos habitantes quando o andar entra ou sai
+  /// de um estado de guerra contestado.
+  /// Chamado pelo GameEngine quando [TowerFloor.isContested] muda.
+  static void updateForWarState({
+    required List<FloorInhabitant> inhabitants,
+    required bool isContested,
+    required FloorFaction? contestingFaction,
+  }) {
+    for (final i in inhabitants) {
+      if (!i.isActive) continue;
+      if (i.category == InhabitantCategory.anomaly) continue;
+
+      if (isContested) {
+        if (i.category == InhabitantCategory.resident) {
+          // Residentes nunca ficam friendly em guerra
+          if (i.disposition == InhabitantDisposition.friendly) {
+            i.disposition = InhabitantDisposition.neutral;
+          }
+          // 30% chance de ficarem hostis (usa factionAffiliation como tiebreak)
+          if (i.factionAffiliation == contestingFaction) {
+            i.disposition = InhabitantDisposition.hostile;
+          }
+        }
+        if (i.category == InhabitantCategory.survivor) {
+          // Survivors da facção atacante fogem
+          if (contestingFaction != null &&
+              i.factionAffiliation == contestingFaction) {
+            i.hasDeparted = true;
+          } else {
+            // Survivors sem facção ficam disponíveis para recrutamento
+            i.disposition = InhabitantDisposition.friendly;
+          }
+        }
+      } else {
+        // Andar não mais contestado: residents voltam ao neutro
+        if (i.category == InhabitantCategory.resident &&
+            i.disposition == InhabitantDisposition.hostile) {
+          i.disposition = InhabitantDisposition.neutral;
+        }
       }
     }
   }
@@ -637,5 +692,179 @@ class InhabitantFactory {
     ];
 
     return anomalies[seed % anomalies.length];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// TradeOffer — oferta de comércio de um habitante mercador
+// ---------------------------------------------------------------------------
+
+class TradeOffer {
+  final String id;
+  final String merchantInhabitantId;
+  final int floorNumber;
+  final FloorFaction merchantFaction;
+  final Map<String, int> cost;
+  final Map<String, int> reward;
+  final String? equipmentId;
+  final double standingRequirement;
+  final int refreshDay;
+
+  const TradeOffer({
+    required this.id,
+    required this.merchantInhabitantId,
+    required this.floorNumber,
+    required this.merchantFaction,
+    required this.cost,
+    required this.reward,
+    this.equipmentId,
+    this.standingRequirement = 0.0,
+    required this.refreshDay,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'merchantInhabitantId': merchantInhabitantId,
+    'floorNumber': floorNumber,
+    'merchantFaction': merchantFaction.name,
+    'cost': cost,
+    'reward': reward,
+    'equipmentId': equipmentId,
+    'standingRequirement': standingRequirement,
+    'refreshDay': refreshDay,
+  };
+
+  factory TradeOffer.fromJson(Map<String, dynamic> json) => TradeOffer(
+    id: json['id'] as String? ?? 'trade_unknown',
+    merchantInhabitantId: json['merchantInhabitantId'] as String? ?? '',
+    floorNumber: json['floorNumber'] as int? ?? 0,
+    merchantFaction: FloorFaction.values.firstWhere(
+      (e) => e.name == (json['merchantFaction'] as String? ?? 'none'),
+      orElse: () => FloorFaction.none,
+    ),
+    cost: Map<String, int>.from(
+      (json['cost'] as Map<String, dynamic>? ?? {}).map(
+        (k, v) => MapEntry(k, (v as num).toInt()),
+      ),
+    ),
+    reward: Map<String, int>.from(
+      (json['reward'] as Map<String, dynamic>? ?? {}).map(
+        (k, v) => MapEntry(k, (v as num).toInt()),
+      ),
+    ),
+    equipmentId: json['equipmentId'] as String?,
+    standingRequirement:
+        (json['standingRequirement'] as num?)?.toDouble() ?? 0.0,
+    refreshDay: json['refreshDay'] as int? ?? 0,
+  );
+}
+
+class TradeResult {
+  final bool success;
+  final String message;
+  const TradeResult({required this.success, required this.message});
+}
+
+// ---------------------------------------------------------------------------
+// FloorQuest — missão gerada por habitante do andar
+// ---------------------------------------------------------------------------
+
+enum QuestType { fetch, deliver, escort, investigate, eliminate }
+
+class FloorQuest {
+  final String id;
+  final String giverInhabitantId;
+  final int floorNumber;
+  final QuestType type;
+  final String title;
+  final String description;
+  final Map<String, int> resourceReward;
+  final double standingReward;
+  final FloorFaction? factionReward;
+  final int dayLimit;
+  final int? targetFloor;
+  final Map<String, int>? resourceCost;
+  int acceptedDay;
+  bool completed;
+  bool failed;
+
+  FloorQuest({
+    required this.id,
+    required this.giverInhabitantId,
+    required this.floorNumber,
+    required this.type,
+    required this.title,
+    required this.description,
+    required this.resourceReward,
+    this.standingReward = 0.0,
+    this.factionReward,
+    required this.dayLimit,
+    this.targetFloor,
+    this.resourceCost,
+    this.acceptedDay = 0,
+    this.completed = false,
+    this.failed = false,
+  });
+
+  bool get isActive => acceptedDay > 0 && !completed && !failed;
+  bool get isAvailable => acceptedDay == 0 && !completed && !failed;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'giverInhabitantId': giverInhabitantId,
+    'floorNumber': floorNumber,
+    'type': type.name,
+    'title': title,
+    'description': description,
+    'resourceReward': resourceReward,
+    'standingReward': standingReward,
+    'factionReward': factionReward?.name,
+    'dayLimit': dayLimit,
+    'targetFloor': targetFloor,
+    'resourceCost': resourceCost,
+    'acceptedDay': acceptedDay,
+    'completed': completed,
+    'failed': failed,
+  };
+
+  factory FloorQuest.fromJson(Map<String, dynamic> json) {
+    FloorFaction? parseFaction(String? name) {
+      if (name == null) return null;
+      return FloorFaction.values.firstWhere(
+        (e) => e.name == name,
+        orElse: () => FloorFaction.none,
+      );
+    }
+
+    return FloorQuest(
+      id: json['id'] as String? ?? 'quest_unknown',
+      giverInhabitantId: json['giverInhabitantId'] as String? ?? '',
+      floorNumber: json['floorNumber'] as int? ?? 0,
+      type: QuestType.values.firstWhere(
+        (e) => e.name == (json['type'] as String? ?? 'fetch'),
+        orElse: () => QuestType.fetch,
+      ),
+      title: json['title'] as String? ?? '',
+      description: json['description'] as String? ?? '',
+      resourceReward: Map<String, int>.from(
+        (json['resourceReward'] as Map<String, dynamic>? ?? {}).map(
+          (k, v) => MapEntry(k, (v as num).toInt()),
+        ),
+      ),
+      standingReward: (json['standingReward'] as num?)?.toDouble() ?? 0.0,
+      factionReward: parseFaction(json['factionReward'] as String?),
+      dayLimit: json['dayLimit'] as int? ?? 30,
+      targetFloor: json['targetFloor'] as int?,
+      resourceCost: json['resourceCost'] == null
+          ? null
+          : Map<String, int>.from(
+              (json['resourceCost'] as Map<String, dynamic>).map(
+                (k, v) => MapEntry(k, (v as num).toInt()),
+              ),
+            ),
+      acceptedDay: json['acceptedDay'] as int? ?? 0,
+      completed: json['completed'] as bool? ?? false,
+      failed: json['failed'] as bool? ?? false,
+    );
   }
 }

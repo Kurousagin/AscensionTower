@@ -379,6 +379,15 @@ abstract class _AttrPresets {
   );
   static final bornInTheAbyss = NpcAttributes(); // atributos padrão (5,5,5...)
   static final bornOfChaos = NpcAttributes();
+  static final towerDweller = NpcAttributes(
+  strength: 6.0,
+  agility: 6.0,
+  intelligence: 5.0,
+  endurance: 7.0,
+  charisma: 4.0,
+  mentalStability: 60.0,
+  luck: 5.0,
+);
 
   static final Map<NpcOrigin, NpcAttributes> _map = {
     NpcOrigin.student: student,
@@ -401,6 +410,7 @@ abstract class _AttrPresets {
     NpcOrigin.fraudster: fraudster,
     NpcOrigin.bornInTheAbyss: bornInTheAbyss,
     NpcOrigin.bornOfChaos: bornOfChaos,
+    NpcOrigin.towerDweller: towerDweller,
   };
 
   static NpcAttributes forOrigin(NpcOrigin origin) => _map[origin]!;
