@@ -326,10 +326,10 @@ extension CitadelLevelExt on CitadelLevel {
     CitadelLevel.town: 3,
     CitadelLevel.city: 4,
     CitadelLevel.fortress: 4,
-    CitadelLevel.citadel: 5,
-    CitadelLevel.kingdom: 5,
-    CitadelLevel.empire: 6,
-    CitadelLevel.ascended: 6,
+    CitadelLevel.citadel: 6,
+    CitadelLevel.kingdom: 8,
+    CitadelLevel.empire: 10,
+    CitadelLevel.ascended: 15,
   }[this]!;
 
   int get buildingTier => const {
@@ -423,8 +423,17 @@ class Building {
   int tier;
   int inheritedBonus;
 
-  bool get canUpgrade => level < maxLevel || tier < 3;
+  bool get isUpgradeable => !const {
+    BuildingType.prison,
+    BuildingType.councilHall,
+    BuildingType.warRoom,
+    BuildingType.promotionHall,
+    BuildingType.synthesisLab,
+    BuildingType.alchemyLab,
+    BuildingType.nexus,
+  }.contains(type);
 
+  bool get canUpgrade => isUpgradeable && (level < maxLevel || tier < 3);
   Building({
     required this.type,
     this.level = 1,
@@ -448,7 +457,7 @@ class Building {
     BuildingType.school: [1, 2, 4, 6, 8],
     BuildingType.library: [1, 2, 4, 6, 8],
     BuildingType.kitchen: [1, 2, 4, 6, 8],
-    BuildingType.tent: [2, 4, 6, 8, 10],
+    BuildingType.tent: [4, 6, 8, 10, 12],
     BuildingType.infirmary: [0.3, 0.4, 0.5, 0.6],
   };
 
@@ -615,10 +624,10 @@ class Building {
     BuildingType.synthesisLab: BuildingCategory.advanced,
     BuildingType.promotionHall: BuildingCategory.advanced,
     BuildingType.councilHall: BuildingCategory.advanced,
-    BuildingType.alchemyLab: BuildingCategory.endgame,
-    BuildingType.warRoom: BuildingCategory.endgame,
-    BuildingType.monument: BuildingCategory.endgame,
-    BuildingType.nexus: BuildingCategory.endgame,
+    BuildingType.alchemyLab: BuildingCategory.advanced,
+    BuildingType.warRoom: BuildingCategory.advanced,
+    BuildingType.monument: BuildingCategory.advanced,
+    BuildingType.nexus: BuildingCategory.advanced,
     // ── NOVO ──────────────────────────────────────────────────────────────────
     BuildingType.wayfareresRefuge: BuildingCategory.social,
   }[type]!;
@@ -647,12 +656,19 @@ class Building {
       0;
 
   bool get isUnique => const {
-    BuildingType.library, BuildingType.temple, BuildingType.arena,
-    BuildingType.synthesisLab, BuildingType.promotionHall,
-    BuildingType.councilHall, BuildingType.alchemyLab,
-    BuildingType.warRoom, BuildingType.monument, BuildingType.nexus,
-    // ── NOVO: único — não pode ter cópias ────────────────────────────────────
+    BuildingType.library,
+    BuildingType.temple,
+    BuildingType.arena,
+    BuildingType.synthesisLab,
+    BuildingType.promotionHall,
+    BuildingType.councilHall,
+    BuildingType.alchemyLab,
+    BuildingType.warRoom,
+    BuildingType.monument,
+    BuildingType.nexus,
     BuildingType.wayfareresRefuge,
+    BuildingType.prison,
+    BuildingType.market,
   }.contains(type);
 
   /// canEvolve: wayfareresRefuge NÃO entra aqui — único e não evolui com citadela

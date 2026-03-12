@@ -11,7 +11,10 @@
 //     backgroundColor: Colors.transparent,
 //     builder: (_) => FloorDetailSheet(floor: floor, engine: engine),
 //   );
+import 'package:collection/collection.dart';
 import 'package:provider/provider.dart';
+import 'package:tower_ascension/models/group_model.dart';
+import 'package:tower_ascension/models/npc.dart';
 import 'package:tower_ascension/providers/game_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:tower_ascension/models/citadel.dart';
@@ -66,7 +69,7 @@ class FloorDetailSheet extends StatelessWidget {
                         faction: floor.controllingFaction,
                         relation: engine
                             .state
-                            .factionRelations[floor.controllingFaction.name],
+                            .factionRelations[floor.controllingFaction.key],
                       ),
                     const SizedBox(height: 20),
                     // ── Banner de guerra ──
@@ -815,7 +818,7 @@ class _TradeSectionState extends State<_TradeSection> {
         widget
             .engine
             .state
-            .factionRelations[offer.merchantFaction.name]
+            .factionRelations[offer.merchantFaction.key]
             ?.standing ??
         0.0;
     final canAfford = offer.cost.entries.every((e) {
@@ -935,9 +938,17 @@ class _TradeSectionState extends State<_TradeSection> {
 class _QuestSectionState extends State<_QuestSection> {
   @override
   Widget build(BuildContext context) {
+    final currentDay = widget.engine.state.currentDay;
     final quests = widget.engine.questService
         .questsForFloor(widget.floorNumber)
-        .where((q) => q.isAvailable || q.isActive)
+        .where((q) {
+          final daysLeft = q.dayLimit - currentDay;
+          // Quests ativas (em curso) sempre aparecem mesmo expiradas
+          if (q.isActive) return true;
+          // Quests disponíveis só aparecem se não expiraram
+          if (q.isAvailable && daysLeft > 0) return true;
+          return false;
+        })
         .toList();
 
     if (quests.isEmpty) return SizedBox.shrink();
@@ -949,6 +960,221 @@ class _QuestSectionState extends State<_QuestSection> {
         const SizedBox(height: 8),
         ...quests.map((q) => _buildQuestCard(q)),
       ],
+    );
+  }
+
+  void _showAcceptDialog(BuildContext context, FloorQuest quest) {
+    final busyIds = widget.engine.questService.busyGroupIds;
+    final groups = widget.engine.groups
+        .where((g) => g.memberIds.isNotEmpty && !busyIds.contains(g.id))
+        .toList();
+    NpcGroup? selected;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          // Calcula atributos do grupo selecionado
+          double power = 0, intel = 0, luck = 0;
+          if (selected != null) {
+            final members = selected!.memberIds
+                .map(
+                  (id) => widget.engine.npcs.firstWhereOrNull(
+                    (n) => n.id == id && n.alive,
+                  ),
+                )
+                .whereType<Npc>()
+                .toList();
+            if (members.isNotEmpty) {
+              power =
+                  members
+                      .map((n) => n.attributes.combatPower)
+                      .reduce((a, b) => a + b) /
+                  members.length;
+              intel =
+                  members
+                      .map((n) => n.attributes.intelligence)
+                      .reduce((a, b) => a + b) /
+                  members.length;
+              luck =
+                  members
+                      .map((n) => n.attributes.luck)
+                      .reduce((a, b) => a + b) /
+                  members.length;
+            }
+          }
+
+          final failureChance = widget.engine.questService.previewFailureChance(
+            quest.type,
+            groupPower: power,
+            groupIntelligence: intel,
+            groupLuck: luck,
+          );
+
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+            ),
+            child: AlertDialog(
+              backgroundColor: AppTheme.bgCard,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+                side: const BorderSide(color: AppTheme.border),
+              ),
+              title: Text(
+                quest.title,
+                style: const TextStyle(
+                  fontFamily: 'FiraCode',
+                  fontSize: 13,
+                  color: AppTheme.cyan,
+                ),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: MediaQuery.of(ctx).size.height * 0.45,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Selecione um grupo para esta missão:',
+                      style: TextStyle(
+                        fontFamily: 'FiraCode',
+                        fontSize: 10,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (groups.isEmpty)
+                      const Text(
+                        'Nenhum grupo disponível.',
+                        style: TextStyle(
+                          fontFamily: 'FiraCode',
+                          fontSize: 10,
+                          color: AppTheme.red,
+                        ),
+                      )
+                    else
+                      ...groups.map(
+                        (g) => RadioListTile<NpcGroup>(
+                          value: g,
+                          groupValue: selected,
+                          onChanged: (v) => setLocal(() => selected = v),
+                          title: Text(
+                            g.name,
+                            style: const TextStyle(
+                              fontFamily: 'FiraCode',
+                              fontSize: 10,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '${g.memberIds.length} membros',
+                            style: const TextStyle(
+                              fontFamily: 'FiraCode',
+                              fontSize: 9,
+                              color: AppTheme.textDim,
+                            ),
+                          ),
+                          activeColor: AppTheme.cyan,
+                        ),
+                      ),
+                    if (selected != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Risco de falha: ${(failureChance * 100).toStringAsFixed(0)}%',
+                        style: TextStyle(
+                          fontFamily: 'FiraCode',
+                          fontSize: 10,
+                          color: failureChance > 0.4
+                              ? AppTheme.red
+                              : failureChance > 0.2
+                              ? AppTheme.yellow
+                              : AppTheme.green,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text(
+                    'CANCELAR',
+                    style: TextStyle(
+                      fontFamily: 'FiraCode',
+                      color: AppTheme.textDim,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: selected == null
+                      ? null
+                      : () {
+                          final members = selected!.memberIds
+                              .map(
+                                (id) => widget.engine.npcs.firstWhereOrNull(
+                                  (n) => n.id == id && n.alive,
+                                ),
+                              )
+                              .whereType<Npc>()
+                              .toList();
+                          final p = members.isEmpty
+                              ? 0.0
+                              : members
+                                        .map((n) => n.attributes.combatPower)
+                                        .reduce((a, b) => a + b) /
+                                    members.length;
+                          final i = members.isEmpty
+                              ? 0.0
+                              : members
+                                        .map((n) => n.attributes.intelligence)
+                                        .reduce((a, b) => a + b) /
+                                    members.length;
+                          final l = members.isEmpty
+                              ? 0.0
+                              : members
+                                        .map((n) => n.attributes.luck)
+                                        .reduce((a, b) => a + b) /
+                                    members.length;
+
+                          final result = widget.engine.questService.acceptQuest(
+                            quest.id,
+                            widget.engine.state.currentDay,
+                            groupId: selected!.id,
+                            npcIds: selected!.memberIds,
+                            groupPower: p,
+                            groupIntelligence: i,
+                            groupLuck: l,
+                          );
+                          Navigator.pop(ctx);
+                          setState(() {});
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                result,
+                                style: const TextStyle(
+                                  fontFamily: 'FiraCode',
+                                  fontSize: 10,
+                                ),
+                              ),
+                              backgroundColor: AppTheme.bgElevated,
+                            ),
+                          );
+                        },
+                  child: const Text(
+                    'CONFIRMAR',
+                    style: TextStyle(
+                      fontFamily: 'FiraCode',
+                      color: AppTheme.cyan,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -970,7 +1196,8 @@ class _QuestSectionState extends State<_QuestSection> {
         : AppTheme.cyan;
 
     final daysLeft = quest.dayLimit - widget.engine.state.currentDay;
-    final deadlineColor = daysLeft <= 0
+    final isExpired = daysLeft <= 0;
+    final deadlineColor = isExpired
         ? AppTheme.red
         : daysLeft <= 3
         ? AppTheme.red
@@ -1052,48 +1279,41 @@ class _QuestSectionState extends State<_QuestSection> {
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Recompensa: $rewardStr',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.55),
-                  fontSize: 11,
-                ),
+          if (rewardStr.isNotEmpty) ...[
+            Text(
+              'Recompensa: $rewardStr',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.55),
+                fontSize: 11,
               ),
-              if (quest.isAvailable)
-                TerminalButton(
-                  label: 'ACEITAR',
-                  color: AppTheme.cyan,
-                  onPressed: () {
-                    try {
-                      widget.engine.questService.acceptQuest(
-                        quest.id,
-                        widget.engine.state.currentDay,
-                      );
-                      setState(() {});
-                    } catch (e) {
-                      // Handle error (e.g., show snackbar)
-                      debugPrint('Failed to accept quest: $e');
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Falha ao aceitar missão: $e'),
-                            backgroundColor: AppTheme.red,
-                          ),
-                        );
-                      }
-                    }
-                  },
-                )
-              else if (quest.isActive)
-                TerminalButton(
-                  label: 'EM CURSO',
-                  color: AppTheme.green,
-                  onPressed: null,
-                ),
-            ],
+            ),
+            const SizedBox(height: 8),
+          ],
+          Align(
+            alignment: Alignment.centerRight,
+            child: isExpired
+                ? TerminalButton(
+                    label: 'EXPIRADO',
+                    color: AppTheme.textDim,
+                    onPressed: null,
+                  )
+                : quest.isAvailable
+                ? TerminalButton(
+                    label: 'ACEITAR',
+                    color: AppTheme.cyan,
+                    onPressed: () => _showAcceptDialog(context, quest),
+                  )
+                : quest.isActive
+                ? TerminalButton(
+                    label: quest.assignedGroupId != null
+                        ? 'EM CURSO'
+                        : 'SEM GRUPO',
+                    color: quest.assignedGroupId != null
+                        ? AppTheme.green
+                        : AppTheme.orange,
+                    onPressed: null,
+                  )
+                : const SizedBox.shrink(),
           ),
         ],
       ),

@@ -58,8 +58,6 @@ class _TowerScreenState extends State<TowerScreen> {
                 if (gp.pendingRecruits.isNotEmpty) const SizedBox(height: 12),
                 _buildNextFloor(context, gp),
                 const SizedBox(height: 12),
-                _buildCommandInfo(),
-                const SizedBox(height: 12),
                 _buildReexploration(context, gp),
                 const SizedBox(height: 12),
                 if (gp.lastChallenge != null) _buildLastResult(gp),
@@ -77,80 +75,337 @@ class _TowerScreenState extends State<TowerScreen> {
     );
   }
 
+  (String, String, double) _floorPrimaryStatInfo(
+    FloorType type,
+    List<Npc> party,
+  ) {
+    if (party.isEmpty) return ('Poder Geral', '⚡', 0.0);
+    switch (type) {
+      case FloorType.strategic:
+      case FloorType.puzzle:
+        final avg =
+            party.fold(0.0, (s, n) => s + n.attributes.intelligence) /
+            party.length;
+        return ('Inteligência', '🧠', avg);
+      case FloorType.mystery:
+        final avg =
+            party.fold(0.0, (s, n) => s + n.attributes.luck) / party.length;
+        return ('Sorte', '🎲', avg);
+      case FloorType.survival:
+      case FloorType.hunt:
+        final avg =
+            party.fold(0.0, (s, n) => s + n.attributes.endurance) /
+            party.length;
+        return ('Resistência', '🏃', avg);
+      case FloorType.moral:
+        final avg =
+            party.fold(0.0, (s, n) => s + n.attributes.charisma) / party.length;
+        return ('Carisma', '❤', avg);
+      default:
+        final avg =
+            party.fold(0.0, (s, n) => s + n.attributes.combatPower) /
+            party.length;
+        return ('Poder Combate', '⚔', avg);
+    }
+  }
+
   Widget _buildTowerOverview(GameProvider gp) {
     final cleared = gp.state.highestFloorCleared;
-    final currentTier = ((cleared) ~/ 10) + (cleared % 10 > 0 ? 1 : 0);
+    final currentTier = cleared == 0 ? 1 : ((cleared - 1) ~/ 10) + 1;
+    final tierNames = [
+      'Despertar',
+      'Abismo',
+      'Loucura',
+      'Fortaleza',
+      'Imperio',
+      'Veneno',
+      'Almas',
+      'Caos',
+      'Sombra',
+      'Criadora',
+    ];
+    final tierIcons = [
+      '🌅',
+      '🕳',
+      '🌀',
+      '🏰',
+      '👑',
+      '☠',
+      '💀',
+      '🌑',
+      '🌒',
+      '⚡',
+    ];
+    final tierName = tierNames[(currentTier - 1).clamp(0, 9)];
+    final tierIcon = tierIcons[(currentTier - 1).clamp(0, 9)];
+    final floorPct = (cleared / 100.0).clamp(0.0, 1.0);
 
-    return TerminalCard(
+    Color accentColor;
+    if (cleared <= 5)
+      accentColor = AppTheme.green;
+    else if (cleared <= 15)
+      accentColor = AppTheme.cyan;
+    else if (cleared <= 30)
+      accentColor = AppTheme.yellow;
+    else if (cleared <= 50)
+      accentColor = AppTheme.orange;
+    else if (cleared <= 75)
+      accentColor = AppTheme.red;
+    else
+      accentColor = const Color(0xFFFF44FF);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        border: Border.all(color: accentColor.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: [
+          BoxShadow(color: accentColor.withValues(alpha: 0.06), blurRadius: 18),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const TerminalText(
-            'A TORRE DOS 100 ANDARES',
-            fontSize: 14,
-            color: AppTheme.cyan,
-            fontWeight: FontWeight.bold,
+          // ── Linha 1: label fixo ──────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            child: const TerminalText(
+              'A TORRE DOS 100 ANDARES',
+              fontSize: 8,
+              color: AppTheme.textDim,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-          const SizedBox(height: 8),
-          _buildMiniTowerAscii(cleared),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+
+          // ── Linha 2: andar + stats direita ──────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Número do andar em destaque
+                RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: cleared.toString().padLeft(3, '0'),
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                          color: accentColor,
+                          height: 1.0,
+                        ),
+                      ),
+                      TextSpan(
+                        text: ' /100',
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          color: AppTheme.textDim,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const Spacer(),
+
+                // Stats vitais à direita
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    TerminalText(
-                      'Andares: $cleared / 100',
-                      fontSize: 11,
-                      color: AppTheme.green,
+                    _overviewStat(
+                      '${gp.state.totalDeaths}',
+                      'MORTES',
+                      AppTheme.red,
                     ),
-                    TerminalText(
-                      'Tier atual: $currentTier / 10',
-                      fontSize: 10,
-                      color: AppTheme.orange,
+                    const SizedBox(width: 10),
+                    _overviewStat(
+                      '${gp.population}',
+                      'VIVOS',
+                      cleared <= 5 ? AppTheme.green : AppTheme.cyan,
                     ),
                   ],
                 ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  _difficultyBadge(cleared),
-                  const SizedBox(height: 4),
-                  TerminalText(
-                    'Mortes: ${gp.state.totalDeaths}',
-                    fontSize: 9,
-                    color: AppTheme.red,
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 4),
-          // Barra de progresso total
-          Container(
-            height: 10,
-            decoration: BoxDecoration(
-              color: AppTheme.bgElevated,
-              borderRadius: BorderRadius.circular(2),
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: FractionallySizedBox(
-              widthFactor: (cleared / 100.0).clamp(0.0, 1.0),
-              alignment: Alignment.centerLeft,
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [AppTheme.green, AppTheme.cyan, AppTheme.orange],
+
+          // ── Linha 3: tier badge + dificuldade ───────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Row(
+              children: [
+                // Tier badge
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
                   ),
-                  borderRadius: BorderRadius.circular(1),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: accentColor.withValues(alpha: 0.5),
+                    ),
+                    borderRadius: BorderRadius.circular(2),
+                    color: accentColor.withValues(alpha: 0.07),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(tierIcon, style: const TextStyle(fontSize: 11)),
+                      const SizedBox(width: 5),
+                      TerminalText(
+                        'TIER $currentTier  ·  ${tierName.toUpperCase()}',
+                        fontSize: 9,
+                        color: accentColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                _difficultyBadge(cleared),
+              ],
             ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // ── Barra de progresso ───────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const TerminalText(
+                      'ASCENSÃO',
+                      fontSize: 7,
+                      color: AppTheme.textDim,
+                    ),
+                    const Spacer(),
+                    TerminalText(
+                      '${cleared}/100  (${(floorPct * 100).toStringAsFixed(0)}%)',
+                      fontSize: 7,
+                      color: AppTheme.textDim,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Stack(
+                  children: [
+                    Container(
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: AppTheme.bgElevated,
+                        borderRadius: BorderRadius.circular(1),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                    ),
+                    FractionallySizedBox(
+                      widthFactor: floorPct,
+                      child: Container(
+                        height: 6,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              AppTheme.green,
+                              AppTheme.cyan,
+                              AppTheme.orange,
+                              AppTheme.red,
+                            ],
+                            stops: [0.0, 0.33, 0.66, 1.0],
+                          ),
+                          borderRadius: BorderRadius.circular(1),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // ── Tier strip ───────────────────────────────────────────
+          const SizedBox(height: 10),
+          Container(height: 1, color: AppTheme.border.withValues(alpha: 0.4)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+            child: _buildTierProgressRow(cleared),
           ),
         ],
       ),
+    );
+  }
+
+  /// Stat compacto para o cabeçalho do overview
+  Widget _overviewStat(String value, String label, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        TerminalText(
+          value,
+          fontSize: 16,
+          color: color,
+          fontWeight: FontWeight.bold,
+        ),
+        TerminalText(label, fontSize: 7, color: AppTheme.textDim),
+      ],
+    );
+  }
+
+  /// Faixa compacta mostrando os 10 tiers em mini-blocos.
+  Widget _buildTierProgressRow(int cleared) {
+    return Row(
+      children: List.generate(10, (i) {
+        final tier = i + 1;
+        final tierStart = (tier - 1) * 10 + 1;
+        final tierEnd = tier * 10;
+        final clearedInTier = (cleared - (tierStart - 1)).clamp(0, 10);
+        final isFullyCleared = clearedInTier >= 10;
+        final isCurrent = cleared >= (tierStart - 1) && cleared < tierEnd;
+        final isLocked = cleared < (tierStart - 1);
+
+        Color c;
+        if (isFullyCleared) {
+          c = AppTheme.green;
+        } else if (isCurrent) {
+          c = AppTheme.yellow;
+        } else if (isLocked) {
+          c = AppTheme.border;
+        } else {
+          c = AppTheme.textDim.withValues(alpha: 0.4);
+        }
+
+        return Expanded(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 1),
+            height: 14,
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: c.withValues(alpha: isCurrent ? 1.0 : 0.5),
+                width: isCurrent ? 1.2 : 0.7,
+              ),
+              borderRadius: BorderRadius.circular(1),
+              color: isFullyCleared
+                  ? c.withValues(alpha: 0.2)
+                  : isCurrent
+                  ? c.withValues(alpha: 0.08)
+                  : Colors.transparent,
+            ),
+            child: Center(
+              child: TerminalText(
+                'T$tier',
+                fontSize: 6,
+                color: c,
+                fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 
@@ -191,75 +446,42 @@ class _TowerScreenState extends State<TowerScreen> {
     );
   }
 
-  Widget _buildMiniTowerAscii(int cleared) {
-    // Mostra 10 blocos representando cada tier
-    final tiers = <Widget>[];
-    for (int t = 10; t >= 1; t--) {
-      final tierStart = (t - 1) * 10 + 1;
-      final tierEnd = t * 10;
-      final floorsInTier = List.generate(10, (i) => tierStart + i);
-      final clearedInTier = floorsInTier.where((f) => f <= cleared).length;
-      final isCurrent = cleared >= tierStart - 1 && cleared < tierEnd;
-      final isFullyCleared = clearedInTier == 10;
-      final isLocked = cleared < tierStart - 1;
-
-      Color color;
-      if (isFullyCleared) {
-        color = AppTheme.green;
-      } else if (isCurrent) {
-        color = AppTheme.yellow;
-      } else {
-        color = AppTheme.textDim;
-      }
-
-      final width = 6 + (10 - t) * 2;
-      final bar = isFullyCleared
-          ? '=' * width
-          : isCurrent
-          ? '${'=' * clearedInTier}${'-' * (10 - clearedInTier)}'
-                .padRight(width, '-')
-                .substring(0, width)
-          : '-' * width;
-      final label = isFullyCleared
-          ? 'Completo'
-          : isCurrent
-          ? 'Atual   '
-          : isLocked
-          ? 'Bloqueado'
-          : '        ';
-
-      tiers.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 0),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 70,
-                child: TerminalText(label, fontSize: 7, color: color),
-              ),
-              TerminalText(
-                'T${t.toString().padLeft(2, '0')} |$bar| $clearedInTier/10',
-                fontSize: 8,
-                color: color,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    return Column(children: tiers);
-  }
+  // _buildMiniTowerAscii substituído por _buildTowerSilhouette + _buildTierProgressRow acima
 
   Widget _buildNextFloor(BuildContext context, GameProvider gp) {
     final floor = gp.nextFloor;
     if (floor == null) {
-      return TerminalCard(
-        borderColor: AppTheme.green,
-        title: 'TORRE COMPLETA - 100 ANDARES',
-        child: const TerminalText(
-          'Todos os 100 andares foram conquistados! A humanidade provou seu valor '
-          'e ascendeu alem do que a Torre imaginava possivel. TEL - A Criadora do Jogo - foi derrotada.',
-          color: AppTheme.green,
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.bgCard,
+          border: Border.all(color: AppTheme.green, width: 1.5),
+          borderRadius: BorderRadius.circular(4),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.green.withValues(alpha: 0.1),
+              blurRadius: 20,
+            ),
+          ],
+        ),
+        child: const Column(
+          children: [
+            TerminalText(
+              '★  TORRE COMPLETA  ★',
+              fontSize: 14,
+              color: AppTheme.green,
+              fontWeight: FontWeight.bold,
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 6),
+            TerminalText(
+              'Todos os 100 andares foram conquistados!\n'
+              'A humanidade provou seu valor. TEL foi derrotada.',
+              color: AppTheme.green,
+              fontSize: 10,
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       );
     }
@@ -267,189 +489,274 @@ class _TowerScreenState extends State<TowerScreen> {
     final isBoss = floor.number % 10 == 0;
     final isElite = floor.number % 5 == 0 && !isBoss;
 
-    return TerminalCard(
-      title:
-          '${isBoss
-              ? "BOSS"
-              : isElite
-              ? "ELITE"
-              : "PROXIMO"}: ANDAR ${floor.number}',
-      borderColor: isBoss
-          ? AppTheme.red
-          : isElite
-          ? const Color(0xFFFF44FF)
-          : AppTheme.yellow,
+    final Color borderColor;
+    final Color accentColor;
+    final String floorLabel;
+    if (isBoss) {
+      borderColor = AppTheme.red;
+      accentColor = AppTheme.red;
+      floorLabel = '☠  BOSS  ·  ANDAR ${floor.number}';
+    } else if (isElite) {
+      borderColor = const Color(0xFFFF44FF);
+      accentColor = const Color(0xFFFF44FF);
+      floorLabel = '◆  ELITE  ·  ANDAR ${floor.number}';
+    } else {
+      borderColor = AppTheme.red;
+      accentColor = AppTheme.yellow;
+      floorLabel = '▶  PRÓXIMO  ·  ANDAR ${floor.number}';
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        border: Border.all(
+          color: borderColor.withValues(alpha: 0.6),
+          width: isBoss ? 1.5 : 1,
+        ),
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: isBoss
+            ? [
+                BoxShadow(
+                  color: AppTheme.red.withValues(alpha: 0.1),
+                  blurRadius: 16,
+                ),
+              ]
+            : null,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              TerminalText(
-                '${floor.type.icon} ${floor.type.label}',
-                fontSize: 11,
-                color: AppTheme.textPrimary,
-                fontWeight: FontWeight.bold,
+          // ── Header do andar ─────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: borderColor.withValues(alpha: isBoss ? 0.1 : 0.05),
+              border: Border(
+                bottom: BorderSide(color: borderColor.withValues(alpha: 0.3)),
               ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  border: Border.all(color: AppTheme.red),
-                  borderRadius: BorderRadius.circular(3),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(4),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TerminalText(
+                    floorLabel,
+                    fontSize: 11,
+                    color: accentColor,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                child: TerminalText(
-                  'Dif: ${floor.scaledDifficulty.toStringAsFixed(1)} | ${floor.difficultyTag}',
-                  fontSize: 8,
-                  color: AppTheme.red,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: AppTheme.red.withValues(alpha: 0.6),
+                    ),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: TerminalText(
+                    'DIF ${floor.scaledDifficulty.toStringAsFixed(1)}',
+                    fontSize: 8,
+                    color: AppTheme.red,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          TerminalText(
-            floor.description,
-            fontSize: 9,
-            color: AppTheme.textSecondary,
-          ),
-          if (floor.specialCondition.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            TerminalText(
-              'Condicao: ${floor.specialCondition}',
-              fontSize: 9,
-              color: AppTheme.orange,
+              ],
             ),
-          ],
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 12,
-            runSpacing: 2,
-            children: [
-              TerminalText(
-                'Mortalidade: ${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
-                fontSize: 9,
-                color: AppTheme.red,
-              ),
-              TerminalText(
-                '${floor.tierLabel} | ${floor.difficultyTag}',
-                fontSize: 9,
-                color: AppTheme.orange,
-              ),
-            ],
           ),
-          TerminalText(
-            'Grupo: ${floor.recommendedPartySize} pessoas | Poder: ${floor.recommendedPower.toStringAsFixed(1)}',
-            fontSize: 9,
-            color: AppTheme.textDim,
-          ),
-          const SizedBox(height: 6),
-          TerminalText(
-            'Recompensa: ${floor.reward}',
-            fontSize: 9,
-            color: AppTheme.green,
-          ),
-          const SizedBox(height: 12),
 
-          // BOTAO DE ACAO
-          TerminalButton(
-            label: isBoss
-                ? 'DESAFIAR BOSS'
-                : isElite
-                ? 'ENFRENTAR ELITE'
-                : 'ENVIAR EXPEDICAO',
-            icon: isBoss
-                ? Icons.whatshot
-                : isElite
-                ? Icons.shield
-                : Icons.rocket_launch,
-            color: isBoss
-                ? AppTheme.red
-                : isElite
-                ? const Color(0xFFFF44FF)
-                : AppTheme.orange,
-            expanded: true,
-            onPressed: gp.aliveNpcs.length >= 2
-                ? () => _showSendExpeditionDialog(context, gp, floor)
-                : null,
-          ),
-          if (gp.aliveNpcs.length < 2)
-            const Padding(
-              padding: EdgeInsets.only(top: 4),
-              child: TerminalText(
-                'Necessario ao menos 2 habitantes vivos.',
-                fontSize: 8,
-                color: AppTheme.red,
-              ),
-            ),
+          // ── Corpo ───────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Tipo + descrição
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TerminalText(
+                      '${floor.type.icon}  ${floor.type.label}',
+                      fontSize: 12,
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                TerminalText(
+                  floor.description,
+                  fontSize: 9,
+                  color: AppTheme.textSecondary,
+                ),
+                if (floor.specialCondition.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.warning_amber,
+                        size: 11,
+                        color: AppTheme.orange,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: TerminalText(
+                          floor.specialCondition,
+                          fontSize: 9,
+                          color: AppTheme.orange,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
 
-          // Atalhos de grupo
-          if (gp.groups.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            const TerminalText(
-              'Enviar grupo formado:',
-              fontSize: 9,
-              color: AppTheme.textDim,
-            ),
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: gp.groups.map((group) {
-                final aliveCount = group.memberIds
-                    .where((id) => gp.allNpcs.any((n) => n.id == id && n.alive))
-                    .length;
-                return TerminalButton(
-                  label: '${group.name} ($aliveCount)',
-                  icon: Icons.groups,
-                  color: AppTheme.cyan,
-                  onPressed: aliveCount >= 2
-                      ? () => _confirmGroupExpedition(context, gp, group, floor)
+                const SizedBox(height: 8),
+
+                // Stats rápidos em linha
+                Row(
+                  children: [
+                    _floorStatChip(
+                      '${(floor.scaledMortality * 100).toStringAsFixed(0)}%',
+                      'MORT.',
+                      AppTheme.red,
+                    ),
+                    const SizedBox(width: 6),
+                    _floorStatChip(
+                      '${floor.recommendedPartySize}',
+                      'GRUPO',
+                      AppTheme.cyan,
+                    ),
+                    const SizedBox(width: 6),
+                    _floorStatChip(
+                      floor.recommendedPower.toStringAsFixed(1),
+                      'PODER',
+                      AppTheme.orange,
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: AppTheme.green.withValues(alpha: 0.5),
+                        ),
+                        borderRadius: BorderRadius.circular(2),
+                        color: AppTheme.green.withValues(alpha: 0.05),
+                      ),
+                      child: TerminalText(
+                        floor.reward,
+                        fontSize: 8,
+                        color: AppTheme.green,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                // BOTÃO DE AÇÃO
+                TerminalButton(
+                  label: isBoss
+                      ? 'DESAFIAR BOSS'
+                      : isElite
+                      ? 'ENFRENTAR ELITE'
+                      : 'ENVIAR EXPEDIÇÃO',
+                  icon: isBoss
+                      ? Icons.whatshot
+                      : isElite
+                      ? Icons.shield
+                      : Icons.rocket_launch,
+                  color: accentColor,
+                  expanded: true,
+                  onPressed: gp.aliveNpcs.length >= 2
+                      ? () => _showSendExpeditionDialog(context, gp, floor)
                       : null,
-                );
-              }).toList(),
+                ),
+                if (gp.aliveNpcs.length < 2)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: TerminalText(
+                      'Necessário ao menos 2 habitantes vivos.',
+                      fontSize: 8,
+                      color: AppTheme.red,
+                    ),
+                  ),
+
+                // Atalhos de grupo
+                if (gp.groups.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const TerminalText(
+                    'Enviar grupo formado:',
+                    fontSize: 9,
+                    color: AppTheme.textDim,
+                  ),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: gp.groups.map((group) {
+                      final aliveCount = group.memberIds
+                          .where(
+                            (id) =>
+                                gp.allNpcs.any((n) => n.id == id && n.alive),
+                          )
+                          .length;
+                      return TerminalButton(
+                        label: '${group.name} ($aliveCount)',
+                        icon: Icons.groups,
+                        color: AppTheme.cyan,
+                        onPressed: aliveCount >= 2
+                            ? () => _confirmGroupExpedition(
+                                context,
+                                gp,
+                                group,
+                                floor,
+                              )
+                            : null,
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildCommandInfo() {
-    return TerminalCard(
-      title: 'HIERARQUIA DE COMANDO',
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  /// Chip compacto para stats do andar
+  Widget _floorStatChip(String value, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+        borderRadius: BorderRadius.circular(2),
+        color: color.withValues(alpha: 0.05),
+      ),
+      child: Column(
         children: [
           TerminalText(
-            'VOCE DECIDE QUEM SOBE.',
+            value,
             fontSize: 11,
-            color: AppTheme.orange,
+            color: color,
             fontWeight: FontWeight.bold,
           ),
-          SizedBox(height: 6),
-          TerminalText(
-            'Acoes diretas: Enviar expedições, re-explorar andares, construir edificios.\n'
-            'Sugestoes: Treino de NPCs (eles podem recusar).\n'
-            'Tudo mais e autonomo.',
-            fontSize: 9,
-            color: AppTheme.textSecondary,
-          ),
-          SizedBox(height: 6),
-          TerminalText(
-            'DIFICULDADE INSPIRADA EM PICK ME UP:\n'
-            '  Andares 1-5: Facil (tutorial)\n'
-            '  Andares 6-15: Normal (introducao real)\n'
-            '  Andares 16-30: Dificil (mortes frequentes)\n'
-            '  Andares 31-50: Brutal (preparo e tudo)\n'
-            '  Andares 51-75: Infernal (cada ida e uma aposta)\n'
-            '  Andares 76-100: Impossivel (lendario)\n'
-            '  Boss a cada 10 andares | Elite a cada 5',
-            fontSize: 9,
-            color: AppTheme.red,
-          ),
+          TerminalText(label, fontSize: 6, color: AppTheme.textDim),
         ],
       ),
     );
   }
+
+  // _buildCommandInfo removido — informações óbvias pelo contexto do jogo
+
 
   Widget _buildReexploration(BuildContext context, GameProvider gp) {
     final cleared = gp.clearedFloors;
@@ -459,13 +766,13 @@ class _TowerScreenState extends State<TowerScreen> {
     final sortedCleared = cleared.reversed.toList();
 
     return TerminalCard(
-      title: 'RE-EXPLORACAO (${cleared.length} andares disponiveis)',
+      title: 'RE-EXPLORAÇÃO  ·  ${cleared.length} andares',
       borderColor: AppTheme.cyan,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const TerminalText(
-            'Envie grupos para coletar recursos de andares ja conquistados.',
+            'Envie coletores para extrair recursos de andares já conquistados.',
             fontSize: 9,
             color: AppTheme.textSecondary,
           ),
@@ -542,7 +849,9 @@ class _TowerScreenState extends State<TowerScreen> {
   Widget _buildLastResult(GameProvider gp) {
     final ch = gp.lastChallenge!;
     return TerminalCard(
-      title: 'ULTIMA EXPEDIÇÃO',
+      title: ch.victory
+          ? '✓  ÚLTIMA EXPEDIÇÃO  ·  VITÓRIA'
+          : '✗  ÚLTIMA EXPEDIÇÃO  ·  DERROTA',
       borderColor: ch.victory ? AppTheme.green : AppTheme.red,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -638,18 +947,37 @@ class _TowerScreenState extends State<TowerScreen> {
   // ==================== MAPA DE ANDARES (100 ANDARES EM TIERS) ====================
 
   Widget _buildFloorMap(GameProvider gp) {
+    final cleared = gp.state.highestFloorCleared;
+    final remaining = 100 - cleared;
     return TerminalCard(
-      title: 'MAPA DA TORRE (100 ANDARES)',
+      title: 'MAPA DA TORRE',
+      borderColor: AppTheme.cyan,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const TerminalText(
-            'Toque em um Tier para expandir/colapsar os andares.',
-            fontSize: 8,
-            color: AppTheme.textDim,
+          Row(
+            children: [
+              TerminalText(
+                '$cleared conquistados',
+                fontSize: 9,
+                color: AppTheme.green,
+              ),
+              const TerminalText('  ·  ', fontSize: 9, color: AppTheme.textDim),
+              TerminalText(
+                '$remaining restantes',
+                fontSize: 9,
+                color: AppTheme.textDim,
+              ),
+              const Spacer(),
+              const TerminalText(
+                'Toque para expandir',
+                fontSize: 7,
+                color: AppTheme.textDim,
+              ),
+            ],
           ),
           const SizedBox(height: 8),
-          // 10 tiers, de cima para baixo
+          // 10 tiers, do topo pra base
           ...List.generate(10, (i) {
             final tier = 10 - i;
             return _buildTierSection(gp, tier);
@@ -668,7 +996,7 @@ class _TowerScreenState extends State<TowerScreen> {
     final clearedCount = floorsInTier.where((f) => f.cleared).length;
     final isExpanded = _expandedTier == tier;
     final isFullyCleared = clearedCount == 10;
-    final hasBossCleared = floorsInTier.last.cleared;
+    final hasBossCleared = floorsInTier.isNotEmpty && floorsInTier.last.cleared;
     final isCurrentTier =
         gp.state.highestFloorCleared >= tierStart - 1 &&
         gp.state.highestFloorCleared < tierEnd;
@@ -686,12 +1014,26 @@ class _TowerScreenState extends State<TowerScreen> {
       'Sombra',
       'Criadora',
     ];
+    // Ícone temático por tier
+    final tierIcons = [
+      '🌅',
+      '🕳',
+      '🌀',
+      '🏰',
+      '👑',
+      '☠',
+      '💀',
+      '🌑',
+      '🌒',
+      '⚡',
+    ];
+    final tierIcon = tierIcons[(tier - 1).clamp(0, 9)];
 
     Color tierColor;
     if (isFullyCleared) {
       tierColor = AppTheme.green;
     } else if (isCurrentTier) {
-      tierColor = AppTheme.yellow;
+      tierColor = AppTheme.orange;
     } else if (isLocked) {
       tierColor = AppTheme.textDim;
     } else {
@@ -708,47 +1050,58 @@ class _TowerScreenState extends State<TowerScreen> {
                 }),
           child: Container(
             margin: const EdgeInsets.only(bottom: 2),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
             decoration: BoxDecoration(
               color: isCurrentTier
-                  ? AppTheme.yellow.withValues(alpha: 0.05)
+                  ? AppTheme.orange.withValues(alpha: 0.05)
                   : AppTheme.bgElevated,
               border: Border.all(color: tierColor.withValues(alpha: 0.4)),
               borderRadius: BorderRadius.circular(3),
             ),
             child: Row(
               children: [
+                // Seta expand
                 Icon(
                   isExpanded ? Icons.expand_less : Icons.expand_more,
-                  size: 14,
+                  size: 13,
                   color: isLocked ? AppTheme.textDim : tierColor,
                 ),
-                const SizedBox(width: 6),
-                TerminalText(
-                  'TIER $tier: ${tierNames[(tier - 1).clamp(0, 9)].toUpperCase()}',
-                  fontSize: 10,
-                  color: tierColor,
-                  fontWeight: FontWeight.bold,
+                const SizedBox(width: 4),
+                // Ícone temático
+                Text(
+                  isLocked ? '🔒' : tierIcon,
+                  style: const TextStyle(fontSize: 12),
                 ),
-                const Spacer(),
+                const SizedBox(width: 6),
+                // Nome do tier
+                Expanded(
+                  child: TerminalText(
+                    'TIER $tier  ${tierNames[(tier - 1).clamp(0, 9)].toUpperCase()}',
+                    fontSize: 10,
+                    color: tierColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                // Contagem + mini barra
                 TerminalText('$clearedCount/10', fontSize: 9, color: tierColor),
                 const SizedBox(width: 6),
-                // Mini barra
                 SizedBox(
-                  width: 50,
+                  width: 44,
                   height: 6,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: AppTheme.bgElevated,
+                      color: AppTheme.bgCard,
                       borderRadius: BorderRadius.circular(1),
-                      border: Border.all(color: AppTheme.border),
+                      border: Border.all(
+                        color: tierColor.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: FractionallySizedBox(
                       widthFactor: clearedCount / 10.0,
                       alignment: Alignment.centerLeft,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: tierColor,
+                          color: tierColor.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(1),
                         ),
                       ),
@@ -757,13 +1110,8 @@ class _TowerScreenState extends State<TowerScreen> {
                 ),
                 if (hasBossCleared) ...[
                   const SizedBox(width: 4),
-                  const Icon(Icons.star, size: 12, color: AppTheme.green),
+                  const Icon(Icons.star, size: 11, color: AppTheme.orange),
                 ],
-                if (isLocked)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 4),
-                    child: Icon(Icons.lock, size: 12, color: AppTheme.textDim),
-                  ),
               ],
             ),
           ),
@@ -793,7 +1141,7 @@ class _TowerScreenState extends State<TowerScreen> {
             if (isCleared) {
               floorColor = AppTheme.green;
             } else if (isNext) {
-              floorColor = AppTheme.yellow;
+              floorColor = AppTheme.orange;
             } else {
               floorColor = AppTheme.textDim;
             }
@@ -1032,7 +1380,12 @@ class _TowerScreenState extends State<TowerScreen> {
             expand: false,
             builder: (ctx, scrollController) => SingleChildScrollView(
               controller: scrollController,
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                16 + MediaQuery.of(context).viewInsets.bottom,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1202,14 +1555,26 @@ class _TowerScreenState extends State<TowerScreen> {
                           ),
 
                           // Atributos
-                          _analysisRow(
-                            'Yield de Atributos',
-                            '${(attrYield * 100).toStringAsFixed(0)}% media',
-                            attrYield >= 1.2
-                                ? AppTheme.green
-                                : attrYield >= 0.8
-                                ? AppTheme.cyan
-                                : AppTheme.orange,
+                          Builder(
+                            builder: (_) {
+                              final (
+                                statLabel,
+                                statIcon,
+                                statAvg,
+                              ) = _floorPrimaryStatInfo(
+                                floor.type,
+                                selectedNpcs,
+                              );
+                              return _analysisRow(
+                                '$statIcon $statLabel (andar)',
+                                '${(attrYield * 100).toStringAsFixed(0)}% efic. | média grupo: ${statAvg.toStringAsFixed(1)}',
+                                attrYield >= 1.2
+                                    ? AppTheme.green
+                                    : attrYield >= 0.8
+                                    ? AppTheme.cyan
+                                    : AppTheme.orange,
+                              );
+                            },
                           ),
 
                           const SizedBox(height: 6),
@@ -1559,11 +1924,55 @@ class _TowerScreenState extends State<TowerScreen> {
                                     ),
                                   ],
                                   const SizedBox(width: 6),
-                                  TerminalText(
-                                    'PWR:${power.toStringAsFixed(1)}',
-                                    fontSize: 9,
-                                    color: AppTheme.orange,
-                                    fontWeight: FontWeight.bold,
+                                  Builder(
+                                    builder: (_) {
+                                      double keyStatVal;
+                                      String keyStatName;
+                                      switch (floor.type) {
+                                        case FloorType.strategic:
+                                        case FloorType.puzzle:
+                                          keyStatVal =
+                                              npc.attributes.intelligence;
+                                          keyStatName = 'INT';
+                                          break;
+                                        case FloorType.mystery:
+                                          keyStatVal = npc.attributes.luck;
+                                          keyStatName = 'LCK';
+                                          break;
+                                        case FloorType.survival:
+                                        case FloorType.hunt:
+                                          keyStatVal = npc.attributes.endurance;
+                                          keyStatName = 'END';
+                                          break;
+                                        case FloorType.moral:
+                                          keyStatVal = npc.attributes.charisma;
+                                          keyStatName = 'CRS';
+                                          break;
+                                        default:
+                                          keyStatVal =
+                                              npc.attributes.combatPower;
+                                          keyStatName = 'PWR';
+                                      }
+                                      return Row(
+                                        children: [
+                                          TerminalText(
+                                            'PWR:${power.toStringAsFixed(1)}',
+                                            fontSize: 9,
+                                            color: AppTheme.orange,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          if (keyStatName != 'PWR') ...[
+                                            const SizedBox(width: 4),
+                                            TerminalText(
+                                              '$keyStatName:${keyStatVal.toStringAsFixed(1)}',
+                                              fontSize: 9,
+                                              color: AppTheme.cyan,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ],
+                                        ],
+                                      );
+                                    },
                                   ),
                                 ],
                               ),
@@ -2145,23 +2554,93 @@ class _TowerScreenState extends State<TowerScreen> {
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: result.log.map((line) {
-                Color color = AppTheme.textSecondary;
-                if (line.startsWith('>>') && result.victory) {
-                  color = AppTheme.green;
-                }
-                if (line.startsWith('>>') && !result.victory) {
-                  color = AppTheme.red;
-                }
-                if (line.contains('[X]')) color = AppTheme.red;
-                if (line.contains('[O]')) color = AppTheme.green;
-                if (line.startsWith('===')) color = AppTheme.cyan;
-                if (line.startsWith('>')) color = AppTheme.orange;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 1),
-                  child: TerminalText(line, fontSize: 9, color: color),
-                );
-              }).toList(),
+              children: [
+                ...result.log.map((line) {
+                  Color color = AppTheme.textSecondary;
+                  if (line.startsWith('>>') && result.victory) {
+                    color = AppTheme.green;
+                  }
+                  if (line.startsWith('>>') && !result.victory) {
+                    color = AppTheme.red;
+                  }
+                  if (line.contains('[X]')) color = AppTheme.red;
+                  if (line.contains('[O]')) color = AppTheme.green;
+                  if (line.startsWith('===')) color = AppTheme.cyan;
+                  if (line.startsWith('>')) color = AppTheme.orange;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 1),
+                    child: TerminalText(line, fontSize: 9, color: color),
+                  );
+                }),
+
+                // ── Dica pós-derrota ──
+                if (!result.victory) ...[
+                  const SizedBox(height: 12),
+                  const Divider(color: AppTheme.border, height: 1),
+                  const SizedBox(height: 8),
+                  const TerminalText(
+                    'O QUE ESTE ANDAR EXIGE:',
+                    fontSize: 9,
+                    color: AppTheme.textDim,
+                  ),
+                  const SizedBox(height: 4),
+                  Builder(
+                    builder: (_) {
+                      final floor = result.floor;
+                      String hint;
+                      Color hintColor;
+                      switch (floor.type) {
+                        case FloorType.strategic:
+                        case FloorType.puzzle:
+                          hint =
+                              '🧠 Inteligência — Cientistas, Programadores, Médicos';
+                          hintColor = AppTheme.cyan;
+                          break;
+                        case FloorType.mystery:
+                          hint =
+                              '🎲 Sorte + Inteligência — NPCs com LUCK e INT altas';
+                          hintColor = AppTheme.purple;
+                          break;
+                        case FloorType.survival:
+                        case FloorType.hunt:
+                          hint =
+                              '🏃 Resistência + Agilidade — Soldados, Atletas, Bombeiros';
+                          hintColor = AppTheme.green;
+                          break;
+                        case FloorType.moral:
+                          hint =
+                              '❤ Lealdade + Carisma — NPCs leais com sanidade estável';
+                          hintColor = AppTheme.yellow;
+                          break;
+                        default:
+                          hint =
+                              '⚔ Poder de Combate — envie seus NPCs mais fortes';
+                          hintColor = AppTheme.red;
+                      }
+                      if (floor.rule.type == FloorRuleType.intelligenceOnly) {
+                        hint =
+                            '🧠 REGRA ESPECIAL: apenas Inteligência conta aqui!';
+                        hintColor = AppTheme.cyan;
+                      }
+                      return Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: hintColor.withValues(alpha: 0.5),
+                          ),
+                          borderRadius: BorderRadius.circular(3),
+                          color: hintColor.withValues(alpha: 0.06),
+                        ),
+                        child: TerminalText(
+                          hint,
+                          fontSize: 9,
+                          color: hintColor,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ], // ← fecha o children: [ // ← fecha o children: [
             ),
           ),
         ),
@@ -2276,6 +2755,24 @@ class _TowerScreenState extends State<TowerScreen> {
                         ? AppTheme.yellow
                         : AppTheme.orange,
                   ),
+                  Builder(
+                    builder: (_) {
+                      final selectedNpcs = selectedIds
+                          .map(
+                            (id) =>
+                                gp.allNpcs.where((n) => n.id == id).firstOrNull,
+                          )
+                          .whereType<Npc>()
+                          .toList();
+                      final (statLabel, statIcon, statAvg) =
+                          _floorPrimaryStatInfo(floor.type, selectedNpcs);
+                      return TerminalText(
+                        '$statIcon Atributo chave: $statLabel | média do grupo: ${statAvg.toStringAsFixed(1)}',
+                        fontSize: 9,
+                        color: AppTheme.cyan,
+                      );
+                    },
+                  ),
                   const SizedBox(height: 4),
                   const Divider(color: AppTheme.border, height: 1),
                   const SizedBox(height: 4),
@@ -2353,7 +2850,18 @@ class _TowerScreenState extends State<TowerScreen> {
               ),
             );
           }
-
+          final sortedNpcs = [...gp.aliveNpcs]
+            ..sort((a, b) {
+              double statOf(Npc n) => switch (floor.type) {
+                FloorType.strategic ||
+                FloorType.puzzle => n.attributes.intelligence,
+                FloorType.mystery => n.attributes.luck,
+                FloorType.survival || FloorType.hunt => n.attributes.endurance,
+                FloorType.moral => n.attributes.charisma,
+                _ => n.attributes.combatPower,
+              };
+              return statOf(b).compareTo(statOf(a));
+            });
           return DraggableScrollableSheet(
             initialChildSize: 0.8,
             minChildSize: 0.4,
@@ -2361,7 +2869,12 @@ class _TowerScreenState extends State<TowerScreen> {
             expand: false,
             builder: (ctx, scrollController) => SingleChildScrollView(
               controller: scrollController,
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                16 + MediaQuery.of(context).viewInsets.bottom,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -2438,7 +2951,7 @@ class _TowerScreenState extends State<TowerScreen> {
                   const SizedBox(height: 8),
 
                   CollapsibleList(
-                    items: gp.aliveNpcs,
+                    items: sortedNpcs,
                     initialCount: 5,
                     itemBuilder: (npc, _) {
                       final selected = selectedIds.contains(npc.id);
@@ -2552,11 +3065,53 @@ class _TowerScreenState extends State<TowerScreen> {
                                     color: fatigueColor,
                                   ),
                                   const SizedBox(width: 6),
-                                  TerminalText(
-                                    'PWR:${power.toStringAsFixed(1)}',
-                                    fontSize: 9,
-                                    color: AppTheme.green,
-                                    fontWeight: FontWeight.bold,
+                                  Builder(
+                                    builder: (_) {
+                                      double keyVal;
+                                      String keyName;
+                                      switch (floor.type) {
+                                        case FloorType.strategic:
+                                        case FloorType.puzzle:
+                                          keyVal = npc.attributes.intelligence;
+                                          keyName = 'INT';
+                                          break;
+                                        case FloorType.mystery:
+                                          keyVal = npc.attributes.luck;
+                                          keyName = 'LCK';
+                                          break;
+                                        case FloorType.survival:
+                                        case FloorType.hunt:
+                                          keyVal = npc.attributes.endurance;
+                                          keyName = 'END';
+                                          break;
+                                        case FloorType.moral:
+                                          keyVal = npc.attributes.charisma;
+                                          keyName = 'CRS';
+                                          break;
+                                        default:
+                                          keyVal = npc.attributes.combatPower;
+                                          keyName = 'PWR';
+                                      }
+                                      return Row(
+                                        children: [
+                                          TerminalText(
+                                            'PWR:${power.toStringAsFixed(1)}',
+                                            fontSize: 9,
+                                            color: AppTheme.green,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          if (keyName != 'PWR') ...[
+                                            const SizedBox(width: 6),
+                                            TerminalText(
+                                              '$keyName:${keyVal.toStringAsFixed(1)}',
+                                              fontSize: 9,
+                                              color: AppTheme.cyan,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ],
+                                        ],
+                                      );
+                                    },
                                   ),
                                 ],
                               ),

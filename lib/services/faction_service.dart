@@ -13,7 +13,7 @@ import '../models/npc.dart';
 import '../models/game_event.dart';
 import '../models/equipment.dart';
 import 'package:collection/collection.dart';
-
+import 'war_service.dart';
 
 // ── Resultado público de smuggling ─────────────────────────────────────────
 
@@ -53,18 +53,10 @@ class ServiceEvent {
   });
 }
 
-
 class FactionService {
   final Random _rng;
-  final List<FloorInhabitant> _pendingRecruits = [];
-
-  FactionService(this._rng);
-
-  // ── Accessors ─────────────────────────────────────────────────────────────
-
-  List<FloorInhabitant> get pendingRecruits =>
-      List.unmodifiable(_pendingRecruits);
-
+  final WarService _warService;
+  FactionService(this._rng, this._warService);
   // ── Incursões ─────────────────────────────────────────────────────────────
 
   /// Processa incursões das facções hostis contra a cidadela.
@@ -152,7 +144,8 @@ class FactionService {
     );
 
     // Apply treaty bonuses on top
-    final adjustedResult = treatySuccessBonus != 0.0 || treatyMortalityBonus != 0.0
+    final adjustedResult =
+        treatySuccessBonus != 0.0 || treatyMortalityBonus != 0.0
         ? FactionInteractionResult(
             faction: result.faction,
             standingDelta: result.standingDelta,
@@ -206,9 +199,7 @@ class FactionService {
         party.map((n) => n.attributes.combatPower).fold(0.0, (a, b) => a + b) /
         party.length;
     final intel =
-        party
-            .map((n) => n.attributes.intelligence)
-            .fold(0.0, (a, b) => a + b) /
+        party.map((n) => n.attributes.intelligence).fold(0.0, (a, b) => a + b) /
         party.length;
 
     final relation = getOrCreateFactionRelation(faction, factionRelations);
@@ -275,8 +266,8 @@ class FactionService {
           .where((n) => n.profession == Profession.scribe)
           .toList();
       for (final scribe in scribes) {
-        scribe.attributes.intelligence =
-            (scribe.attributes.intelligence + 0.5).clamp(1, 20);
+        scribe.attributes.intelligence = (scribe.attributes.intelligence + 0.5)
+            .clamp(1, 20);
         citadel.resources.knowledge += 5;
         scribe.history.add('Estudou nos arquivos da Ordem Silenciosa');
       }
@@ -360,7 +351,7 @@ class FactionService {
     Map<String, FactionRelation> factionRelations,
   ) {
     return factionRelations.putIfAbsent(
-      faction.name,
+      faction.key,
       () => FactionRelation(faction: faction),
     );
   }
@@ -394,6 +385,17 @@ class FactionService {
     required int currentDay,
     required double partyPower,
   }) {
+    final activeWar = _warService.activeWars.firstWhereOrNull(
+      (w) =>
+          (w.aggressor == faction || w.defender == faction) &&
+          w.playerSidedWith != null &&
+          w.playerSidedWith != faction,
+    );
+    if (activeWar != null) {
+      final ally = activeWar.playerSidedWith!;
+      return 'Impossível negociar com ${faction.label} enquanto você está aliado a ${ally.label}.';
+    }
+
     final relation = getOrCreateFactionRelation(faction, factionRelations);
     if (currentDay - relation.lastDiplomacyDay < 7) {
       return 'Esta facção não aceita propostas tão seguidas.';
@@ -509,7 +511,7 @@ class FactionService {
 
     for (final relation in factionRelations.values) {
       if (relation.tier != FactionTier.ally) continue;
-      final rewardKey = 'ally_${relation.faction.name}';
+      final rewardKey = 'ally_${relation.faction.key}';
       if (relation.rewardsGranted.contains(rewardKey)) continue;
 
       relation.rewardsGranted.add(rewardKey);
@@ -643,7 +645,8 @@ class FactionService {
         message:
             'Contrabando bem-sucedido! Taxa evitada (+${(tax * 100).toStringAsFixed(0)}%) '
             'e bônus extra (+${(bonus * 100).toStringAsFixed(0)}%).',
-      );    } else {
+      );
+    } else {
       applyFactionStandingChange(
         faction: faction,
         delta: -5.0,
@@ -666,82 +669,12 @@ class FactionService {
 
   // ── Recrutamento de survivors ──────────────────────────────────────────────
 
-  void addPendingRecruit(FloorInhabitant inhabitant) {
-    if (!_pendingRecruits.any((r) => r.id == inhabitant.id)) {
-      _pendingRecruits.add(inhabitant);
-    }
-  }
-
-  String confirmRecruitSurvivor({
-    required String survivorId,
-    required Citadel citadel,
-    required List<TowerFloor> floors,
-    required Map<String, FactionRelation> factionRelations,
-    required int currentDay,
-    required Npc Function(FloorInhabitant) survivorToNpc,
-    required void Function(Npc) addNpc,
-  }) {
-    final idx = _pendingRecruits.indexWhere((r) => r.id == survivorId);
-    if (idx == -1) return 'Survivor não encontrado.';
-    if (!citadel.hasBuilding(BuildingType.wayfareresRefuge)) {
-      return 'Requer Abrigo de Viajantes para recrutar survivors.';
-    }
-
-    final survivor = _pendingRecruits[idx];
-    _pendingRecruits.removeAt(idx);
-
-    final originFloor = floors.firstWhereOrNull(
-      (f) => f.inhabitants.any((i) => i.id == survivorId),
-    );
-    if (originFloor != null &&
-        originFloor.controllingFaction != FloorFaction.none) {
-      final standingDelta = switch (originFloor.controllingFaction) {
-        FloorFaction.bloodMarket => 5.0,
-        FloorFaction.ironPact => -8.0,
-        FloorFaction.towerServants => 3.0,
-        FloorFaction.silentOrder => 2.0,
-        FloorFaction.voidChildren => _rng.nextDouble() * 20 - 10,
-        _ => 0.0,
-      };
-      applyFactionStandingChange(
-        faction: originFloor.controllingFaction,
-        delta: standingDelta,
-        factionRelations: factionRelations,
-        floors: floors,
-        affectedFloor: originFloor,
-        currentDay: currentDay,
-      );
-    }
-
-    final npc = survivorToNpc(survivor);
-    addNpc(npc);
-    return '${npc.name} se juntou à cidadela.';
-  }
-
-  void rejectRecruit(String survivorId) {
-    _pendingRecruits.removeWhere((r) => r.id == survivorId);
-  }
-
   // ── Serialização ──────────────────────────────────────────────────────────
+  Map<String, dynamic> toJson() => {};
 
-  Map<String, dynamic> toJson() => {
-    'pendingRecruits': _pendingRecruits.map((r) => r.toJson()).toList(),
-  };
+  void loadFromJson(Map<String, dynamic> json) {}
 
-  void loadFromJson(Map<String, dynamic> json) {
-    final rawRecruits = json['pendingRecruits'] as List<dynamic>? ?? [];
-    _pendingRecruits
-      ..clear()
-      ..addAll(
-        rawRecruits.map(
-          (e) => FloorInhabitant.fromJson(e as Map<String, dynamic>),
-        ),
-      );
-  }
-
-  void clear() {
-    _pendingRecruits.clear();
-  }
+  void clear() {}
 
   // ── Helpers privados ──────────────────────────────────────────────────────
 
@@ -862,8 +795,6 @@ class FactionService {
   }
 }
 
-// ── Interfaces para desacoplamento ────────────────────────────────────────────
-
 abstract class EquipmentServiceInterface {
   Equipment? rollDrop({
     required int floorNumber,
@@ -871,6 +802,3 @@ abstract class EquipmentServiceInterface {
     required int currentDay,
   });
 }
-
-// ── Iterable extension ────────────────────────────────────────────────────────
-

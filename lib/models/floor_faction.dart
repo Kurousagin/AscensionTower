@@ -15,11 +15,20 @@ import 'package:flutter/material.dart';
 
 enum FloorFaction {
   none,
-  ironPact, // militarista — respeita força bruta
-  silentOrder, // intelectual — respeita conhecimento e inteligência
-  bloodMarket, // mercantil — respeita recursos e trocas
-  voidChildren, // caótico — imprevisível, regras próprias
-  towerServants, // aliados da Torre — perigosos, recompensas únicas
+  ironPact,
+  silentOrder,
+  bloodMarket,
+  voidChildren,
+  towerServants;
+
+  String get key => switch (this) {
+    FloorFaction.none => 'none',
+    FloorFaction.ironPact => 'ironPact',
+    FloorFaction.silentOrder => 'silentOrder',
+    FloorFaction.bloodMarket => 'bloodMarket',
+    FloorFaction.voidChildren => 'voidChildren',
+    FloorFaction.towerServants => 'towerServants',
+  };
 }
 
 enum DiplomacyOfferType {
@@ -178,7 +187,7 @@ class FactionRelation {
   }
 
   Map<String, dynamic> toJson() => {
-    'faction': faction.name,
+    'faction': faction.key,
     'standing': standing,
     'totalInteractions': totalInteractions,
     'hasTreaty': hasTreaty,
@@ -192,7 +201,7 @@ class FactionRelation {
   factory FactionRelation.fromJson(Map<String, dynamic> json) {
     final factionName = json['faction'] as String? ?? 'none';
     final faction = FloorFaction.values.firstWhere(
-      (e) => e.name == factionName,
+      (e) => e.key == factionName,
       orElse: () => FloorFaction.none,
     );
     return FactionRelation(
@@ -735,23 +744,23 @@ class FactionWar {
 
   Map<String, dynamic> toJson() => {
     'id': id,
-    'aggressor': aggressor.name,
-    'defender': defender.name,
+    'aggressor': aggressor.key,
+    'defender': defender.key,
     'startDay': startDay,
     'duration': duration,
     'contestedFloors': contestedFloors,
     'aggressorStrength': aggressorStrength,
     'defenderStrength': defenderStrength,
-    'playerSidedWith': playerSidedWith?.name,
+    'playerSidedWith': playerSidedWith?.key,
     'resolved': resolved,
-    'winner': winner?.name,
+    'winner': winner?.key,
   };
 
   factory FactionWar.fromJson(Map<String, dynamic> json) {
     FloorFaction? parseFaction(String? name) {
       if (name == null) return null;
       return FloorFaction.values.firstWhere(
-        (e) => e.name == name,
+        (e) => e.key == name,
         orElse: () => FloorFaction.none,
       );
     }

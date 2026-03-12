@@ -14,9 +14,9 @@ import 'package:tower_ascension/models/floor_faction.dart';
 // ---------------------------------------------------------------------------
 
 enum InhabitantCategory {
-  resident,  // mora no andar, efeito passivo automático
-  survivor,  // NPC de grupo que falhou — recrutável via Abrigo de Viajantes
-  anomaly,   // entidade inexplicável — sempre gera fragmento de lore
+  resident, // mora no andar, efeito passivo automático
+  survivor, // NPC de grupo que falhou — recrutável via Abrigo de Viajantes
+  anomaly, // entidade inexplicável — sempre gera fragmento de lore
 }
 
 enum InhabitantDisposition {
@@ -27,10 +27,10 @@ enum InhabitantDisposition {
 }
 
 enum EffectType {
-  resourceBonus,     // multiplica recursos da re-exploração
-  loreFragment,      // gera fragmento de lore (anomalias + residentes)
-  floorModifier,     // aplica tag temporária ao andar
-  recruitmentReady,  // survivor aguarda recrutamento
+  resourceBonus, // multiplica recursos da re-exploração
+  loreFragment, // gera fragmento de lore (anomalias + residentes)
+  floorModifier, // aplica tag temporária ao andar
+  recruitmentReady, // survivor aguarda recrutamento
   negativeIfHostile, // penaliza re-exploração quando hostil
 }
 
@@ -40,8 +40,8 @@ enum EffectType {
 
 class InhabitantEffect {
   final EffectType type;
-  final double magnitude;    // ex: 1.25 = +25% recurso
-  final String loreText;     // texto narrativo exibido ao jogador
+  final double magnitude; // ex: 1.25 = +25% recurso
+  final String loreText; // texto narrativo exibido ao jogador
   final String? floorModTag; // tag temporária aplicada ao TowerFloor
 
   const InhabitantEffect({
@@ -79,7 +79,7 @@ class SurvivorStats {
   final double intelligence;
   final double endurance;
   final List<String> traits; // ex: ['battle-hardened', 'traumatized']
-  double loyalty;            // inicia baixo, cresce na cidadela
+  double loyalty; // inicia baixo, cresce na cidadela
 
   SurvivorStats({
     required this.combatPower,
@@ -101,9 +101,8 @@ class SurvivorStats {
     combatPower: (json['combatPower'] as num?)?.toDouble() ?? 10.0,
     intelligence: (json['intelligence'] as num?)?.toDouble() ?? 5.0,
     endurance: (json['endurance'] as num?)?.toDouble() ?? 5.0,
-    traits: (json['traits'] as List<dynamic>?)
-            ?.map((e) => e.toString())
-            .toList() ??
+    traits:
+        (json['traits'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
         [],
     loyalty: (json['loyalty'] as num?)?.toDouble() ?? 15.0,
   );
@@ -185,7 +184,8 @@ class FloorInhabitant {
           : const InhabitantEffect(type: EffectType.loreFragment),
       survivorStats: json['survivorStats'] != null
           ? SurvivorStats.fromJson(
-              json['survivorStats'] as Map<String, dynamic>)
+              json['survivorStats'] as Map<String, dynamic>,
+            )
           : null,
       isRecruited: json['isRecruited'] as bool? ?? false,
       hasDeparted: json['hasDeparted'] as bool? ?? false,
@@ -215,8 +215,7 @@ class InhabitantEncounterResult {
     this.recruitableSurvivors = const [],
   });
 
-  bool get hasContent =>
-      narrativeLines.isNotEmpty || loreFragments.isNotEmpty;
+  bool get hasContent => narrativeLines.isNotEmpty || loreFragments.isNotEmpty;
 }
 
 // ---------------------------------------------------------------------------
@@ -257,7 +256,8 @@ class InhabitantProcessor {
               inhabitant.disposition == InhabitantDisposition.hostile) {
             resourceMult *= 0.5;
             narratives.add(
-                '⚠️ ${inhabitant.name} está hostil. A exploração foi dificultada.');
+              '⚠️ ${inhabitant.name} está hostil. A exploração foi dificultada.',
+            );
           }
 
           if (inhabitant.effect.type == EffectType.loreFragment &&
@@ -279,11 +279,13 @@ class InhabitantProcessor {
           if (hasWayfareresRefuge && inhabitant.isRecruitable) {
             recruitable.add(inhabitant);
             narratives.add(
-                '🏠 ${inhabitant.name} pode ser recrutado no Abrigo de Viajantes.');
+              '🏠 ${inhabitant.name} pode ser recrutado no Abrigo de Viajantes.',
+            );
           } else if (!hasWayfareresRefuge && inhabitant.isRecruitable) {
             narratives.add(
-                '💬 ${inhabitant.name} pergunta se há um lugar seguro na sua cidadela. '
-                '(Construa o Abrigo de Viajantes para recrutá-lo)');
+              '💬 ${inhabitant.name} pergunta se há um lugar seguro na sua cidadela. '
+              '(Construa o Abrigo de Viajantes para recrutá-lo)',
+            );
           }
           break;
 
@@ -391,7 +393,9 @@ class InhabitantProcessor {
 
   /// Ciclo das anomalias: independente de facção, aparecem e somem.
   static void _cycleAnomalies(
-      List<FloorInhabitant> inhabitants, int currentDay) {
+    List<FloorInhabitant> inhabitants,
+    int currentDay,
+  ) {
     for (final inhabitant in inhabitants) {
       if (inhabitant.category != InhabitantCategory.anomaly) continue;
       if (inhabitant.isRecruited) continue;
@@ -421,112 +425,115 @@ class InhabitantFactory {
   // ── Andares 1-10: tutoriais e neutros ─────────────────────────
 
   static FloorInhabitant blindElder() => FloorInhabitant(
-        id: 'resident_blind_elder',
-        name: 'Velho de Olhos Brancos',
-        description: 'Um velho de olhos brancos sentado na entrada. '
-            'Não pede nada. Mas se você deixar comida, ele fala.',
-        category: InhabitantCategory.resident,
-        effect: const InhabitantEffect(
-          type: EffectType.resourceBonus,
-          magnitude: 1.25,
-          loreText: '"Já vi mil grupos passarem por este andar. Metade nunca desceu."',
-        ),
-      );
+    id: 'resident_blind_elder',
+    name: 'Velho de Olhos Brancos',
+    description:
+        'Um velho de olhos brancos sentado na entrada. '
+        'Não pede nada. Mas se você deixar comida, ele fala.',
+    category: InhabitantCategory.resident,
+    effect: const InhabitantEffect(
+      type: EffectType.resourceBonus,
+      magnitude: 1.25,
+      loreText:
+          '"Já vi mil grupos passarem por este andar. Metade nunca desceu."',
+    ),
+  );
 
   static FloorInhabitant towerChildren() => FloorInhabitant(
-        id: 'resident_tower_children',
-        name: 'Crianças da Torre',
-        description:
-            'Crianças jogam entre as ruínas. Observam em silêncio. '
-            'Nenhum adulto está com elas.',
-        category: InhabitantCategory.resident,
-        effect: const InhabitantEffect(
-          type: EffectType.loreFragment,
-          loreText:
-              'Uma delas aponta para cima. Quando você olha, ela some.',
-        ),
-      );
+    id: 'resident_tower_children',
+    name: 'Crianças da Torre',
+    description:
+        'Crianças jogam entre as ruínas. Observam em silêncio. '
+        'Nenhum adulto está com elas.',
+    category: InhabitantCategory.resident,
+    effect: const InhabitantEffect(
+      type: EffectType.loreFragment,
+      loreText: 'Uma delas aponta para cima. Quando você olha, ela some.',
+    ),
+  );
 
   // ── Survivors ─────────────────────────────────────────────────
 
   static FloorInhabitant dara({int floorNumber = 20}) => FloorInhabitant(
-        id: 'survivor_dara_f$floorNumber',
-        name: 'Dara',
-        description:
-            'Dara. De uma expedição que desapareceu há 40 dias. '
-            'Está viva. Assustada. Tem marcas de combate recentes.',
-        category: InhabitantCategory.survivor,
-        disposition: InhabitantDisposition.friendly,
-        effect: InhabitantEffect(
-          type: EffectType.recruitmentReady,
-          loreText:
-              '"O Andar ${floorNumber + 1} não é o que parece. Há algo esperando lá."',
-        ),
-        survivorStats: SurvivorStats(
-          combatPower: 7.2,
-          intelligence: 5.5,
-          endurance: 6.0,
-          traits: ['battle-hardened', 'traumatized', 'tower-knowledge'],
-          loyalty: 18.0,
-        ),
-      );
+    id: 'survivor_dara_f$floorNumber',
+    name: 'Dara',
+    description:
+        'Dara. De uma expedição que desapareceu há 40 dias. '
+        'Está viva. Assustada. Tem marcas de combate recentes.',
+    category: InhabitantCategory.survivor,
+    disposition: InhabitantDisposition.friendly,
+    effect: InhabitantEffect(
+      type: EffectType.recruitmentReady,
+      loreText:
+          '"O Andar ${floorNumber + 1} não é o que parece. Há algo esperando lá."',
+    ),
+    survivorStats: SurvivorStats(
+      combatPower: 7.2,
+      intelligence: 5.5,
+      endurance: 6.0,
+      traits: ['battle-hardened', 'traumatized', 'tower-knowledge'],
+      loyalty: 18.0,
+    ),
+  );
 
-  static FloorInhabitant unknownSoldier({required int floorNumber}) =>
-      FloorInhabitant(
-        id: 'survivor_soldier_f$floorNumber',
-        name: 'Soldado Sem Nome',
-        description:
-            'Um homem com armadura destruída sentado com as costas contra a parede. '
-            'Não diz de onde veio. Apenas observa quem passa.',
-        category: InhabitantCategory.survivor,
-        disposition: InhabitantDisposition.neutral,
-        effect: const InhabitantEffect(
-          type: EffectType.recruitmentReady,
-          loreText: '"Vocês têm uma cidadela? Pensava que não existia mais nenhuma."',
-        ),
-        survivorStats: SurvivorStats(
-          combatPower: 8.5,
-          intelligence: 4.0,
-          endurance: 7.0,
-          traits: ['battle-hardened', 'silent', 'loyal'],
-          loyalty: 12.0,
-        ),
-      );
+  static FloorInhabitant unknownSoldier({
+    required int floorNumber,
+  }) => FloorInhabitant(
+    id: 'survivor_soldier_f$floorNumber',
+    name: 'Soldado Sem Nome',
+    description:
+        'Um homem com armadura destruída sentado com as costas contra a parede. '
+        'Não diz de onde veio. Apenas observa quem passa.',
+    category: InhabitantCategory.survivor,
+    disposition: InhabitantDisposition.neutral,
+    effect: const InhabitantEffect(
+      type: EffectType.recruitmentReady,
+      loreText:
+          '"Vocês têm uma cidadela? Pensava que não existia mais nenhuma."',
+    ),
+    survivorStats: SurvivorStats(
+      combatPower: 8.5,
+      intelligence: 4.0,
+      endurance: 7.0,
+      traits: ['battle-hardened', 'silent', 'loyal'],
+      loyalty: 12.0,
+    ),
+  );
 
   // ── Anomalias ─────────────────────────────────────────────────
 
   static FloorInhabitant sittingFigure() => FloorInhabitant(
-        id: 'anomaly_sitting_figure',
-        name: 'Figura Sentada',
-        description:
-            'Uma figura de costas para a entrada. Imóvel. '
-            'Seus exploradores passaram três vezes. '
-            'Na quarta visita, havia ido embora. Deixou uma marca.',
-        category: InhabitantCategory.anomaly,
-        disposition: InhabitantDisposition.unknown,
-        effect: const InhabitantEffect(
-          type: EffectType.floorModifier,
-          loreText:
-              'A marca na parede não estava lá antes. Ninguém sabe o que significa.',
-          floorModTag: 'anomaly_presence',
-        ),
-      );
+    id: 'anomaly_sitting_figure',
+    name: 'Figura Sentada',
+    description:
+        'Uma figura de costas para a entrada. Imóvel. '
+        'Seus exploradores passaram três vezes. '
+        'Na quarta visita, havia ido embora. Deixou uma marca.',
+    category: InhabitantCategory.anomaly,
+    disposition: InhabitantDisposition.unknown,
+    effect: const InhabitantEffect(
+      type: EffectType.floorModifier,
+      loreText:
+          'A marca na parede não estava lá antes. Ninguém sabe o que significa.',
+      floorModTag: 'anomaly_presence',
+    ),
+  );
 
   static FloorInhabitant echoVoice() => FloorInhabitant(
-        id: 'anomaly_echo_voice',
-        name: 'Voz sem Corpo',
-        description:
-            'Uma voz repete as últimas palavras ditas por cada explorador. '
-            'Não há fonte visível. Não há ameaça. Apenas o eco.',
-        category: InhabitantCategory.anomaly,
-        disposition: InhabitantDisposition.unknown,
-        effect: const InhabitantEffect(
-          type: EffectType.loreFragment,
-          loreText:
-              'A voz repete: "...não voltem para este andar..." '
-              '— mas ninguém de seu grupo disse isso.',
-        ),
-      );
+    id: 'anomaly_echo_voice',
+    name: 'Voz sem Corpo',
+    description:
+        'Uma voz repete as últimas palavras ditas por cada explorador. '
+        'Não há fonte visível. Não há ameaça. Apenas o eco.',
+    category: InhabitantCategory.anomaly,
+    disposition: InhabitantDisposition.unknown,
+    effect: const InhabitantEffect(
+      type: EffectType.loreFragment,
+      loreText:
+          'A voz repete: "...não voltem para este andar..." '
+          '— mas ninguém de seu grupo disse isso.',
+    ),
+  );
 
   // ── Geração procedural por tier ──────────────────────────────
 
@@ -550,13 +557,13 @@ class InhabitantFactory {
     }
   }
 
-  static FloorInhabitant _generateResident(
-      int floor, int tier, int seed) {
+  static FloorInhabitant _generateResident(int floor, int tier, int seed) {
     final variants = [
       FloorInhabitant(
         id: 'resident_trader_f$floor',
         name: 'Comerciante Errante',
-        description: 'Um mercador que encontrou seu nicho entre os andares. '
+        description:
+            'Um mercador que encontrou seu nicho entre os andares. '
             'Não sobe. Não desce. Apenas troca.',
         category: InhabitantCategory.resident,
         effect: InhabitantEffect(
@@ -597,8 +604,7 @@ class InhabitantFactory {
     return variants[seed % variants.length];
   }
 
-  static FloorInhabitant _generateSurvivor(
-      int floor, int tier, int seed) {
+  static FloorInhabitant _generateSurvivor(int floor, int tier, int seed) {
     // Stats escalam com o tier — quem sobreviveu num andar mais alto é mais forte
     final basePower = 5.0 + (tier * 1.5);
     final baseEndurance = 4.0 + (tier * 1.0);
@@ -726,7 +732,7 @@ class TradeOffer {
     'id': id,
     'merchantInhabitantId': merchantInhabitantId,
     'floorNumber': floorNumber,
-    'merchantFaction': merchantFaction.name,
+    'merchantFaction': merchantFaction.key,
     'cost': cost,
     'reward': reward,
     'equipmentId': equipmentId,
@@ -787,6 +793,9 @@ class FloorQuest {
   int acceptedDay;
   bool completed;
   bool failed;
+  String? assignedGroupId;
+  List<String> assignedNpcIds;
+  double failureChance;
 
   FloorQuest({
     required this.id,
@@ -804,7 +813,10 @@ class FloorQuest {
     this.acceptedDay = 0,
     this.completed = false,
     this.failed = false,
-  });
+    this.assignedGroupId,
+    List<String>? assignedNpcIds,
+    this.failureChance = 0.0,
+  }) : assignedNpcIds = assignedNpcIds ?? [];
 
   bool get isActive => acceptedDay > 0 && !completed && !failed;
   bool get isAvailable => acceptedDay == 0 && !completed && !failed;
@@ -825,6 +837,9 @@ class FloorQuest {
     'acceptedDay': acceptedDay,
     'completed': completed,
     'failed': failed,
+    'assignedGroupId': assignedGroupId,
+    'assignedNpcIds': assignedNpcIds,
+    'failureChance': failureChance,
   };
 
   factory FloorQuest.fromJson(Map<String, dynamic> json) {
@@ -865,6 +880,9 @@ class FloorQuest {
       acceptedDay: json['acceptedDay'] as int? ?? 0,
       completed: json['completed'] as bool? ?? false,
       failed: json['failed'] as bool? ?? false,
+      assignedGroupId: json['assignedGroupId'] as String?,
+      assignedNpcIds: List<String>.from(json['assignedNpcIds'] ?? []),
+      failureChance: (json['failureChance'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

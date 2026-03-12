@@ -31,9 +31,7 @@ class TradeService {
     required int currentDay,
   }) {
     // Remove ofertas antigas (mais de 7 dias)
-    _availableOffers.removeWhere(
-      (o) => currentDay - o.refreshDay >= 7,
-    );
+    _availableOffers.removeWhere((o) => currentDay - o.refreshDay >= 7);
 
     // Gera novas ofertas para andares conquistados com facções
     for (final floor in floors.where((f) => f.cleared)) {
@@ -43,14 +41,15 @@ class TradeService {
       // Verifica se já há oferta para este andar
       if (_availableOffers.any((o) => o.floorNumber == floor.number)) continue;
 
-      final relation = factionRelations[faction.name];
+      final relation = factionRelations[faction.key];
       final standing = relation?.standing ?? faction.initialStanding;
 
       // Só gera ofertas se standing for >= -30
       if (standing < -30) continue;
 
       // Blood Market hub: standing >= 50 → +30% variedade
-      final extraVariety = faction == FloorFaction.bloodMarket && standing >= 50;
+      final extraVariety =
+          faction == FloorFaction.bloodMarket && standing >= 50;
 
       final newOffers = _generateOffersForFaction(
         faction: faction,
@@ -73,7 +72,7 @@ class TradeService {
   }) {
     final offers = <TradeOffer>[];
     final priceMod = _priceModifier(standing);
-    final merchantId = 'merchant_${faction.name}_f$floorNumber';
+    final merchantId = 'merchant_${faction.key}_f$floorNumber';
 
     switch (faction) {
       case FloorFaction.ironPact:
@@ -182,11 +181,7 @@ class TradeService {
               floorNumber: floorNumber,
               faction: faction,
               cost: {'food': (5 * priceMod).round()},
-              reward: {
-                'food': 50,
-                'iron': 20,
-                'knowledge': 15,
-              }, // muito bom
+              reward: {'food': 50, 'iron': 20, 'knowledge': 15}, // muito bom
               refreshDay: currentDay,
               standingReq: -50,
             ),
@@ -265,6 +260,7 @@ class TradeService {
     required String offerId,
     required Citadel citadel,
     required Map<String, FactionRelation> factionRelations,
+    int marketLevel = 1,
   }) {
     final offer = _availableOffers.firstWhereOrNull((o) => o.id == offerId);
     if (offer == null) {
@@ -274,8 +270,9 @@ class TradeService {
       );
     }
 
-    final relation = factionRelations[offer.merchantFaction.name];
-    final standing = relation?.standing ?? offer.merchantFaction.initialStanding;
+    final relation = factionRelations[offer.merchantFaction.key];
+    final standing =
+        relation?.standing ?? offer.merchantFaction.initialStanding;
 
     if (standing < offer.standingRequirement) {
       return TradeResult(
@@ -304,10 +301,10 @@ class TradeService {
     }
 
     // Credita recompensa
+    final marketMult = 1.0 + (marketLevel - 1) * 0.1;
     for (final entry in offer.reward.entries) {
-      _adjustResource(citadel, entry.key, entry.value.toDouble());
+      _adjustResource(citadel, entry.key, entry.value * marketMult);
     }
-
     // Remove oferta (usada)
     _availableOffers.removeWhere((o) => o.id == offerId);
 
@@ -320,7 +317,8 @@ class TradeService {
 
     return TradeResult(
       success: true,
-      message: 'Troca concluída com ${offer.merchantFaction.label}! '
+      message:
+          'Troca concluída com ${offer.merchantFaction.label}! '
           'Pagou: $costStr → Recebeu: $rewardStr',
     );
   }
@@ -356,7 +354,7 @@ class TradeService {
         citadel.resources.knowledge += amount;
       default:
         assert(false, 'Unknown resource key: $key');
-    }    
+    }
   }
 
   // ── Serialização ──────────────────────────────────────────────────────────

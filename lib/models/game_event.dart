@@ -26,7 +26,8 @@ enum GameEventType {
   emergencySummon,
   floorReexplore,
   loyaltyChange,
-  politicalEvent, recruitment,
+  politicalEvent,
+  recruitment,
   warEvent,
   tradeEvent,
   questEvent,
@@ -173,6 +174,8 @@ class ServiceEvent {
   final List<String> involvedNpcIds;
   final bool isMajor;
   final double extraFoodGain;
+  final double? standingDelta;
+  final FloorFaction? affectedFaction;
 
   const ServiceEvent({
     required this.type,
@@ -181,6 +184,8 @@ class ServiceEvent {
     this.involvedNpcIds = const [],
     this.isMajor = false,
     this.extraFoodGain = 0,
+    this.standingDelta,
+    this.affectedFaction,
   });
 }
 

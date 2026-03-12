@@ -380,14 +380,14 @@ abstract class _AttrPresets {
   static final bornInTheAbyss = NpcAttributes(); // atributos padrão (5,5,5...)
   static final bornOfChaos = NpcAttributes();
   static final towerDweller = NpcAttributes(
-  strength: 6.0,
-  agility: 6.0,
-  intelligence: 5.0,
-  endurance: 7.0,
-  charisma: 4.0,
-  mentalStability: 60.0,
-  luck: 5.0,
-);
+    strength: 6.0,
+    agility: 6.0,
+    intelligence: 5.0,
+    endurance: 7.0,
+    charisma: 4.0,
+    mentalStability: 60.0,
+    luck: 5.0,
+  );
 
   static final Map<NpcOrigin, NpcAttributes> _map = {
     NpcOrigin.student: student,
@@ -799,6 +799,9 @@ class Npc {
   int daysSurvived;
   int floorsCleared;
   int killCount;
+  int arenaWins;
+  int arenaLosses;
+  int lastArenaChallengeDay;
   double loyalty;
   String? groupId;
   int trainingSuggestionsReceived;
@@ -862,6 +865,9 @@ class Npc {
     this.daysSurvived = 0,
     this.floorsCleared = 0,
     this.killCount = 0,
+    this.arenaWins = 0,
+    this.arenaLosses = 0,
+    this.lastArenaChallengeDay = 0,
     this.loyalty = 50.0,
     this.groupId,
     this.trainingSuggestionsReceived = 0,
@@ -879,12 +885,12 @@ class Npc {
     this.equippedWeaponId,
     this.equippedArmorId,
     this.equippedAccessoryId,
-  }) : traits = traits ?? const [],
+  }) : traits = traits ?? [],
        relationships = relationships ?? <Relationship>[],
-       traumas = traumas ?? const [],
-       history = history ?? const [],
-       childrenIds = childrenIds ?? const [],
-       psychologicalMarks = psychologicalMarks ?? const [];
+       traumas = traumas ?? [],
+       history = history ?? [],
+       childrenIds = childrenIds ?? [],
+       psychologicalMarks = psychologicalMarks ?? [];
 
   // ── Getters de Equipamento [FASE 1] ─────────
 
@@ -961,6 +967,9 @@ class Npc {
     int? daysSurvived,
     int? floorsCleared,
     int? killCount,
+    int? arenaWins,
+    int? arenaLosses,
+    int? lastArenaChallengeDay,
     double? loyalty,
     String? groupId,
     bool clearGroup = false,
@@ -1005,6 +1014,9 @@ class Npc {
     daysSurvived: daysSurvived ?? this.daysSurvived,
     floorsCleared: floorsCleared ?? this.floorsCleared,
     killCount: killCount ?? this.killCount,
+    arenaWins: arenaWins ?? this.arenaWins,
+    arenaLosses: arenaLosses ?? this.arenaLosses,
+    lastArenaChallengeDay: lastArenaChallengeDay ?? this.lastArenaChallengeDay,
     loyalty: loyalty ?? this.loyalty,
     groupId: clearGroup ? null : groupId ?? this.groupId,
     trainingSuggestionsReceived:
@@ -1226,6 +1238,9 @@ class Npc {
     'daysSurvived': daysSurvived,
     'floorsCleared': floorsCleared,
     'killCount': killCount,
+    'arenaWins': arenaWins,
+    'arenaLosses': arenaLosses,
+    'lastArenaChallengeDay': lastArenaChallengeDay,
     'loyalty': loyalty,
     'groupId': groupId,
     'trainingSuggestionsReceived': trainingSuggestionsReceived,
@@ -1313,6 +1328,9 @@ class Npc {
       daysSurvived: json['daysSurvived'] as int? ?? 0,
       floorsCleared: json['floorsCleared'] as int? ?? 0,
       killCount: json['killCount'] as int? ?? 0,
+      arenaWins: json['arenaWins'] as int? ?? 0,
+      arenaLosses: json['arenaLosses'] as int? ?? 0,
+      lastArenaChallengeDay: json['lastArenaChallengeDay'] as int? ?? 0,
       loyalty: (json['loyalty'] as num?)?.toDouble() ?? 50.0,
       groupId: json['groupId'] as String?,
       trainingSuggestionsReceived:

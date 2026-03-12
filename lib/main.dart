@@ -1,6 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:tower_ascension/services/events/notification_service.dart';
+import 'package:tower_ascension/widgets/ambient_appbar.dart';
+import 'package:tower_ascension/widgets/ambient_overlay.dart';
+import 'package:workmanager/workmanager.dart';
 import 'providers/game_provider.dart';
 import 'screens/title_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -13,12 +19,31 @@ import 'screens/groups_screen.dart';
 import 'widgets/theme.dart';
 import 'widgets/event_toast.dart';
 import 'screens/prison_screen.dart';
+import 'screens/arena_screen.dart';
 import 'screens/faction_screen.dart';
+import 'background/notification_worker.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
   await Hive.openBox('tower_saves');
+  await Hive.openBox('settings');
+
+  // ── Notificações ──────────────────────────────────────────
+  await NotificationService.instance.init();
+
+  // Workmanager só existe em Android/iOS
+  if (Platform.isAndroid || Platform.isIOS) {
+    Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+    Workmanager().registerPeriodicTask(
+      'crisis_check',
+      'crisis_check_task',
+      frequency: const Duration(minutes: 15),
+      constraints: Constraints(networkType: NetworkType.notRequired),
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+    );
+  }
+
   runApp(const TowerApp());
 }
 
@@ -33,11 +58,15 @@ class TowerApp extends StatelessWidget {
         title: 'Tower Ascension',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
-        home: EventToastOverlay(child: const AppShell()),
+        home: const EventToastOverlay(child: AppShell()),
       ),
     );
   }
 }
+
+// ─────────────────────────────────────────────
+// APP SHELL
+// ─────────────────────────────────────────────
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -49,9 +78,17 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   bool _inGame = false;
   int _currentScreen = 0;
-  int? _expandedGroup; // qual grupo está expandido
+  int? _expandedGroup;
 
-  // ── Definição de grupos ──────────────────────
+  Box get _settings => Hive.box('settings');
+  bool get _effectsEnabled =>
+      _settings.get('effectsEnabled', defaultValue: true) as bool;
+  void _toggleEffects() {
+    _settings.put('effectsEnabled', !_effectsEnabled);
+    setState(() {});
+  }
+
+  // ── Grupos da nav bar ────────────────────────────────────────
   static const _groups = [
     _NavGroup(
       icon: Icons.remove_red_eye_outlined,
@@ -72,6 +109,7 @@ class _AppShellState extends State<AppShell> {
       label: 'Cidadela',
       screens: [
         _NavItem(2, 'CIDADELA', Icons.castle_outlined),
+        _NavItem(9, 'ARENA', Icons.sports_mma_outlined),
         _NavItem(5, 'REGISTROS', Icons.article_outlined),
       ],
     ),
@@ -91,15 +129,16 @@ class _AppShellState extends State<AppShell> {
   ];
 
   final List<Widget> _screens = const [
-    DashboardScreen(),
-    TowerScreen(),
-    CitadelScreen(),
-    NpcListScreen(),
-    GroupsScreen(),
-    CitadelLedgerScreen(),
-    PrisonScreen(),
-    CodexScreen(),
-    FactionScreen(), // index 8
+    DashboardScreen(), // 0
+    TowerScreen(), // 1
+    CitadelScreen(), // 2
+    NpcListScreen(), // 3
+    GroupsScreen(), // 4
+    CitadelLedgerScreen(), // 5
+    PrisonScreen(), // 6
+    CodexScreen(), // 7
+    FactionScreen(), // 8
+    ArenaScreen(), // 9 — substituir por ArenaScreen()
   ];
 
   static const _titles = [
@@ -112,9 +151,9 @@ class _AppShellState extends State<AppShell> {
     'JUSTICA',
     'CODEX',
     'FACCOES',
+    'ARENA',
   ];
 
-  // Qual grupo contém a tela atual
   int _groupOf(int screenIndex) {
     for (int i = 0; i < _groups.length; i++) {
       if (_groups[i].screens.any((s) => s.index == screenIndex)) return i;
@@ -125,18 +164,186 @@ class _AppShellState extends State<AppShell> {
   void _onGroupTap(int groupIdx) {
     final group = _groups[groupIdx];
     if (group.screens.length == 1) {
-      // Grupo sem sub-itens: navega direto
       setState(() {
         _currentScreen = group.screens.first.index;
         _expandedGroup = null;
       });
     } else if (_expandedGroup == groupIdx) {
-      // Já expandido: fecha
       setState(() => _expandedGroup = null);
     } else {
-      // Expande
       setState(() => _expandedGroup = groupIdx);
     }
+  }
+
+  // ── Confirm dialog de saída ──────────────────────────────────
+  void _confirmExit(BuildContext context, GameProvider gp) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppTheme.bgCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(4),
+          side: const BorderSide(color: AppTheme.border),
+        ),
+        title: const Text(
+          'SAIR DO JOGO',
+          style: TextStyle(
+            fontFamily: 'FiraCode',
+            color: AppTheme.textPrimary,
+            fontSize: 16,
+            letterSpacing: 1.5,
+          ),
+        ),
+        content: const Text(
+          'O progresso foi salvo automaticamente.\nDeseja voltar ao menu principal?',
+          style: TextStyle(
+            fontFamily: 'FiraCode',
+            color: AppTheme.textSecondary,
+            fontSize: 13,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'CANCELAR',
+              style: TextStyle(
+                fontFamily: 'FiraCode',
+                color: AppTheme.textDim,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              gp.stopSimulation();
+              setState(() => _inGame = false);
+            },
+            child: const Text(
+              'SAIR',
+              style: TextStyle(
+                fontFamily: 'FiraCode',
+                color: AppTheme.red,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Drawer lateral (hamburguer) ──────────────────────────────
+  Widget _buildDrawer(BuildContext context, GameProvider gp) {
+    return Drawer(
+      backgroundColor: AppTheme.bgCard,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Text(
+                'TOWER ASCENSION',
+                style: const TextStyle(
+                  fontFamily: 'FiraCode',
+                  color: AppTheme.cyan,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: Text(
+                'Dia ${gp.state.currentDay} · ${gp.population} hab. · Andar ${gp.state.highestFloorCleared}',
+                style: const TextStyle(
+                  fontFamily: 'FiraCode',
+                  color: AppTheme.textDim,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            const Divider(color: AppTheme.border, height: 1),
+            const SizedBox(height: 8),
+
+            // Configurações (placeholder por enquanto)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: const Text(
+                'CONFIGURAÇÕES',
+                style: TextStyle(
+                  fontFamily: 'FiraCode',
+                  color: AppTheme.textDim,
+                  fontSize: 10,
+                  letterSpacing: 1.5,
+                ),
+              ),
+            ),
+            SwitchListTile(
+              dense: true,
+              activeColor: AppTheme.cyan,
+              secondary: Icon(
+                _effectsEnabled
+                    ? Icons.auto_awesome
+                    : Icons.auto_awesome_outlined,
+                color: _effectsEnabled ? AppTheme.cyan : AppTheme.textDim,
+                size: 18,
+              ),
+              title: Text(
+                'EFEITOS VISUAIS',
+                style: TextStyle(
+                  fontFamily: 'FiraCode',
+                  color: _effectsEnabled
+                      ? AppTheme.textPrimary
+                      : AppTheme.textDim,
+                  fontSize: 13,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              subtitle: Text(
+                _effectsEnabled ? 'Partículas e tint ativos' : 'Desativados',
+                style: const TextStyle(
+                  fontFamily: 'FiraCode',
+                  color: AppTheme.textDim,
+                  fontSize: 10,
+                ),
+              ),
+              value: _effectsEnabled,
+              onChanged: (_) {
+                Navigator.pop(context);
+                _toggleEffects();
+              },
+            ),
+
+            const Spacer(),
+            const Divider(color: AppTheme.border, height: 1),
+
+            // Sair
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.logout, color: AppTheme.red, size: 18),
+              title: const Text(
+                'SAIR PARA O MENU',
+                style: TextStyle(
+                  fontFamily: 'FiraCode',
+                  color: AppTheme.red,
+                  fontSize: 13,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _confirmExit(context, gp);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -164,7 +371,7 @@ class _AppShellState extends State<AppShell> {
                 style: TextStyle(
                   fontFamily: 'FiraCode',
                   color: AppTheme.cyan,
-                  fontSize: 11,
+                  fontSize: 14,
                   letterSpacing: 2,
                 ),
               ),
@@ -175,61 +382,49 @@ class _AppShellState extends State<AppShell> {
     }
 
     if (!_inGame) {
-      return TitleScreen(onStartGame: () => setState(() => _inGame = true));
+      return AmbientOverlay(
+        effectsEnabled: _effectsEnabled,
+        child: TitleScreen(onStartGame: () => setState(() => _inGame = true)),
+      );
     }
 
-    return Scaffold(
-      backgroundColor: AppTheme.bg,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, size: 18),
-          onPressed: () {
-            gp.stopSimulation();
-            setState(() => _inGame = false);
-          },
-        ),
-        title: Row(
-          children: [
-            Text(_titles[_currentScreen]),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                border: Border.all(color: AppTheme.border),
-                borderRadius: BorderRadius.circular(2),
-              ),
-              child: Text(
-                '${gp.timeDisplay} | Andar ${gp.state.highestFloorCleared} | ${gp.population} hab.',
-                style: const TextStyle(
-                  fontFamily: 'FiraCode',
-                  fontSize: 8,
-                  color: AppTheme.textSecondary,
-                ),
+    return AmbientOverlay(
+      effectsEnabled: _effectsEnabled,
+      child: Scaffold(
+        backgroundColor: AppTheme.bg,
+        endDrawer: _buildDrawer(context, gp),
+        appBar: AmbientAppBar(
+          title: _titles[_currentScreen],
+          actions: [
+            Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(Icons.menu, size: 20),
+                color: AppTheme.textSecondary,
+                onPressed: () => Scaffold.of(ctx).openEndDrawer(),
               ),
             ),
           ],
         ),
-      ),
-      body: GestureDetector(
-        // Toque no body fecha o menu expandido
-        onTap: () {
-          if (_expandedGroup != null) setState(() => _expandedGroup = null);
-        },
-        behavior: HitTestBehavior.translucent,
-        child: SafeArea(child: _screens[_currentScreen]),
-      ),
-      bottomNavigationBar: _ExpandableNavBar(
-        groups: _groups,
-        currentScreen: _currentScreen,
-        expandedGroup: _expandedGroup,
-        onGroupTap: _onGroupTap,
-        onSubItemTap: (screenIdx) {
-          setState(() {
-            _currentScreen = screenIdx;
-            _expandedGroup = null;
-          });
-        },
-        groupOf: _groupOf,
+        body: GestureDetector(
+          onTap: () {
+            if (_expandedGroup != null) setState(() => _expandedGroup = null);
+          },
+          behavior: HitTestBehavior.translucent,
+          child: SafeArea(child: _screens[_currentScreen]),
+        ),
+        bottomNavigationBar: _ExpandableNavBar(
+          groups: _groups,
+          currentScreen: _currentScreen,
+          expandedGroup: _expandedGroup,
+          onGroupTap: _onGroupTap,
+          onSubItemTap: (screenIdx) {
+            setState(() {
+              _currentScreen = screenIdx;
+              _expandedGroup = null;
+            });
+          },
+          groupOf: _groupOf,
+        ),
       ),
     );
   }
@@ -288,7 +483,6 @@ class _ExpandableNavBar extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Sub-menu expansível
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
@@ -296,7 +490,6 @@ class _ExpandableNavBar extends StatelessWidget {
                 ? _buildSubMenu(groups[expandedGroup!])
                 : const SizedBox.shrink(),
           ),
-          // Barra principal
           SafeArea(
             top: false,
             child: SizedBox(
@@ -324,7 +517,6 @@ class _ExpandableNavBar extends StatelessWidget {
                                     ? AppTheme.cyan
                                     : AppTheme.textDim,
                               ),
-                              // Indicador de sub-itens
                               if (hasSubItems)
                                 Positioned(
                                   top: -3,
@@ -348,13 +540,12 @@ class _ExpandableNavBar extends StatelessWidget {
                             group.label,
                             style: TextStyle(
                               fontFamily: 'FiraCode',
-                              fontSize: 9,
+                              fontSize: 11,
                               color: isActive || isExpanded
                                   ? AppTheme.cyan
                                   : AppTheme.textDim,
                             ),
                           ),
-                          // Dot indicador de tela ativa
                           if (isActive)
                             Container(
                               width: 4,
@@ -422,7 +613,7 @@ class _ExpandableNavBar extends StatelessWidget {
                       item.label,
                       style: TextStyle(
                         fontFamily: 'FiraCode',
-                        fontSize: 9,
+                        fontSize: 11,
                         color: isActive
                             ? AppTheme.cyan
                             : AppTheme.textSecondary,

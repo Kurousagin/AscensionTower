@@ -141,9 +141,12 @@ class TowerFloor {
   List<String> temporaryTags; // tags de anomalia, limpas a cada ciclo diário
 
   // ── Sistema de Facções ─────────────────────────────────────────
-  // Stub: começa como String? para não criar dependência circular.
-  // Preenchido pelo generate100Floors() com FloorFaction.name.
+  // Preenchido pelo generate100Floors() com floorFaction = factionForFloor(number, tier)
   FloorFaction controllingFaction;
+
+  /// Último dia em que este andar foi re-explorado com sucesso.
+  /// -99 = nunca. Usado para calcular o cooldown de re-exploração.
+  int lastReexploredDay;
 
   TowerFloor({
     required this.number,
@@ -161,6 +164,7 @@ class TowerFloor {
     List<FloorInhabitant>? inhabitants,
     List<String>? temporaryTags,
     this.controllingFaction = FloorFaction.none,
+    this.lastReexploredDay = -99,
   }) : deadOnFloor = deadOnFloor ?? [],
        inhabitants = inhabitants ?? [],
        temporaryTags = temporaryTags ?? [];
@@ -174,6 +178,23 @@ class TowerFloor {
   void clearTemporaryTags() => temporaryTags.clear();
 
   bool hasTag(String tag) => temporaryTags.contains(tag);
+
+  // ── Cooldown de Re-exploração ──────────────────────────────────
+
+  /// Dias mínimos entre re-explorações do mesmo andar.
+  /// Tiers baixos (1-2): 1 dia. Tiers altos (7-10): 4 dias.
+  int get reexplorationCooldown => (tier / 2).ceil().clamp(1, 4);
+
+  /// Retorna true se o andar pode ser re-explorado no dia informado.
+  bool canReexploreOnDay(int day) =>
+      day - lastReexploredDay >= reexplorationCooldown;
+
+  /// Quantos dias faltam para o cooldown terminar (0 = disponível).
+  int cooldownRemainingOn(int day) =>
+      (reexplorationCooldown - (day - lastReexploredDay)).clamp(
+        0,
+        reexplorationCooldown,
+      );
 
   // ── Propriedades calculadas ────────────────────────────────────
 
@@ -241,11 +262,30 @@ class TowerFloor {
         base['knowledge'] = 3 + t * 2;
         break;
       case FloorType.boss:
-        base['food'] = 5 + t * 2;
-        base['wood'] = 5 + t * 2;
-        base['stone'] = 5 + t * 2;
-        base['iron'] = 5 + t * 2;
-        base['knowledge'] = 5 + t * 2;
+        // Boss dá recursos premium, mas apenas os 2 mais temáticos do tier.
+        // Dar todos os 5 criava picos absurdos de farm no endgame.
+        final bossIdx = ((number - 1) ~/ 10) % 5;
+        switch (bossIdx) {
+          case 0: // Tier 1-2: Iron + Food
+            base['iron'] = 10 + t * 3;
+            base['food'] = 8 + t * 2;
+            break;
+          case 1: // Tier 3-4: Wood + Stone
+            base['wood'] = 10 + t * 3;
+            base['stone'] = 8 + t * 2;
+            break;
+          case 2: // Tier 5-6: Knowledge + Iron
+            base['knowledge'] = 10 + t * 3;
+            base['iron'] = 8 + t * 2;
+            break;
+          case 3: // Tier 7-8: Food + Knowledge (endgame)
+            base['food'] = 10 + t * 2;
+            base['knowledge'] = 10 + t * 2;
+            break;
+          default: // Tier 9-10: Stone + Wood
+            base['stone'] = 10 + t * 3;
+            base['wood'] = 8 + t * 2;
+        }
         break;
     }
 
@@ -317,19 +357,20 @@ class TowerFloor {
     'timesCleared': timesCleared,
     'deadOnFloor': deadOnFloor,
     'timesReexplored': timesReexplored,
+    'lastReexploredDay': lastReexploredDay,
     ...rule.toJson(),
     // Habitantes (saves antigos: campo ausente → lista vazia ✓)
     'inhabitants': inhabitants.map((i) => i.toJson()).toList(),
     'temporaryTags': temporaryTags,
     // Facção (saves antigos: campo ausente → none ✓)
-    'controllingFaction': controllingFaction.name,
+    'controllingFaction': controllingFaction.key,
   };
 
   factory TowerFloor.fromJson(Map<String, dynamic> json) {
     // Deserializa facção com fallback para saves antigos
     final factionName = json['controllingFaction'] as String? ?? 'none';
     final faction = FloorFaction.values.firstWhere(
-      (e) => e.name == factionName,
+      (e) => e.key == factionName,
       orElse: () => FloorFaction.none,
     );
 
@@ -353,6 +394,7 @@ class TowerFloor {
               .toList() ??
           [],
       timesReexplored: json['timesReexplored'] as int? ?? 0,
+      lastReexploredDay: json['lastReexploredDay'] as int? ?? -99,
       rule: json['ruleType'] != null
           ? FloorRule.fromJson(json)
           : FloorRule.none,
@@ -780,17 +822,17 @@ class TowerFloor {
 
       double mortality;
       if (i <= 5) {
-        mortality = 0.03 + i * 0.01;
+        mortality = 0.04 + i * 0.015;
       } else if (i <= 15) {
-        mortality = 0.05 + (i - 5) * 0.01;
+        mortality = 0.08 + (i - 5) * 0.018;
       } else if (i <= 30) {
-        mortality = 0.08 + (i - 15) * 0.008;
+        mortality = 0.14 + (i - 15) * 0.013;
       } else if (i <= 50) {
-        mortality = 0.12 + (i - 30) * 0.006;
+        mortality = 0.22 + (i - 30) * 0.010;
       } else if (i <= 75) {
-        mortality = 0.18 + (i - 50) * 0.005;
+        mortality = 0.32 + (i - 50) * 0.008;
       } else {
-        mortality = 0.25 + (i - 75) * 0.006;
+        mortality = 0.42 + (i - 75) * 0.008;
       }
       if (isBoss) {
         mortality *= 1.5;

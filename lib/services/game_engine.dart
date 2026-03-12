@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:collection/collection.dart';
 import 'package:tower_ascension/models/floor_faction.dart';
 import 'package:tower_ascension/models/floor_inhabitant.dart';
+import 'package:tower_ascension/services/crisis_flag_service.dart';
 import 'package:tower_ascension/widgets/event_toast.dart';
 import '../models/npc.dart';
 import '../models/citadel.dart';
@@ -42,14 +43,21 @@ class GameEngine {
 
   List<FloorInhabitant> get pendingRecruits =>
       List.unmodifiable(_pendingRecruits);
+
+  void addPendingRecruit(FloorInhabitant inhabitant) {
+    if (!_pendingRecruits.any((r) => r.id == inhabitant.id)) {
+      _pendingRecruits.add(inhabitant);
+    }
+  }
+
   // ====== Equipamentos ==================
   final EquipmentService _equipmentService = EquipmentService();
   final List<Equipment> _inventory = [];
   final PrisonService _prisonService = PrisonService();
 
   // ====== Novos Serviços ==================
-  late final FactionService _factionService = FactionService(_rng);
   late final WarService _warService = WarService(_rng);
+  late final FactionService _factionService = FactionService(_rng, _warService);
   late final TradeService _tradeService = TradeService(_rng);
   late final QuestService _questService = QuestService(_rng);
 
@@ -401,7 +409,7 @@ class GameEngine {
     final builders = _countProfession(Profession.builder);
     final scribes = _countProfession(Profession.scribe);
 
-    res.food += 2.0 + farmers * 3.0;
+    res.food += 2.0 + farmers * 1.0;
     res.wood += 1.0 + builders * 2.0;
     res.stone += 0.5 + builders * 1.0;
     res.knowledge += 0.2 + scribes * 1.5;
@@ -428,43 +436,43 @@ class GameEngine {
   void _applyBuildingProduction(Building building, Resources res) {
     final level = building.level;
     final tierBonus = 1 + (building.tier * 0.15);
-    final kitchenCount = citadel.countBuildings(BuildingType.kitchen);
-    final farmSynergy = 1 + (kitchenCount * 0.12);
     final population = aliveNpcs.length;
 
     switch (building.type) {
       // 🌾 FARM
       case BuildingType.farm:
         final farmers = _countProfession(Profession.farmer);
-        final effectiveFarmers = max(1, farmers); // Garante pelo menos 1
-        final baseProduction = _expProduction(
-          level: level,
-          base: 5,
-          growth: 1.7,
-        );
-        final populationBonus = 1 + (population * 0.02);
+        final chefs = _countProfession(Profession.chef);
+        final kitchenCount = citadel.countBuildings(BuildingType.kitchen);
+
+        // Retorno decrescente: farm só aproveita até (level+1) farmers
+        final effectiveFarmers = min(farmers, level + 1);
+
+        // Produção base flat por nível (controlada, sem exp agressivo)
+        const farmBaseProd = <int, double>{1: 4, 2: 6, 3: 9, 4: 13, 5: 18};
+        final baseProduction = farmBaseProd[level] ?? 18.0;
+
+        // Population bonus suave com teto logarítmico (~1.30x máx)
+        final softPopBonus = 1.0 + log(1.0 + population / 20.0) * 0.15;
+
+        // Chef multiplier: chefs em kitchens ampliam a farm (cap = (level+2)*kitchens)
+        final effectiveChefs = min(chefs, (level + 2) * kitchenCount);
+        final chefMultiplier = 1.0 + effectiveChefs * 0.06;
+
+        // tierBonus reduzido de 0.15 para 0.10 por tier
+        final farmTierBonus = 1.0 + (building.tier * 0.10);
 
         res.food +=
-            effectiveFarmers *
-            baseProduction *
-            farmSynergy *
-            tierBonus *
-            populationBonus;
+            (baseProduction + effectiveFarmers * 2.0) *
+            farmTierBonus *
+            softPopBonus *
+            chefMultiplier;
         break;
 
-      // 🍲 KITCHEN
+      // 🍲 KITCHEN — amplificador da farm, não fonte direta de food
       case BuildingType.kitchen:
-        final chefs = _countProfession(Profession.chef);
-
-        final productionPerChef = _expProduction(
-          level: level,
-          base: 3,
-          growth: 1.6,
-        );
-
-        final effectiveChefs = max(1, chefs);
-
-        res.food += effectiveChefs * productionPerChef * tierBonus;
+        // Kitchen não produz food diretamente.
+        // Seu efeito é contabilizado na fórmula do farm via chefMultiplier.
         break;
 
       // ⚒ WORKSHOP
@@ -1567,14 +1575,15 @@ class GameEngine {
 
       if (stats.traits.contains('battle-hardened')) {
         if (!npc.traits.contains(PersonalityTrait.brave)) {
-          npc.traits.add(PersonalityTrait.brave);
+          npc.traits = List.of(npc.traits)..add(PersonalityTrait.brave);
         }
       }
       if (stats.traits.contains('traumatized')) {
         npc.attributes.mentalStability = (npc.attributes.mentalStability - 20)
             .clamp(0, 100)
             .toDouble();
-        npc.traumas.add('Sobreviveu sozinho na Torre por semanas');
+        npc.traumas = List.of(npc.traumas)
+          ..add('Sobreviveu sozinho na Torre por semanas');
       }
       if (stats.traits.contains('tower-knowledge')) {
         npc.attributes.intelligence = (npc.attributes.intelligence + 1.5).clamp(
@@ -1599,7 +1608,7 @@ class GameEngine {
 
   FactionRelation _getOrCreateFactionRelation(FloorFaction faction) {
     return state.factionRelations.putIfAbsent(
-      faction.name,
+      faction.key,
       () => FactionRelation(faction: faction),
     );
   }
@@ -1878,7 +1887,8 @@ class GameEngine {
               (n.profession == Profession.explorer ||
                   n.profession == Profession.scout) &&
               n.attributes.mentalStability > 35 &&
-              n.fatigue < 50,
+              n.fatigue < 50 &&
+              !_isGroupBusyOnQuest(n.groupId),
         )
         .toList();
 
@@ -2101,10 +2111,10 @@ class GameEngine {
     final tributeBonus = rule.type == FloorRuleType.tributeRequired ? 0.1 : 0.0;
 
     double successChance =
-        ((partyPower / (effectiveDifficulty * effectiveParty.length) * 0.6) +
-                0.2 +
+        ((partyPower / (effectiveDifficulty * effectiveParty.length) * 0.7) +
+                0.1 +
                 tributeBonus)
-            .clamp(0.1, 0.95);
+            .clamp(0.05, 0.95);
 
     // Modificador de facção (read-only: apenas lê o standing atual)
     double factionMod = 0.0;
@@ -2328,7 +2338,7 @@ class GameEngine {
         yield += (npc.attributes.strength + npc.attributes.intelligence) * 0.01;
     }
 
-    return yield.clamp(0.2, 3.5);
+    return yield.clamp(0.2, 2.0);
   }
 
   // ─────────────────────────────────────────────
@@ -2342,6 +2352,20 @@ class GameEngine {
     final floor = floors.firstWhere((f) => f.number == floorNumber);
     final party = _resolveParty(partyIds);
 
+    if (party.any((n) => _isGroupBusyOnQuest(n.groupId))) {
+      return FloorExplorationResult(
+        floorNumber: floorNumber,
+        day: state.currentDay,
+        partyIds: partyIds,
+      );
+    }
+    if (!floor.canReexploreOnDay(state.currentDay)) {
+      return FloorExplorationResult(
+        floorNumber: floorNumber,
+        day: state.currentDay,
+        partyIds: partyIds,
+      );
+    }
     final result = FloorExplorationResult(
       floorNumber: floorNumber,
       day: state.currentDay,
@@ -2356,7 +2380,7 @@ class GameEngine {
 
     // Incrementa contador ANTES de calcular recursos (para aplicar diminishing)
     floor.timesReexplored++;
-
+    floor.lastReexploredDay = state.currentDay;
     _applyExpeditionFatigue(party, floor.tier, baseFatigue: 15.0);
 
     final synergy = _calculateGroupSynergy(party);
@@ -2612,11 +2636,18 @@ class GameEngine {
       citadel.resources.food -= 3;
       survivor.disposition = InhabitantDisposition.friendly;
       npc.history.add('Compartilhou comida com ${survivor.name}');
+
+      // Adiciona à fila de recrutamento se ainda não estiver pendente
+      if (!_pendingRecruits.any((r) => r.id == survivor.id)) {
+        _pendingRecruits.add(survivor);
+      }
+
       _addEvent(
-        GameEventType.discovery,
-        '${npc.name} cuida de ${survivor.name}',
+        GameEventType.recruitment,
+        '${npc.name} trouxe ${survivor.name}',
         '${npc.name} deixou parte do rancho. '
-            '${survivor.name} olhou com algo parecido com esperança.',
+            '${survivor.name} olhou com algo parecido com esperança '
+            'e concordou em seguir o grupo de volta.',
         involvedIds: [npc.id],
       );
     }
@@ -2788,7 +2819,7 @@ class GameEngine {
       if (_rng.nextDouble() < rareChance) {
         for (final key in result.resourcesGained.keys.toList()) {
           result.resourcesGained[key] =
-              (result.resourcesGained[key] ?? 0) * 2.0;
+              (result.resourcesGained[key] ?? 0) * 1.5;
         }
         citadel.resources.morale += 3;
         logs.add('[RARO] Descoberta excepcional! Recompensa DOBRADA!');
@@ -3059,6 +3090,14 @@ class GameEngine {
       return suggestion;
     }
 
+    if (_isGroupBusyOnQuest(groupId)) {
+      suggestion.response = TrainingResponse.refused;
+      suggestion.responseDetail = '${group.name} está em missão ativa.';
+      suggestion.acceptedIds = [];
+      suggestion.refusedIds = group.memberIds;
+      trainingSuggestions.add(suggestion);
+      return suggestion;
+    }
     int accepted = 0;
     int refused = 0;
     final participantIds = <String>[];
@@ -4697,7 +4736,6 @@ class GameEngine {
     if (!citadel.hasBuilding(BuildingType.arena)) return;
     if (state.currentDay % 7 != 0 || aliveNpcs.length < 2) return;
     if (_rng.nextDouble() >= 0.3) return;
-
     final fighters = aliveNpcs
         .where(
           (n) =>
@@ -4706,24 +4744,126 @@ class GameEngine {
         )
         .toList();
     if (fighters.length < 2) return;
-
     fighters.shuffle(_rng);
     final a = fighters[0], b = fighters[1];
+
+    // Nível da arena escala os ganhos de fama e stats
+    final arenaLevel = citadel.getBuilding(BuildingType.arena)?.level ?? 1;
+    final fameMult = arenaLevel; // nível 1: +2 fama, nível 5: +10 fama
+
     final aWins =
         a.attributes.combatPower + _rng.nextDouble() * 3 >
         b.attributes.combatPower + _rng.nextDouble() * 3;
-
     final winner = aWins ? a : b;
     final loser = aWins ? b : a;
-    winner.fame += 2;
-    winner.attributes.strength += 0.2;
-    loser.attributes.endurance += 0.1;
+
+    // Vencedor: fama escalonada + stat
+    final fameGain = (2 * fameMult).toDouble();
+    winner.fame += fameGain;
+    winner.attributes.strength += 0.1 + (arenaLevel * 0.1);
+
+    // Perdedor: perde fama (metade do ganho do vencedor) + consolação de endurance
+    final fameLoss = (fameGain / 2).ceil().toDouble();
+    loser.fame = (loser.fame - fameLoss).clamp(-999, 9999);
+    loser.attributes.endurance += 0.05;
+
     _addEvent(
       GameEventType.combat,
       'Duelo na Arena',
-      '${winner.name} venceu ${loser.name}! +Fama, +Stats.',
+      '${winner.name} venceu ${loser.name}! +${fameGain.toInt()} fama. '
+          '${loser.name} perdeu ${fameLoss.toInt()} fama.',
       involvedIds: [a.id, b.id],
     );
+
+    // Atualiza contadores dedicados da arena
+    winner.arenaWins += 1;
+    loser.arenaLosses += 1;
+
+    // Títulos por marco de vitórias na arena
+    final wins = winner.arenaWins;
+    if (wins == 5 || wins == 10 || wins == 20 || wins == 30) {
+      final titulo = wins >= 30
+          ? 'Imortal da Arena'
+          : wins >= 20
+          ? 'Campeão Lendário'
+          : wins >= 10
+          ? 'Campeão da Arena'
+          : 'Lutador Destaque';
+      _records.add(
+        CitadelRecord(
+          id: 'rec_arena_${winner.id}_${state.currentDay}',
+          day: state.currentDay,
+          category: RecordCategory.honor,
+          title: '$titulo: ${winner.name}',
+          body:
+              '${winner.name} alcançou $wins vitórias na Arena. '
+              'A multidão clama o nome. A fama precede os passos.',
+          involvedIds: [winner.id],
+          isSigned: true,
+        ),
+      );
+    }
+
+    // Moral passiva de Lendários e Imortais (+1/dia aplicado aqui como bônus do duelo)
+    for (final npc in aliveNpcs) {
+      if (npc.arenaWins >= 20) {
+        citadel.resources.morale = (citadel.resources.morale + 1).clamp(0, 100);
+      }
+    }
+  }
+
+  /// Duelo manual disparado pelo jogador. Retorna mensagem de resultado ou erro.
+  String runArenaChallenge(String idA, String idB) {
+    if (!citadel.hasBuilding(BuildingType.arena))
+      return 'Arena não construída.';
+    final arenaLevel = citadel.getBuilding(BuildingType.arena)?.level ?? 1;
+    final foodCost = 5 + (arenaLevel * 5); // nível 1: 10, nível 5: 30
+
+    final idxA = npcs.indexWhere((n) => n.id == idA);
+    final idxB = npcs.indexWhere((n) => n.id == idB);
+    if (idxA == -1 || idxB == -1) return 'Habitante não encontrado.';
+
+    final a = npcs[idxA], b = npcs[idxB];
+    if (!a.alive || !b.alive) return 'Um dos combatentes está morto.';
+
+    final cooldown = 3;
+    if (state.currentDay - a.lastArenaChallengeDay < cooldown ||
+        state.currentDay - b.lastArenaChallengeDay < cooldown) {
+      return 'Um dos combatentes ainda está em recuperação (cooldown de $cooldown dias).';
+    }
+    if (citadel.resources.food < foodCost) {
+      return 'Comida insuficiente. Custo: $foodCost.';
+    }
+
+    citadel.resources.food -= foodCost.toDouble();
+    a.lastArenaChallengeDay = state.currentDay;
+    b.lastArenaChallengeDay = state.currentDay;
+
+    final aWins =
+        a.attributes.combatPower + _rng.nextDouble() * 3 >
+        b.attributes.combatPower + _rng.nextDouble() * 3;
+    final winner = aWins ? a : b;
+    final loser = aWins ? b : a;
+
+    final fameMult = arenaLevel;
+    final fameGain = (2 * fameMult).toDouble();
+    winner.fame += fameGain;
+    winner.arenaWins += 1;
+    winner.attributes.strength += 0.1 + (arenaLevel * 0.1);
+    final fameLoss = (fameGain / 2).ceil().toDouble();
+    loser.fame = (loser.fame - fameLoss).clamp(-999, 9999);
+    loser.arenaLosses += 1;
+    loser.attributes.endurance += 0.05;
+
+    _addEvent(
+      GameEventType.combat,
+      'Desafio na Arena',
+      '${winner.name} venceu ${loser.name} num desafio! '
+          '+${fameGain.toInt()} fama. Custo: $foodCost comida.',
+      involvedIds: [idA, idB],
+    );
+
+    return '${winner.name} venceu ${loser.name}! +${fameGain.toInt()} fama.';
   }
 
   void _processTavernEvents() {
@@ -4930,8 +5070,16 @@ class GameEngine {
     }
 
     final party = _resolveParty(partyIds);
+    if (party.any((n) => _isGroupBusyOnQuest(n.groupId))) {
+      return TowerChallenge(
+        floor: floor,
+        partyIds: partyIds,
+        completed: true,
+        victory: false,
+        log: ['Grupo está em missão ativa e não pode explorar a Torre.'],
+      );
+    }
     final challenge = TowerChallenge(floor: floor, partyIds: partyIds);
-
     final costPerNpc = expeditionCostPerNpc(floor.number);
     final totalCost = party.length * costPerNpc;
     citadel.resources.food -= totalCost;
@@ -5062,10 +5210,10 @@ class GameEngine {
     final tributeBonus = rule.type == FloorRuleType.tributeRequired ? 0.1 : 0.0;
 
     double successChance =
-        ((partyPower / (effectiveDifficulty * effectiveParty.length) * 0.6) +
-                0.2 +
+        ((partyPower / (effectiveDifficulty * effectiveParty.length) * 0.7) +
+                0.1 +
                 tributeBonus)
-            .clamp(0.1, 0.95);
+            .clamp(0.05, 0.95);
 
     double mortalityRate = floor.scaledMortality;
 
@@ -5176,7 +5324,7 @@ class GameEngine {
     challenge.log.add('>> VITÓRIA! O grupo superou o desafio.');
 
     for (final npc in party) {
-      if (_rng.nextDouble() < mortality * 0.5) {
+      if (_rng.nextDouble() < mortality * 0.75) {
         _killNpc(npc, 'Morreu no Andar ${floor.number}');
         challenge.casualties.add(npc.id);
         challenge.log.add('  [X] ${npc.name} caiu em batalha.');
@@ -5754,6 +5902,12 @@ class GameEngine {
 
   int _countProfession(Profession p) =>
       aliveNpcs.where((n) => n.profession == p).length;
+
+  bool _isGroupBusyOnQuest(String? groupId) {
+    if (groupId == null) return false;
+    return _questService.busyGroupIds.contains(groupId);
+  }
+
   bool _hasLivingPartner(Npc npc) =>
       npc.partnerId != null &&
       npcs.any((n) => n.id == npc.partnerId && n.alive);
@@ -5822,6 +5976,9 @@ class GameEngine {
     _maybeCreateRecord(event);
 
     ToastController().show(event);
+    if (isCrisisEvent(event)) {
+      CrisisFlagService.instance.writePending(event);
+    }
   }
 
   void _maybeCreateRecord(GameEvent event) {

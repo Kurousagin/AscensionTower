@@ -39,7 +39,6 @@ const Set<GameEventType> kCrisisDialogTypes = {
   GameEventType.emergencySummon,
   GameEventType.mentalBreak,
   GameEventType.warEvent,
-  // GameEventType.betrayal, // descomente se quiser dialog de crise também
 };
 
 bool isCelebrationEvent(GameEvent e) =>
@@ -116,7 +115,14 @@ class ToastController extends ChangeNotifier {
   }
 
   // ── Show batch ──────────────────────────────────────────────
+  static const int _maxQueueSize = 4;
+
   void showBatch(List<GameEvent> events) {
+    // Se a fila já tem muita coisa acumulada, descarta toasts antigos não-críticos
+    if (_queue.length > _maxQueueSize) {
+      _queue.clear();
+    }
+
     for (final e in events) {
       if (isLoreEvent(e)) {
         _loreQueue.add(e);
@@ -145,6 +151,15 @@ class ToastController extends ChangeNotifier {
       return;
     }
     if (toasts.isEmpty) return;
+
+    // Fila cheia: descarta toasts triviais, mantém só isMajor
+    if (_queue.length >= _maxQueueSize) {
+      final major = toasts.where((e) => e.isMajor).toList();
+      if (major.isEmpty) return;
+      _queue.add(ToastEntry.batch(major));
+      if (_current == null) _next();
+      return;
+    }
 
     if (toasts.length > 3) {
       _queue.add(ToastEntry.batch(toasts));

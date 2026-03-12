@@ -24,6 +24,11 @@ class QuestService {
   // ── Accessors ─────────────────────────────────────────────────────────────
 
   List<FloorQuest> get activeQuests => List.unmodifiable(_activeQuests);
+
+  Set<String> get busyGroupIds => _activeQuests
+      .where((q) => q.assignedGroupId != null)
+      .map((q) => q.assignedGroupId!)
+      .toSet();
   List<FloorQuest> get availableQuests => List.unmodifiable(_availableQuests);
 
   List<FloorQuest> questsForFloor(int floorNumber) {
@@ -47,7 +52,7 @@ class QuestService {
       // Só gera missões para andares com facção e standing razoável
       if (faction == FloorFaction.none) continue;
       final standing =
-          factionRelations[faction.name]?.standing ?? faction.initialStanding;
+          factionRelations[faction.key]?.standing ?? faction.initialStanding;
       if (standing < -20) continue;
 
       // Evita gerar missão duplicada para o mesmo andar
@@ -61,7 +66,8 @@ class QuestService {
 
       // War quest — at most 1 per floor
       final alreadyHasWarQuest = _availableQuests.any(
-        (q) => q.floorNumber == floor.number &&
+        (q) =>
+            q.floorNumber == floor.number &&
             (q.title.startsWith('GUERRA:') ||
                 q.title.startsWith('ZONA DE GUERRA:')),
       );
@@ -93,7 +99,7 @@ class QuestService {
 
     _questIdCounter++;
     final id = 'quest_$_questIdCounter';
-    final giver = 'inhabitant_${faction.name}_f${floor.number}';
+    final giver = 'inhabitant_${faction.key}_f${floor.number}';
 
     switch (type) {
       case QuestType.fetch:
@@ -157,7 +163,11 @@ class QuestService {
           description:
               '${faction.label} quer que você elimine uma ameaça no Andar ${floor.number}. '
               'Complete uma tentativa bem-sucedida neste andar.',
-          resourceReward: {'iron': 20, 'food': 15, ..._rewardForFaction(faction)},
+          resourceReward: {
+            'iron': 20,
+            'food': 15,
+            ..._rewardForFaction(faction),
+          },
           standingReward: 12.0,
           factionReward: faction,
           dayLimit: dayLimit,
@@ -192,7 +202,7 @@ class QuestService {
   ) {
     _questIdCounter++;
     final id = 'quest_$_questIdCounter';
-    final giver = 'war_${faction.name}_f${floor.number}';
+    final giver = 'war_${faction.key}_f${floor.number}';
 
     // Contested zone takes priority
     if (war.contestedFloors.contains(floor.number)) {
@@ -285,7 +295,15 @@ class QuestService {
 
   // ── Aceitar missão ────────────────────────────────────────────────────────
 
-  String acceptQuest(String questId, int currentDay) {
+  String acceptQuest(
+    String questId,
+    int currentDay, {
+    String? groupId,
+    List<String>? npcIds,
+    double groupPower = 0,
+    double groupIntelligence = 0,
+    double groupLuck = 0,
+  }) {
     if (_activeQuests.length >= maxActiveQuests) {
       return 'Máximo de $_maxActiveQuestsText missões ativas atingido.';
     }
@@ -295,11 +313,69 @@ class QuestService {
 
     final quest = _availableQuests.removeAt(idx);
     quest.acceptedDay = currentDay;
+    quest.assignedGroupId = groupId;
+    quest.assignedNpcIds = npcIds ?? [];
+
+    // Calcula chance de falha baseada no tipo e atributos do grupo
+    quest.failureChance = _calculateFailureChance(
+      quest.type,
+      groupPower: groupPower,
+      groupIntelligence: groupIntelligence,
+      groupLuck: groupLuck,
+    );
+
     _activeQuests.add(quest);
-    return 'Missão "${quest.title}" aceita!';
+
+    final failureStr = quest.failureChance > 0
+        ? ' (Risco de falha: ${(quest.failureChance * 100).toStringAsFixed(0)}%)'
+        : '';
+    return 'Missão "${quest.title}" aceita!$failureStr';
   }
 
-  static const String _maxActiveQuestsText = '$maxActiveQuests';
+  /// Versão pública de _calculateFailureChance para uso na UI (preview antes de aceitar).
+  double previewFailureChance(
+    QuestType type, {
+    required double groupPower,
+    required double groupIntelligence,
+    required double groupLuck,
+  }) => _calculateFailureChance(
+    type,
+    groupPower: groupPower,
+    groupIntelligence: groupIntelligence,
+    groupLuck: groupLuck,
+  );
+
+  double _calculateFailureChance(
+    QuestType type, {
+    required double groupPower,
+    required double groupIntelligence,
+    required double groupLuck,
+  }) {
+    // Base por tipo
+    double base = switch (type) {
+      QuestType.fetch => 0.10,
+      QuestType.deliver => 0.05,
+      QuestType.investigate => 0.20,
+      QuestType.escort => 0.25,
+      QuestType.eliminate => 0.30,
+    };
+
+    // Grupo forte reduz chance de falha
+    if (groupPower >= 15) {
+      base -= 0.10;
+    } else if (groupPower >= 8) {
+      base -= 0.05;
+    } else if (groupPower < 4) {
+      base += 0.15;
+    }
+    if (groupIntelligence >= 10) base -= 0.05;
+    if (groupLuck >= 8) base -= 0.05;
+
+    return base.clamp(0.02, 0.70);
+  }
+
+  static const String _maxActiveQuestsText =
+      '3'; // deve ser igual a maxActiveQuests
 
   // ── Verificar completude ───────────────────────────────────────────────────
 
@@ -340,7 +416,7 @@ class QuestService {
 
       // Aplica standing
       if (quest.factionReward != null && quest.standingReward > 0) {
-        final rel = factionRelations[quest.factionReward!.name];
+        final rel = factionRelations[quest.factionReward!.key];
         if (rel != null) {
           rel.standing = (rel.standing + quest.standingReward).clamp(
             -100.0,
@@ -406,7 +482,7 @@ class QuestService {
       _applyResourceReward(quest.resourceReward, citadel);
 
       if (quest.factionReward != null && quest.standingReward > 0) {
-        final rel = factionRelations[quest.factionReward!.name];
+        final rel = factionRelations[quest.factionReward!.key];
         if (rel != null) {
           rel.standing = (rel.standing + quest.standingReward).clamp(
             -100.0,
@@ -419,7 +495,8 @@ class QuestService {
         ServiceEvent(
           type: GameEventType.questEvent,
           title: 'Entrega Concluída: ${quest.title}',
-          description: 'Entrega para ${quest.factionReward?.label ?? "facção"} concluída.',
+          description:
+              'Entrega para ${quest.factionReward?.label ?? "facção"} concluída.',
           isMajor: false,
         ),
       );
@@ -444,16 +521,17 @@ class QuestService {
           type: GameEventType.questEvent,
           title: 'Missão Expirada: ${quest.title}',
           description:
-              'A missão "${quest.title}" expirou sem ser completada.',
+              'A missão "${quest.title}" expirou sem ser completada. '
+              '${quest.factionReward != null ? "${quest.factionReward!.label} está desapontado." : ""}',
+          standingDelta: quest.standingReward * -0.5, // penalidade de standing
+          affectedFaction: quest.factionReward,
           isMajor: false,
         ),
       );
     }
 
     // Remove também missões disponíveis muito antigas
-    _availableQuests.removeWhere(
-      (q) => currentDay - q.dayLimit > 10,
-    );
+    _availableQuests.removeWhere((q) => currentDay - q.dayLimit > 10);
 
     return events;
   }
@@ -529,6 +607,24 @@ class QuestService {
     _availableQuests.clear();
     _questIdCounter = 0;
   }
+}
+
+// ── Extensão de conveniência para FloorQuest ──────────────────────────────
+//
+// Adicione estas propriedades diretamente na classe FloorQuest (no seu model):
+//
+//   bool get isAvailable => !completed && !failed && acceptedDay == null;
+//   bool get isActive    => !completed && !failed && acceptedDay != null;
+//
+// Se preferir não alterar o model, use esta extensão aqui:
+
+extension FloorQuestStatus on FloorQuest {
+  /// true enquanto a missão ainda não foi aceita (está em _availableQuests).
+  // ignore: unnecessary_null_comparison
+  bool get isAvailable => !completed && !failed && acceptedDay == null;
+
+  /// true quando a missão foi aceita e ainda não concluída/falhada.
+  bool get isActive => !completed && !failed;
 }
 
 // ServiceEvent is defined in game_event.dart

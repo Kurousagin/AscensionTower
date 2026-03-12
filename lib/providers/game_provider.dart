@@ -4,8 +4,11 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:tower_ascension/models/floor_faction.dart';
 import 'package:tower_ascension/models/floor_inhabitant.dart';
+import 'package:tower_ascension/models/prison.dart';
+import 'package:tower_ascension/services/events/notification_service.dart';
 import '../services/game_engine.dart';
 import '../services/save_service.dart';
+import '../services/crisis_flag_service.dart';
 import '../models/npc.dart';
 import '../models/citadel.dart';
 import '../models/tower.dart';
@@ -115,7 +118,7 @@ class GameProvider extends ChangeNotifier {
   List<FloorInhabitant> get pendingRecruits => _engine.pendingRecruits;
 
   // ── Sistema de Facções ────────────────────────────────
-  /// Relações com cada facção da torre. Chave = FloorFaction.name.
+  /// Relações com cada facção da torre. Chave = FloorFaction.key (extensão).
   Map<String, FactionRelation> get factionRelations =>
       _engine.state.factionRelations;
 
@@ -257,9 +260,50 @@ class GameProvider extends ChangeNotifier {
       state.gameSeconds = (state.gameSeconds as num).toDouble();
       _processOfflineProgress();
       _startSimulation();
+      // Consome crise que ocorreu com app fechado e exibe in-app
+      _consumePendingCrisis();
     }
     notifyListeners();
     return success;
+  }
+
+  /// Consome crise persistida enquanto o app estava fechado e exibe o
+  /// CrisisDialog normalmente na próxima frame.
+  Future<void> _consumePendingCrisis() async {
+    final pending = await CrisisFlagService.instance.consumePending();
+    if (pending == null) return;
+
+    // Cancela a notificação da barra — app já está aberto
+    await NotificationService.instance.cancelAll();
+
+    // Reconstrói um GameEvent mínimo para o CrisisDialog
+    final type = _crisisTypeFromKey(pending.type);
+    final event = GameEvent(
+      id: state.generateEventId(),
+      day: pending.day,
+      type: type,
+      title: pending.title,
+      description: pending.body,
+      isMajor: true,
+    );
+
+    // Enfileira no ToastController para exibir após a build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ToastController().show(event);
+    });
+  }
+
+  GameEventType _crisisTypeFromKey(String key) {
+    switch (key) {
+      case 'war':
+        return GameEventType.warEvent;
+      case 'mentalBreak':
+        return GameEventType.mentalBreak;
+      case 'emergencySummon':
+        return GameEventType.emergencySummon;
+      default:
+        return GameEventType.crisis;
+    }
   }
 
   /// Processa o tempo que passou enquanto o jogo estava fechado
@@ -283,10 +327,11 @@ class GameProvider extends ChangeNotifier {
     int daysProcessed = 0;
     _recentEvents = [];
 
+    final allDayEvents = <GameEvent>[];
     while (state.gameSeconds >= 86400.0 && daysProcessed < maxDaysPerUpdate) {
       state.gameSeconds -= 86400.0;
       final dayEvents = _engine.simulateDay();
-      ToastController().showBatch(dayEvents);
+      allDayEvents.addAll(dayEvents);
       _recentEvents.addAll(dayEvents);
       daysProcessed++;
       if (state.gameOver) break;
@@ -294,6 +339,21 @@ class GameProvider extends ChangeNotifier {
       if (state.currentDay % 28 == 0 && !state.gameOver) {
         _autoTowerAttempt();
       }
+    }
+
+    if (allDayEvents.isNotEmpty) {
+      // Progresso offline: só mostra eventos muito importantes (mortes, crises)
+      final eventsToShow = allDayEvents
+          .where(
+            (e) =>
+                e.isMajor &&
+                (e.type == GameEventType.death ||
+                    e.type == GameEventType.crisis ||
+                    e.type == GameEventType.towerCleared ||
+                    e.type == GameEventType.warEvent),
+          )
+          .toList();
+      if (eventsToShow.isNotEmpty) ToastController().showBatch(eventsToShow);
     }
 
     if (state.gameSeconds >= 86400.0) {
@@ -868,9 +928,9 @@ class GameProvider extends ChangeNotifier {
 
   void rejectRecruit(String survivorId) {
     _engine.rejectRecruit(survivorId);
+    _saveGame();
     notifyListeners();
   }
-
   // ==================== GUERRAS ====================
 
   String sideWithFaction(String warId, FloorFaction faction) {
@@ -887,10 +947,13 @@ class GameProvider extends ChangeNotifier {
   // ==================== COMERCIO ====================
 
   TradeResult executeTrade(String offerId) {
+    final marketLevel =
+        _engine.citadel.getBuilding(BuildingType.market)?.level ?? 1;
     final result = _engine.tradeService.executeTrade(
       offerId: offerId,
       citadel: _engine.citadel,
       factionRelations: _engine.state.factionRelations,
+      marketLevel: marketLevel,
     );
     if (result.success) {
       _saveGame();
@@ -917,6 +980,44 @@ class GameProvider extends ChangeNotifier {
   List<FloorQuest> questsForFloor(int floorNumber) =>
       _engine.questService.questsForFloor(floorNumber);
 
+  // ==================== NPC ACTIONS ====================
+
+  void assignProfession(String npcId, Profession profession) {
+    _engine.assignProfession(npcId, profession);
+    _saveGame();
+    notifyListeners();
+  }
+
+  String arrestNpc(String npcId) {
+    final result = _engine.arrestNpc(npcId);
+    _saveGame();
+    notifyListeners();
+    switch (result) {
+      case ArrestResult.trialOpened:
+        return 'Julgamento aberto.';
+      case ArrestResult.noPrison:
+        return 'Prisão não construída.';
+      case ArrestResult.noCouncilHall:
+        return 'Câmara do Conselho necessária.';
+      case ArrestResult.alreadyImprisoned:
+        return 'Já está preso.';
+      case ArrestResult.alreadyOnTrial:
+        return 'Já está em julgamento.';
+      case ArrestResult.noCrimeEvidence:
+        return 'Sem evidências de crime.';
+      default:
+        return 'Ação não permitida.';
+    }
+  }
+
+  // ==================== ARENA ====================
+  String runArenaChallenge(String idA, String idB) {
+    final result = _engine.runArenaChallenge(idA, idB);
+    _saveGame();
+    notifyListeners();
+    return result;
+  }
+
   // ==================== DIPLOMACIA ====================
 
   /// Retorna as ofertas diplomáticas disponíveis para uma facção.
@@ -935,7 +1036,7 @@ class GameProvider extends ChangeNotifier {
 
   /// Dias restantes de cooldown para negociar com a facção (0 = disponível).
   int diplomacyCooldownDays(FloorFaction faction) {
-    final rel = _engine.state.factionRelations[faction.name];
+    final rel = _engine.state.factionRelations[faction.key];
     if (rel == null) return 0;
     final elapsed = _engine.state.currentDay - rel.lastDiplomacyDay;
     return (7 - elapsed).clamp(0, 7);

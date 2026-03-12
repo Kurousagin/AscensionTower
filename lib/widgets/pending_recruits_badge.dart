@@ -1,7 +1,9 @@
 // lib/widgets/pending_recruits_badge.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:tower_ascension/models/citadel.dart';
 import 'package:tower_ascension/models/floor_inhabitant.dart';
+import 'package:tower_ascension/providers/game_provider.dart';
 import 'package:tower_ascension/services/game_engine.dart';
 
 class PendingRecruitsBadge extends StatelessWidget {
@@ -230,14 +232,23 @@ class _PulsingIconState extends State<_PulsingIcon>
   }
 }
 
-class RecruitListSheet extends StatelessWidget {
+class RecruitListSheet extends StatefulWidget {
   final GameEngine engine;
   const RecruitListSheet({super.key, required this.engine});
 
   @override
+  State<RecruitListSheet> createState() => _RecruitListSheetState();
+}
+
+class _RecruitListSheetState extends State<RecruitListSheet> {
+  @override
   Widget build(BuildContext context) {
-    final recruits = engine.pendingRecruits;
-    final hasRefuge = engine.citadel.hasBuilding(BuildingType.wayfareresRefuge);
+    final gp = context.read<GameProvider>();
+    // Snapshot da lista para evitar modificações durante o build
+    final recruits = List<FloorInhabitant>.from(widget.engine.pendingRecruits);
+    final hasRefuge = widget.engine.citadel.hasBuilding(
+      BuildingType.wayfareresRefuge,
+    );
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xFF0F0F14),
@@ -338,28 +349,42 @@ class RecruitListSheet extends StatelessWidget {
                 recruit: r,
                 hasRefuge: hasRefuge,
                 onRecruit: () {
-                  final msg = engine.confirmRecruitSurvivor(r.id);
+                  final msg = gp.confirmRecruitSurvivor(r.id);
+                  final isError =
+                      msg.contains('não encontrado') || msg.contains('Requer');
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(msg),
-                      backgroundColor: const Color(0xFF1A2A1A),
+                      backgroundColor: isError
+                          ? Colors.red.shade900
+                          : const Color(0xFF1A2A1A),
                       behavior: SnackBarBehavior.floating,
                       duration: const Duration(seconds: 3),
                     ),
                   );
-                  Navigator.pop(context);
+                  if (!isError) {
+                    if (gp.pendingRecruits.isEmpty) {
+                      Navigator.pop(context);
+                    } else {
+                      setState(() {});
+                    }
+                  }
                 },
                 onReject: () {
-                  engine.rejectRecruit(r.id);
+                  gp.rejectRecruit(r.id);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Survivor dispensado.'),
-                      backgroundColor: const Color(0xFF2A1A1A),
+                    const SnackBar(
+                      content: Text('Survivor dispensado.'),
+                      backgroundColor: Color(0xFF2A1A1A),
                       behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 3),
+                      duration: Duration(seconds: 3),
                     ),
                   );
-                  Navigator.pop(context);
+                  if (gp.pendingRecruits.isEmpty) {
+                    Navigator.pop(context);
+                  } else {
+                    setState(() {});
+                  }
                 },
               ),
             ),

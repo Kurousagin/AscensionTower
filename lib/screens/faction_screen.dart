@@ -882,7 +882,7 @@ class _TerritoryTab extends StatelessWidget {
         final isBoss = floorNum % 10 == 0;
         final isContested = contestedFloors.contains(floorNum);
         final color = _factionColor(faction);
-        final rel = gp.state.factionRelations[faction.name];
+        final rel = gp.state.factionRelations[faction.key];
 
         final standing = rel?.standing ?? 0.0;
         final fillOpacity = faction == FloorFaction.none
@@ -1090,7 +1090,7 @@ class _TerritoryTab extends StatelessWidget {
         ...factions.map((faction) {
           final color = _factionColor(faction);
           final count = countByFaction[faction] ?? 0;
-          final rel = gp.state.factionRelations[faction.name];
+          final rel = gp.state.factionRelations[faction.key];
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),

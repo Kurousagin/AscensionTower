@@ -41,8 +41,6 @@ class GroupsScreen extends StatelessWidget {
                 ),
               const SizedBox(height: 12),
               _SuggestionHistory(gp: gp),
-              const SizedBox(height: 12),
-              const _HowItWorksCard(),
             ],
           ),
         ),
@@ -62,31 +60,108 @@ class _GroupHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final membersInGroups = gp.aliveNpcs.where((n) => n.groupId != null).length;
-    return TerminalCard(
+    final freeNpcs = gp.aliveNpcs.where((n) => n.groupId == null).length;
+    final hasSuspicious = gp.suspiciousNpcs.isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        border: Border.all(
+          color: hasSuspicious
+              ? AppTheme.red.withValues(alpha: 0.5)
+              : AppTheme.cyan.withValues(alpha: 0.35),
+        ),
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: [
+          BoxShadow(
+            color: (hasSuspicious ? AppTheme.red : AppTheme.cyan).withValues(
+              alpha: 0.05,
+            ),
+            blurRadius: 16,
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Título
           const TerminalText(
-            'ESQUADROES & GRUPOS',
-            fontSize: 14,
-            color: AppTheme.cyan,
+            'ESQUADRÕES & GRUPOS',
+            fontSize: 8,
+            color: AppTheme.textDim,
             fontWeight: FontWeight.bold,
           ),
-          const SizedBox(height: 4),
-          TerminalText(
-            'Grupos ativos: ${gp.groups.length} | Membros em grupos: $membersInGroups',
-            fontSize: 10,
-            color: AppTheme.textSecondary,
+          const SizedBox(height: 8),
+
+          // Stat chips
+          Row(
+            children: [
+              _headerChip('${gp.groups.length}', 'GRUPOS', AppTheme.cyan),
+              const SizedBox(width: 8),
+              _headerChip('$membersInGroups', 'EM GRUPO', AppTheme.green),
+              const SizedBox(width: 8),
+              _headerChip('$freeNpcs', 'LIVRES', AppTheme.textSecondary),
+              if (hasSuspicious) ...[
+                const SizedBox(width: 8),
+                _headerChip(
+                  '${gp.suspiciousNpcs.length}',
+                  'SUSPEITOS',
+                  AppTheme.red,
+                ),
+              ],
+            ],
           ),
-          if (gp.suspiciousNpcs.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: TerminalText(
-                'ALERTA: ${gp.suspiciousNpcs.length} habitante(s) suspeito(s) na comunidade',
-                fontSize: 9,
-                color: AppTheme.red,
+
+          // Alerta de suspeitos
+          if (hasSuspicious) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppTheme.red.withValues(alpha: 0.5)),
+                borderRadius: BorderRadius.circular(2),
+                color: AppTheme.red.withValues(alpha: 0.06),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber,
+                    size: 11,
+                    color: AppTheme.red,
+                  ),
+                  const SizedBox(width: 6),
+                  TerminalText(
+                    '${gp.suspiciousNpcs.length} habitante(s) suspeito(s) na comunidade',
+                    fontSize: 9,
+                    color: AppTheme.red,
+                  ),
+                ],
               ),
             ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _headerChip(String value, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+        borderRadius: BorderRadius.circular(3),
+        color: color.withValues(alpha: 0.06),
+      ),
+      child: Column(
+        children: [
+          TerminalText(
+            value,
+            fontSize: 14,
+            color: color,
+            fontWeight: FontWeight.bold,
+          ),
+          TerminalText(label, fontSize: 7, color: AppTheme.textDim),
         ],
       ),
     );
@@ -103,26 +178,57 @@ class _CreateGroupButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TerminalCard(
-      title: 'CRIAR NOVO GRUPO',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const TerminalText(
-            'Organize seus melhores NPCs em esquadroes para expedicoes coordenadas.',
-            fontSize: 9,
-            color: AppTheme.textSecondary,
+    final canCreate = gp.aliveNpcs.length >= 2;
+    final freeNpcs = gp.aliveNpcs.where((n) => n.groupId == null).length;
+
+    return GestureDetector(
+      onTap: canCreate ? () => _CreateGroupDialog.show(context, gp) : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.bgCard,
+          border: Border.all(
+            color: canCreate
+                ? AppTheme.cyan.withValues(alpha: 0.4)
+                : AppTheme.border,
           ),
-          const SizedBox(height: 8),
-          TerminalButton(
-            label: 'FORMAR ESQUADRAO',
-            icon: Icons.group_add,
-            expanded: true,
-            onPressed: gp.aliveNpcs.length >= 2
-                ? () => _CreateGroupDialog.show(context, gp)
-                : null,
-          ),
-        ],
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.group_add,
+              size: 20,
+              color: canCreate ? AppTheme.cyan : AppTheme.textDim,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TerminalText(
+                    'FORMAR NOVO ESQUADRÃO',
+                    fontSize: 11,
+                    color: canCreate ? AppTheme.cyan : AppTheme.textDim,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  TerminalText(
+                    canCreate
+                        ? '$freeNpcs habitante(s) disponível(is) para recrutamento'
+                        : 'Necessário ao menos 2 habitantes vivos',
+                    fontSize: 8,
+                    color: AppTheme.textDim,
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: 16,
+              color: canCreate ? AppTheme.cyan : AppTheme.textDim,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -150,43 +256,305 @@ class _GroupCard extends StatelessWidget {
     final avgFatigue = _average(aliveMembers, (n) => n.fatigue);
     final exhaustedCount = aliveMembers.where((n) => n.isExhausted).length;
 
-    final borderColor = group.cohesion > 70
+    final cohesionColor = group.cohesion > 70
         ? AppTheme.green
         : group.cohesion > 40
         ? AppTheme.yellow
         : AppTheme.red;
 
-    return TerminalCard(
-      title: '${group.name} (${group.role.label})',
-      borderColor: borderColor,
+    final activeQuest = gp.activeQuests.firstWhereOrNull(
+      (q) => q.assignedGroupId == group.id,
+    );
+    gp.engine.questService.busyGroupIds.contains(group.id);
+
+    final borderColor = activeQuest != null ? AppTheme.purple : cohesionColor;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        border: Border.all(color: borderColor.withValues(alpha: 0.45)),
+        borderRadius: BorderRadius.circular(4),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _GroupStats(
-            group: group,
-            aliveMembers: aliveMembers,
-            avgPower: avgPower,
-            avgLoyalty: avgLoyalty,
-            avgFatigue: avgFatigue,
-            exhaustedCount: exhaustedCount,
-          ),
-          if (leader != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: TerminalText(
-                'Lider: ${leader.name} (${leader.profession.label})',
-                fontSize: 9,
-                color: AppTheme.cyan,
+          // ── Header do card ──────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+            decoration: BoxDecoration(
+              color: borderColor.withValues(alpha: 0.05),
+              border: Border(
+                bottom: BorderSide(color: borderColor.withValues(alpha: 0.25)),
+              ),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(4),
               ),
             ),
-          const SizedBox(height: 6),
-          CollapsibleList(
-            items: aliveMembers,
-            initialCount: 5,
-            itemBuilder: (npc, _) => _MemberRow(npc: npc, group: group),
+            child: Row(
+              children: [
+                // Nome + papel
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          TerminalText(
+                            group.name,
+                            fontSize: 12,
+                            color: AppTheme.textPrimary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: AppTheme.cyan.withValues(alpha: 0.4),
+                              ),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                            child: TerminalText(
+                              group.role.label.toUpperCase(),
+                              fontSize: 7,
+                              color: AppTheme.cyan,
+                            ),
+                          ),
+                          if (activeQuest != null) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: AppTheme.yellow.withValues(alpha: 0.6),
+                                ),
+                                borderRadius: BorderRadius.circular(2),
+                                color: AppTheme.yellow.withValues(alpha: 0.07),
+                              ),
+                              child: const TerminalText(
+                                '⚔ EM QUEST',
+                                fontSize: 7,
+                                color: AppTheme.yellow,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (leader != null) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.star,
+                              size: 10,
+                              color: AppTheme.yellow,
+                            ),
+                            const SizedBox(width: 3),
+                            TerminalText(
+                              '${leader.name}  ·  ${leader.profession.label}',
+                              fontSize: 8,
+                              color: AppTheme.yellow,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                // Missões completadas
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    TerminalText(
+                      '${group.missionsCompleted}',
+                      fontSize: 14,
+                      color: AppTheme.cyan,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    const TerminalText(
+                      'MISSÕES',
+                      fontSize: 7,
+                      color: AppTheme.textDim,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
+
+          // ── Stats + barra de coesão ─────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Chips de stat
+                Row(
+                  children: [
+                    _statChip(
+                      '${aliveMembers.length}/${group.memberIds.length}',
+                      'MEMBROS',
+                      aliveMembers.length < group.memberIds.length
+                          ? AppTheme.orange
+                          : AppTheme.textSecondary,
+                    ),
+                    const SizedBox(width: 6),
+                    _statChip(
+                      avgPower.toStringAsFixed(1),
+                      'PWR MED',
+                      AppTheme.orange,
+                    ),
+                    const SizedBox(width: 6),
+                    _statChip(
+                      avgLoyalty.toStringAsFixed(0),
+                      'LEALDADE',
+                      avgLoyalty > 70
+                          ? AppTheme.green
+                          : avgLoyalty > 40
+                          ? AppTheme.yellow
+                          : AppTheme.red,
+                    ),
+                    const SizedBox(width: 6),
+                    _statChip(
+                      '${avgFatigue.toStringAsFixed(0)}%',
+                      'FADIGA',
+                      avgFatigue >= 70
+                          ? AppTheme.red
+                          : avgFatigue >= 50
+                          ? AppTheme.orange
+                          : avgFatigue >= 30
+                          ? AppTheme.yellow
+                          : AppTheme.green,
+                    ),
+                    if (exhaustedCount > 0) ...[
+                      const SizedBox(width: 6),
+                      _statChip('$exhaustedCount', 'EXAUSTOS', AppTheme.red),
+                    ],
+                  ],
+                ),
+
+                // Barra de coesão
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const TerminalText(
+                      'COESÃO  ',
+                      fontSize: 7,
+                      color: AppTheme.textDim,
+                    ),
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          Container(
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: AppTheme.bgElevated,
+                              borderRadius: BorderRadius.circular(1),
+                              border: Border.all(color: AppTheme.border),
+                            ),
+                          ),
+                          FractionallySizedBox(
+                            widthFactor: (group.cohesion / 100.0).clamp(
+                              0.0,
+                              1.0,
+                            ),
+                            child: Container(
+                              height: 5,
+                              decoration: BoxDecoration(
+                                color: cohesionColor,
+                                borderRadius: BorderRadius.circular(1),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    TerminalText(
+                      '${group.cohesion.toStringAsFixed(0)}%',
+                      fontSize: 8,
+                      color: cohesionColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ],
+                ),
+
+                if (group.casualties > 0) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.close, size: 10, color: AppTheme.red),
+                      const SizedBox(width: 4),
+                      TerminalText(
+                        '${group.casualties} baixa(s) acumulada(s)',
+                        fontSize: 8,
+                        color: AppTheme.red,
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // ── Lista de membros ────────────────────────────────────
           const SizedBox(height: 8),
-          _GroupActions(gp: gp, group: group, aliveMembers: aliveMembers),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: AppTheme.border.withValues(alpha: 0.5),
+                ),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: CollapsibleList(
+                items: aliveMembers,
+                initialCount: 4,
+                itemBuilder: (npc, _) => _MemberRow(npc: npc, group: group),
+              ),
+            ),
+          ),
+
+          // ── Ações ───────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: _GroupActions(
+              gp: gp,
+              group: group,
+              aliveMembers: aliveMembers,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statChip(String value, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(2),
+        color: color.withValues(alpha: 0.05),
+      ),
+      child: Column(
+        children: [
+          TerminalText(
+            value,
+            fontSize: 10,
+            color: color,
+            fontWeight: FontWeight.bold,
+          ),
+          TerminalText(label, fontSize: 6, color: AppTheme.textDim),
         ],
       ),
     );
@@ -203,94 +571,7 @@ class _GroupCard extends StatelessWidget {
   }
 }
 
-class _GroupStats extends StatelessWidget {
-  final NpcGroup group;
-  final List<Npc> aliveMembers;
-  final double avgPower, avgLoyalty, avgFatigue;
-  final int exhaustedCount;
-
-  const _GroupStats({
-    required this.group,
-    required this.aliveMembers,
-    required this.avgPower,
-    required this.avgLoyalty,
-    required this.avgFatigue,
-    required this.exhaustedCount,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final fatigueColor = avgFatigue >= 70
-        ? AppTheme.red
-        : avgFatigue >= 50
-        ? AppTheme.orange
-        : avgFatigue >= 30
-        ? AppTheme.yellow
-        : AppTheme.green;
-
-    final exhaustedSuffix = exhaustedCount > 0
-        ? ' ($exhaustedCount exausto${exhaustedCount > 1 ? "s" : ""})'
-        : '';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 4,
-          children: [
-            TerminalText(
-              'Membros: ${aliveMembers.length}/${group.memberIds.length}',
-              fontSize: 9,
-              color: AppTheme.textSecondary,
-            ),
-            TerminalText(
-              'Coesao: ${group.cohesion.toStringAsFixed(0)}%',
-              fontSize: 9,
-              color: group.cohesion > 70
-                  ? AppTheme.green
-                  : group.cohesion > 40
-                  ? AppTheme.yellow
-                  : AppTheme.red,
-            ),
-            TerminalText(
-              'Missoes: ${group.missionsCompleted}',
-              fontSize: 9,
-              color: AppTheme.cyan,
-            ),
-            TerminalText(
-              'Baixas: ${group.casualties}',
-              fontSize: 9,
-              color: AppTheme.red,
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Wrap(
-          spacing: 12,
-          runSpacing: 4,
-          children: [
-            TerminalText(
-              'Poder medio: ${avgPower.toStringAsFixed(1)}',
-              fontSize: 9,
-              color: AppTheme.orange,
-            ),
-            TerminalText(
-              'Lealdade media: ${avgLoyalty.toStringAsFixed(0)}',
-              fontSize: 9,
-              color: AppTheme.yellow,
-            ),
-            TerminalText(
-              'Fadiga media: ${avgFatigue.toStringAsFixed(0)}%$exhaustedSuffix',
-              fontSize: 9,
-              color: fatigueColor,
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
+// _GroupStats foi incorporado diretamente no _GroupCard acima
 
 class _MemberRow extends StatelessWidget {
   final Npc npc;
@@ -310,35 +591,101 @@ class _MemberRow extends StatelessWidget {
         ? AppTheme.yellow
         : AppTheme.green;
 
-    final statusSuffix = npc.isIncapacitated
-        ? ' [INCAP]'
-        : npc.isExhausted
-        ? ' [EXAU]'
-        : '';
+    final nameColor = npc.isIncapacitated
+        ? AppTheme.red.withValues(alpha: 0.5)
+        : npc.isSuspicious
+        ? AppTheme.red
+        : isLeader
+        ? AppTheme.yellow
+        : AppTheme.textSecondary;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: AppTheme.border.withValues(alpha: 0.4)),
+        ),
+        color: isLeader
+            ? AppTheme.yellow.withValues(alpha: 0.03)
+            : npc.isIncapacitated
+            ? AppTheme.red.withValues(alpha: 0.02)
+            : Colors.transparent,
+      ),
       child: Row(
         children: [
+          // Ícone de papel
+          SizedBox(
+            width: 14,
+            child: isLeader
+                ? const Icon(Icons.star, size: 11, color: AppTheme.yellow)
+                : npc.isSuspicious
+                ? const Icon(Icons.warning, size: 11, color: AppTheme.red)
+                : const SizedBox.shrink(),
+          ),
+          const SizedBox(width: 4),
+
+          // Nome + profissão
           Expanded(
-            child: TerminalText(
-              '${isLeader ? "[L] " : "  "}${npc.name} | ${npc.profession.label}'
-              ' | PWR:${npc.attributes.combatPower.toStringAsFixed(1)} | Leal:${npc.loyalty.toStringAsFixed(0)}$statusSuffix',
-              fontSize: 8,
-              color: npc.isIncapacitated
-                  ? AppTheme.red.withValues(alpha: 0.5)
-                  : npc.isSuspicious
-                  ? AppTheme.red
-                  : AppTheme.textSecondary,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TerminalText(
+                  npc.name,
+                  fontSize: 9,
+                  color: nameColor,
+                  fontWeight: isLeader ? FontWeight.bold : FontWeight.normal,
+                ),
+                TerminalText(
+                  npc.profession.label,
+                  fontSize: 7,
+                  color: AppTheme.textDim,
+                ),
+              ],
             ),
           ),
-          TerminalText(
-            'F:${npc.fatigue.toStringAsFixed(0)}',
-            fontSize: 8,
-            color: fatigueColor,
+
+          // PWR
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                TerminalText(
+                  npc.attributes.combatPower.toStringAsFixed(1),
+                  fontSize: 9,
+                  color: AppTheme.orange,
+                  fontWeight: FontWeight.bold,
+                ),
+                const TerminalText('PWR', fontSize: 6, color: AppTheme.textDim),
+              ],
+            ),
           ),
-          if (npc.isSuspicious)
-            const TerminalText(' [!]', fontSize: 8, color: AppTheme.red),
+
+          // Fadiga
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              TerminalText(
+                '${npc.fatigue.toStringAsFixed(0)}%',
+                fontSize: 9,
+                color: fatigueColor,
+                fontWeight: FontWeight.bold,
+              ),
+              const TerminalText('FAD', fontSize: 6, color: AppTheme.textDim),
+            ],
+          ),
+
+          // Status crítico
+          if (npc.isIncapacitated || npc.isExhausted)
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: TerminalText(
+                npc.isIncapacitated ? 'INCAP' : 'EXAU',
+                fontSize: 7,
+                color: AppTheme.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
         ],
       ),
     );
@@ -357,8 +704,11 @@ class _GroupActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isBusy = gp.engine.questService.busyGroupIds.contains(group.id);
+
     return Column(
       children: [
+        // Ações principais lado a lado
         if (gp.nextFloor != null && aliveMembers.length >= 2)
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
@@ -367,7 +717,9 @@ class _GroupActions extends StatelessWidget {
               icon: Icons.rocket_launch,
               color: AppTheme.orange,
               expanded: true,
-              onPressed: () => _ExpeditionDialog.confirm(context, gp, group),
+              onPressed: isBusy
+                  ? null
+                  : () => _ExpeditionDialog.confirm(context, gp, group),
             ),
           ),
         if (gp.clearedFloors.isNotEmpty && aliveMembers.isNotEmpty)
@@ -378,9 +730,13 @@ class _GroupActions extends StatelessWidget {
               icon: Icons.search,
               color: AppTheme.green,
               expanded: true,
-              onPressed: () => _ReexploreDialog.show(context, gp, group),
+              onPressed: isBusy
+                  ? null
+                  : () => _ReexploreDialog.show(context, gp, group),
             ),
           ),
+
+        // Linha: treino + dissolver
         Row(
           children: [
             Expanded(
@@ -388,7 +744,9 @@ class _GroupActions extends StatelessWidget {
                 label: 'SUGERIR TREINO',
                 icon: Icons.fitness_center,
                 color: AppTheme.cyan,
-                onPressed: gp.clearedFloors.isNotEmpty || gp.hasTrainingField
+                onPressed: isBusy
+                    ? null
+                    : (gp.clearedFloors.isNotEmpty || gp.hasTrainingField)
                     ? () => _SuggestTrainingDialog.show(context, gp, group)
                     : null,
               ),
@@ -402,6 +760,30 @@ class _GroupActions extends StatelessWidget {
             ),
           ],
         ),
+
+        if (isBusy) ...[
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              border: Border.all(color: AppTheme.yellow.withValues(alpha: 0.4)),
+              borderRadius: BorderRadius.circular(2),
+              color: AppTheme.yellow.withValues(alpha: 0.05),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.hourglass_empty, size: 10, color: AppTheme.yellow),
+                SizedBox(width: 5),
+                TerminalText(
+                  'Grupo em missão — ações bloqueadas',
+                  fontSize: 8,
+                  color: AppTheme.yellow,
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -424,25 +806,49 @@ class _SuggestionHistory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final recent = gp.trainingSuggestions.reversed.take(10).toList();
+    final recent = gp.trainingSuggestions.reversed.take(8).toList();
     if (recent.isEmpty) return const SizedBox.shrink();
 
     return TerminalCard(
-      title: 'HISTORICO DE SUGESTOES',
+      title: 'RESPOSTAS DE TREINO',
+      borderColor: AppTheme.textDim,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: recent
-            .map(
-              (s) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: TerminalText(
-                  '[${s.response.label}] ${s.responseDetail}',
-                  fontSize: 8,
-                  color: _responseColors[s.response] ?? AppTheme.textSecondary,
+        children: recent.map((s) {
+          final color = _responseColors[s.response] ?? AppTheme.textSecondary;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(right: 7, top: 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: color.withValues(alpha: 0.5)),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                  child: TerminalText(
+                    s.response.label.toUpperCase(),
+                    fontSize: 6,
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            )
-            .toList(),
+                Expanded(
+                  child: TerminalText(
+                    s.responseDetail,
+                    fontSize: 8,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -457,20 +863,35 @@ class _EmptyGroupsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const TerminalCard(
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        border: Border.all(color: AppTheme.border),
+        borderRadius: BorderRadius.circular(4),
+      ),
       child: Column(
         children: [
-          TerminalText(
-            'Nenhum grupo formado.',
+          Icon(
+            Icons.groups_outlined,
+            size: 32,
+            color: AppTheme.textDim.withValues(alpha: 0.4),
+          ),
+          const SizedBox(height: 10),
+          const TerminalText(
+            'NENHUM GRUPO FORMADO',
             fontSize: 11,
             color: AppTheme.textDim,
+            fontWeight: FontWeight.bold,
+            textAlign: TextAlign.center,
           ),
-          SizedBox(height: 4),
-          TerminalText(
-            'Forme grupos para coordenar expedicoes, treinos e defesas. '
-            'Grupos com alta coesao trabalham melhor juntos.',
+          const SizedBox(height: 6),
+          const TerminalText(
+            'Forme esquadrões para coordenar expedições e treinos.\n'
+            'Grupos com alta coesão têm bônus de sinergia.',
             fontSize: 9,
             color: AppTheme.textDim,
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -478,91 +899,7 @@ class _EmptyGroupsCard extends StatelessWidget {
   }
 }
 
-class _HowItWorksCard extends StatelessWidget {
-  const _HowItWorksCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return const TerminalCard(
-      title: 'COMO FUNCIONA',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SectionHeader('SUA UNICA ACAO DIRETA:', AppTheme.orange),
-          SizedBox(height: 4),
-          TerminalText(
-            'Escolher quem desafia novos andares e quem re-explora para coletar recursos.',
-            fontSize: 9,
-            color: AppTheme.textPrimary,
-          ),
-          SizedBox(height: 8),
-          _SectionHeader('ACOES DISPONIVEIS:', AppTheme.cyan),
-          SizedBox(height: 4),
-          TerminalText(
-            '1. DESAFIAR ANDAR - Enviar grupo para conquistar o proximo andar',
-            fontSize: 9,
-            color: AppTheme.orange,
-          ),
-          TerminalText(
-            '2. COLETAR RECURSOS - Re-explorar andares conquistados',
-            fontSize: 9,
-            color: AppTheme.green,
-          ),
-          TerminalText(
-            '3. SUGERIR TREINO - NPCs podem aceitar ou recusar',
-            fontSize: 9,
-            color: AppTheme.cyan,
-          ),
-          SizedBox(height: 8),
-          _SectionHeader('HIERARQUIA DE DECISAO:', AppTheme.yellow),
-          SizedBox(height: 4),
-          TerminalText(
-            'Voce NAO diz aos NPCs qual andar explorar - voce os DESIGNA como lideres.',
-            fontSize: 9,
-            color: AppTheme.textSecondary,
-          ),
-          TerminalText(
-            'NPCs decidem autonomamente treino, relacionamentos e decisoes pessoais.',
-            fontSize: 9,
-            color: AppTheme.textSecondary,
-          ),
-          SizedBox(height: 8),
-          _SectionHeader('FATORES DE DECISAO (para treino):', AppTheme.textDim),
-          SizedBox(height: 4),
-          TerminalText(
-            'Lealdade, fadiga, moral, ambicao, medo, relacionamentos, confianca, experiencias passadas e traumas.',
-            fontSize: 9,
-            color: AppTheme.textDim,
-          ),
-          SizedBox(height: 8),
-          _SectionHeader('IMPACTO POLITICO:', AppTheme.red),
-          SizedBox(height: 4),
-          TerminalText(
-            'Favoritismo gera ressentimento. Enviar os mesmos NPCs sempre pode desgasta-los. '
-            'Perdas em expedicoes abalam moral e confianca.',
-            fontSize: 9,
-            color: AppTheme.textDim,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Helper para headers de secao dentro do card
-class _SectionHeader extends StatelessWidget {
-  final String text;
-  final Color color;
-  const _SectionHeader(this.text, this.color);
-
-  @override
-  Widget build(BuildContext context) => TerminalText(
-    text,
-    fontSize: 10,
-    color: color,
-    fontWeight: FontWeight.bold,
-  );
-}
+// _HowItWorksCard removido — mecânicas são intuitivas pelo contexto do jogo
 
 // ─────────────────────────────────────────────
 // DIALOGO: CONFIRMAR EXPEDICAO
@@ -1411,6 +1748,38 @@ class _SuggestTrainingDialogState extends State<_SuggestTrainingDialog> {
 
   static const _durations = [3, 5, 7];
 
+  BuildingType _bestBuildingFor(List<String> ids) {
+    if (ids.isEmpty) return BuildingType.trainingField;
+    final npcs = ids
+        .map(
+          (id) =>
+              widget.gp.allNpcs.firstWhereOrNull((n) => n.id == id && n.alive),
+        )
+        .whereType<Npc>()
+        .toList();
+    if (npcs.isEmpty) return BuildingType.trainingField;
+
+    final avgStr =
+        npcs.fold(0.0, (s, n) => s + n.attributes.strength) / npcs.length;
+    final avgAgi =
+        npcs.fold(0.0, (s, n) => s + n.attributes.agility) / npcs.length;
+    final avgInt =
+        npcs.fold(0.0, (s, n) => s + n.attributes.intelligence) / npcs.length;
+    final avgSan =
+        npcs.fold(0.0, (s, n) => s + n.attributes.mentalStability) /
+        npcs.length;
+
+    // Sugere treinar o atributo MAIS FRACO (maior ganho potencial)
+    final scores = {
+      BuildingType.barracks: 15 - avgStr,
+      BuildingType.arena: 15 - avgAgi,
+      BuildingType.library: 15 - avgInt,
+      BuildingType.temple: (100 - avgSan) / 10,
+    };
+
+    return scores.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+  }
+
   static const _buildingMeta = {
     BuildingType.trainingField: (
       label: 'Campo de Treino',
@@ -1503,6 +1872,47 @@ class _SuggestTrainingDialogState extends State<_SuggestTrainingDialog> {
               fontSize: 10,
               color: AppTheme.textSecondary,
               fontWeight: FontWeight.bold,
+            ), // Sugestão automática
+            Builder(
+              builder: (_) {
+                final best = _bestBuildingFor(_aliveIds);
+                final meta = _buildingMeta[best];
+                if (meta == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedBuilding = best),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: AppTheme.yellow.withValues(alpha: 0.4),
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                        color: AppTheme.yellow.withValues(alpha: 0.04),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.auto_awesome,
+                            size: 12,
+                            color: AppTheme.yellow,
+                          ),
+                          const SizedBox(width: 6),
+                          TerminalText(
+                            'Sugerido para este grupo: ${meta.label} (${meta.focus})',
+                            fontSize: 8,
+                            color: AppTheme.yellow,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 6),
             ...widget.gp.trainingBuildings.map((b) {
@@ -1672,21 +2082,48 @@ class _SuggestTrainingDialogState extends State<_SuggestTrainingDialog> {
               npc.id,
               _selectedBuilding!,
             );
-            final aptColor = apt >= 1.5
+            final aptColor = apt >= 1.8
+                ? AppTheme.cyan
+                : apt >= 1.3
                 ? AppTheme.green
-                : apt >= 0.8
+                : apt >= 0.9
                 ? AppTheme.yellow
                 : AppTheme.red;
-            final aptLabel = apt >= 1.5
+            final isHighStat = switch (_selectedBuilding) {
+              BuildingType.barracks => npc.attributes.strength >= 10,
+              BuildingType.arena => npc.attributes.agility >= 10,
+              BuildingType.library => npc.attributes.intelligence >= 10,
+              BuildingType.temple => npc.attributes.mentalStability >= 75,
+              _ => false,
+            };
+
+            final aptLabel = apt >= 1.8
+                ? 'Excelente'
+                : apt >= 1.3
                 ? 'Alta'
-                : apt >= 0.8
+                : apt >= 0.9
                 ? 'Média'
-                : 'Baixa';
+                : isHighStat
+                ? 'Baixa (já avançado)' // ← não é ruim, é diminishing returns
+                : apt >= 0.5
+                ? 'Baixa'
+                : 'Péssima';
+
+            final buildingFocusAttr = switch (_selectedBuilding) {
+              BuildingType.barracks => 'strength',
+              BuildingType.arena => 'agility',
+              BuildingType.library => 'intelligence',
+              BuildingType.temple => 'mentalStability',
+              _ => 'strength',
+            };
 
             final gainStr = entry.value.entries
-                .map(
-                  (e) => '${_attrLabel(e.key)}+${e.value.toStringAsFixed(2)}',
-                )
+                .map((e) {
+                  final label = _attrLabel(e.key);
+                  final val = e.value.toStringAsFixed(2);
+                  final isFocus = e.key == buildingFocusAttr;
+                  return isFocus ? '▶$label+$val' : '$label+$val';
+                })
                 .join('  ');
 
             return Padding(
@@ -1714,7 +2151,11 @@ class _SuggestTrainingDialogState extends State<_SuggestTrainingDialog> {
                     child: TerminalText(
                       gainStr,
                       fontSize: 8,
-                      color: AppTheme.green,
+                      color: apt >= 1.3
+                          ? AppTheme.green
+                          : apt >= 0.9
+                          ? AppTheme.yellow
+                          : AppTheme.textDim,
                     ),
                   ),
                 ],

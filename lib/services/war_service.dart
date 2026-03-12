@@ -246,9 +246,17 @@ class WarService {
     if (faction != war.aggressor && faction != war.defender) {
       return '${faction.label} não está nesta guerra.';
     }
-
     war.playerSidedWith = faction;
-    return 'Você se aliou a ${faction.label} nesta guerra!';
+
+    // Corta tratado com a facção rival
+    final rival = faction == war.aggressor ? war.defender : war.aggressor;
+    final rivalRel = factionRelations[rival.key];
+    if (rivalRel != null) {
+      rivalRel.hasTreaty = false;
+      rivalRel.standing = (rivalRel.standing - 20).clamp(-100.0, 100.0);
+    }
+
+    return 'Você se aliou a ${faction.label} nesta guerra! Tratado com ${rival.label} cancelado.';
   }
 
   // ── Serialização ──────────────────────────────────────────────────────────

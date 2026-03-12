@@ -1,8 +1,9 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:tower_ascension/models/equipment.dart';
+//import 'package:tower_ascension/models/equipment.dart';
 import 'package:tower_ascension/screens/equipment.dart';
+import 'package:tower_ascension/screens/npc_detail_screen.dart';
 import '../providers/game_provider.dart';
 import '../models/npc.dart';
 import '../widgets/theme.dart';
@@ -47,8 +48,8 @@ class _NpcListScreenState extends State<NpcListScreen> {
             break;
           case 'mental':
             npcs.sort(
-              (a, b) => a.attributes.mentalStability.compareTo(
-                b.attributes.mentalStability,
+              (a, b) => b.attributes.mentalStability.compareTo(
+                a.attributes.mentalStability,
               ),
             );
             break;
@@ -212,7 +213,9 @@ class _NpcListScreenState extends State<NpcListScreen> {
         : AppTheme.border;
 
     return GestureDetector(
-      onTap: () => _showNpcDetail(context, npc, gp),
+      onTap: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => NpcDetailScreen(npcId: npc.id))),
       child: Container(
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.all(10),
@@ -358,6 +361,39 @@ class _NpcListScreenState extends State<NpcListScreen> {
                 ],
               ],
             ),
+            if (npc.partnerId != null)
+              Builder(
+                builder: (_) {
+                  final partner = gp.allNpcs
+                      .where((n) => n.id == npc.partnerId)
+                      .firstOrNull;
+                  if (partner == null) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      children: [
+                        Icon(
+                          partner.alive ? Icons.favorite : Icons.heart_broken,
+                          size: 10,
+                          color: partner.alive
+                              ? AppTheme.pink
+                              : AppTheme.textDim,
+                        ),
+                        const SizedBox(width: 4),
+                        TerminalText(
+                          partner.alive
+                              ? '♥ ${partner.name}'
+                              : '✝ ${partner.name} [falecido(a)]',
+                          fontSize: 8,
+                          color: partner.alive
+                              ? AppTheme.pink
+                              : AppTheme.textDim,
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       ),
@@ -437,532 +473,564 @@ class _NpcListScreenState extends State<NpcListScreen> {
     return (Icons.person_outline, AppTheme.textSecondary);
   }
 
-  void _showNpcDetail(BuildContext context, Npc npc, GameProvider gp) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.bgCard,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
-        side: BorderSide(color: AppTheme.border),
-      ),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.85,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (context, scrollController) => SingleChildScrollView(
-          controller: scrollController,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 3,
-                  color: AppTheme.border,
-                  margin: const EdgeInsets.only(bottom: 12),
-                ),
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TerminalText(
-                      npc.name,
-                      fontSize: 14,
-                      color: AppTheme.cyan,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  TerminalText(
-                    npc.alive ? 'VIVO' : 'MORTO',
-                    fontSize: 10,
-                    color: npc.alive ? AppTheme.green : AppTheme.red,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              TerminalText(
-                'Origem: ${npc.origin.label} | Geracao ${npc.generation} | ${npc.age} anos | ${npc.daysSurvived} dias na Torre',
-                fontSize: 9,
-                color: AppTheme.textSecondary,
-              ),
-              const CyanDivider(label: 'ATRIBUTOS'),
-              StatBar(
-                label: 'Forca',
-                value: npc.totalStrength(gp.equippedOn(npc.id)),
-                maxValue: 20,
-              ),
-              StatBar(
-                label: 'Agil.',
-                value: npc.totalAgility(gp.equippedOn(npc.id)),
-                maxValue: 20,
-              ),
-              StatBar(
-                label: 'Intel.',
-                value: npc.totalIntelligence(gp.equippedOn(npc.id)),
-                maxValue: 20,
-              ),
-              StatBar(
-                label: 'Resist.',
-                value: npc.totalEndurance(gp.equippedOn(npc.id)),
-                maxValue: 20,
-              ),
-              StatBar(
-                label: 'Caris.',
-                value: npc.totalCharisma(gp.equippedOn(npc.id)),
-                maxValue: 20,
-              ),
-              StatBar(
-                label: 'Sanid.',
-                value: npc.attributes.mentalStability,
-                maxValue: 100,
-                color: npc.attributes.mentalStability > 60
-                    ? AppTheme.green
-                    : npc.attributes.mentalStability > 30
-                    ? AppTheme.yellow
-                    : AppTheme.red,
-              ),
-              StatBar(
-                label: 'Fadiga',
-                value: npc.fatigue,
-                maxValue: 100,
-                color: npc.fatigue < 30
-                    ? AppTheme.green
-                    : npc.fatigue < 50
-                    ? AppTheme.yellow
-                    : npc.fatigue < 70
-                    ? AppTheme.orange
-                    : AppTheme.red,
-              ),
-              const SizedBox(height: 2),
-              TerminalText(
-                'Estado fisico: ${npc.fatigueLabel}${npc.isIncapacitated
-                    ? " [INCAPACITADO]"
-                    : npc.isExhausted
-                    ? " [EXAUSTO]"
-                    : ""}',
-                fontSize: 9,
-                color: npc.fatigue >= 70
-                    ? AppTheme.red
-                    : npc.fatigue >= 50
-                    ? AppTheme.orange
-                    : AppTheme.green,
-              ),
-              const SizedBox(height: 4),
-              TerminalText(
-                'Poder de combate: ${npc.effectiveCombatPowerWithGear(gp.equippedOn(npc.id)).toStringAsFixed(1)} | Media geral: ${npc.attributes.average.toStringAsFixed(1)}',
-                fontSize: 9,
-                color: AppTheme.orange,
-              ),
-              const CyanDivider(label: 'PERSONALIDADE'),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: npc.traits
-                    .map(
-                      (t) => Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: AppTheme.purple.withValues(alpha: 0.5),
-                          ),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                        child: TerminalText(
-                          t.label,
-                          fontSize: 9,
-                          color: AppTheme.purple,
-                        ),
-                      ),
-                    )
-                    .toList(),
-              ),
-              if (npc.hiddenTalent != HiddenTalent.none) ...[
-                const CyanDivider(label: 'TALENTO OCULTO'),
-                TerminalText(
-                  npc.talentDiscovered
-                      ? '${npc.hiddenTalent.label}: ${npc.hiddenTalent.description}'
-                      : '??? Talento ainda nao revelado',
-                  fontSize: 10,
-                  color: npc.talentDiscovered
-                      ? AppTheme.purple
-                      : AppTheme.textDim,
-                ),
-              ],
-              if (npc.talentDiscovered && _hasSpecialCapabilities(npc)) ...[
-  const CyanDivider(label: 'CAPACIDADES'),
-  ..._buildCapabilities(npc),
-],
-              const CyanDivider(label: 'FUNCAO NA CIDADELA'),
-              TerminalText(
-                'Funcao atual: ${npc.profession.label}',
-                fontSize: 10,
-                color: AppTheme.textPrimary,
-              ),
-              const CyanDivider(label: 'ESTATISTICAS'),
-              TerminalText(
-                'Andares superados: ${npc.floorsCleared}',
-                fontSize: 9,
-                color: AppTheme.textSecondary,
-              ),
-              TerminalText(
-                'Fama acumulada: ${npc.fame.toStringAsFixed(0)}',
-                fontSize: 9,
-                color: AppTheme.yellow,
-              ),
-              TerminalText(
-                'Estado mental: ${npc.mentalCondition.label}',
-                fontSize: 9,
-                color: AppTheme.textSecondary,
-              ),
-              const CyanDivider(label: 'SOCIAL'),
-              StatBar(
-                label: 'Leal.',
-                value: npc.loyalty,
-                maxValue: 100,
-                color: npc.loyalty > 60
-                    ? AppTheme.green
-                    : npc.loyalty > 30
-                    ? AppTheme.yellow
-                    : AppTheme.red,
-              ),
-              TerminalText(
-                'Reputacao: ${npc.fameLabel} (${npc.fame.toStringAsFixed(0)})',
-                fontSize: 9,
-                color: npc.fame >= 0 ? AppTheme.yellow : AppTheme.red,
-              ),
-              if (npc.betrayalRisk > 10)
-                TerminalText(
-                  'Risco de traicao: ${npc.betrayalRisk.toStringAsFixed(0)}%',
-                  fontSize: 9,
-                  color: npc.betrayalRisk > 50 ? AppTheme.red : AppTheme.orange,
-                ),
-              if (npc.groupId != null)
-                Builder(
-                  builder: (_) {
-                    final group = gp.groups
-                        .where((g) => g.id == npc.groupId)
-                        .firstOrNull;
-                    return TerminalText(
-                      'Grupo: ${group?.name ?? "Sem grupo"}',
-                      fontSize: 9,
-                      color: AppTheme.blue,
-                    );
-                  },
-                ),
-              if (npc.trainingSuggestionsReceived > 0)
-                TerminalText(
-                  'Sugestoes: ${npc.trainingSuggestionsAccepted}/${npc.trainingSuggestionsReceived} aceitas',
-                  fontSize: 9,
-                  color: AppTheme.textDim,
-                ),
-              if (npc.origin.isDarkOrigin)
-                TerminalText(
-                  'ORIGEM OBSCURA: ${npc.origin.label}',
-                  fontSize: 9,
-                  color: AppTheme.red,
-                ),
-              // ── Parceiro (detalhado no modal) ──
-              if (npc.partnerId != null)
-                Builder(
-                  builder: (_) {
-                    final partner = gp.allNpcs
-                        .where((n) => n.id == npc.partnerId)
-                        .firstOrNull;
-                    if (partner == null) return const SizedBox.shrink();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              partner.alive
-                                  ? Icons.favorite
-                                  : Icons.heart_broken,
-                              size: 11,
-                              color: partner.alive
-                                  ? AppTheme.pink
-                                  : AppTheme.textDim,
-                            ),
-                            const SizedBox(width: 4),
-                            TerminalText(
-                              'Parceiro(a): ${partner.name}',
-                              fontSize: 9,
-                              color: partner.alive
-                                  ? AppTheme.pink
-                                  : AppTheme.textDim,
-                            ),
-                            if (!partner.alive)
-                              TerminalText(
-                                ' [falecido(a)]',
-                                fontSize: 9,
-                                color: AppTheme.red,
-                              ),
-                          ],
-                        ),
-                        if (npc.childrenIds.isNotEmpty)
-                          TerminalText(
-                            '${npc.childrenIds.length} filho(s) juntos',
-                            fontSize: 9,
-                            color: AppTheme.green,
-                          ),
-                      ],
-                    );
-                  },
-                ),
-              // Mostra filhos se não tem parceiro mas tem filhos
-              if (npc.partnerId == null && npc.childrenIds.isNotEmpty)
-                TerminalText(
-                  '${npc.childrenIds.length} filho(s)',
-                  fontSize: 9,
-                  color: AppTheme.green,
-                ),
-              // ── Relacionamentos ──
-              if (npc.relationships.isNotEmpty) ...[
-                const CyanDivider(label: 'VINCULOS'),
-                ...npc.relationships
-                    .where((r) => r.affinity.abs() > 0.2)
-                    .take(6)
-                    .map((r) {
-                      final target = gp.allNpcs.firstWhereOrNull(
-                        (n) => n.id == r.targetId,
-                      );
-                      if (target == null) return const SizedBox.shrink();
-                      final color = r.affinity > 0.6
-                          ? AppTheme.green
-                          : r.affinity > 0.2
-                          ? AppTheme.yellow
-                          : AppTheme.red;
-                      final icon = r.type == 'parceiro'
-                          ? '♥'
-                          : r.type == 'familiar'
-                          ? '⌂'
-                          : r.affinity > 0.3
-                          ? '+'
-                          : '−';
-                      final label = r.affinity > 0.6
-                          ? 'proximo'
-                          : r.affinity > 0.2
-                          ? 'amigavel'
-                          : 'hostil';
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
-                          children: [
-                            TerminalText('$icon ', fontSize: 9, color: color),
-                            TerminalText(
-                              target.name,
-                              fontSize: 9,
-                              color: target.alive
-                                  ? AppTheme.textPrimary
-                                  : AppTheme.textDim,
-                            ),
-                            if (!target.alive)
-                              TerminalText(
-                                ' ✝',
-                                fontSize: 9,
-                                color: AppTheme.red,
-                              ),
-                            const Spacer(),
-                            TerminalText(label, fontSize: 8, color: color),
-                            TerminalText(
-                              '  ${(r.affinity * 100).toStringAsFixed(0)}%',
-                              fontSize: 8,
-                              color: AppTheme.textDim,
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-              ],
-              if (npc.traumas.isNotEmpty) ...[
-                const CyanDivider(label: 'TRAUMAS'),
-                ...npc.traumas.map(
-                  (t) => TerminalText('- $t', fontSize: 9, color: AppTheme.red),
-                ),
-              ],
-              const CyanDivider(label: 'EQUIPAMENTOS'),
-              Row(
-                children: [
-                  _EquipSlot(
-                    label: 'ARMA',
-                    icon: '⚔',
-                    equipment: gp
-                        .equippedOn(npc.id)
-                        .firstWhereOrNull(
-                          (e) => e.slot == EquipmentSlot.weapon,
-                        ),
-                  ),
-                  const SizedBox(width: 8),
-                  _EquipSlot(
-                    label: 'ARMOR',
-                    icon: '🛡',
-                    equipment: gp
-                        .equippedOn(npc.id)
-                        .firstWhereOrNull((e) => e.slot == EquipmentSlot.armor),
-                  ),
-                  const SizedBox(width: 8),
-                  _EquipSlot(
-                    label: 'ACESS.',
-                    icon: '💍',
-                    equipment: gp
-                        .equippedOn(npc.id)
-                        .firstWhereOrNull(
-                          (e) => e.slot == EquipmentSlot.accessory,
-                        ),
-                  ),
-                ],
-              ),
-              if (npc.history.isNotEmpty) ...[
-                const CyanDivider(label: 'HISTORICO'),
-                ...npc.history.reversed
-                    .take(10)
-                    .map(
-                      (h) => TerminalText(
-                        '> $h',
-                        fontSize: 9,
-                        color: AppTheme.textDim,
-                      ),
-                    ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  // void _showNpcDetail(BuildContext context, Npc npc, GameProvider gp) {
+  //   showModalBottomSheet(
+  //     context: context,
+  //     backgroundColor: AppTheme.bgCard,
+  //     isScrollControlled: true,
+  //     shape: const RoundedRectangleBorder(
+  //       borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+  //       side: BorderSide(color: AppTheme.border),
+  //     ),
+  //     builder: (context) => DraggableScrollableSheet(
+  //       initialChildSize: 0.85,
+  //       minChildSize: 0.5,
+  //       maxChildSize: 0.95,
+  //       expand: false,
+  //       builder: (context, scrollController) => SingleChildScrollView(
+  //         controller: scrollController,
+  //         padding: const EdgeInsets.all(16),
+  //         child: Column(
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             Center(
+  //               child: Container(
+  //                 width: 40,
+  //                 height: 3,
+  //                 color: AppTheme.border,
+  //                 margin: const EdgeInsets.only(bottom: 12),
+  //               ),
+  //             ),
+  //             Row(
+  //               children: [
+  //                 Expanded(
+  //                   child: TerminalText(
+  //                     npc.name,
+  //                     fontSize: 14,
+  //                     color: AppTheme.cyan,
+  //                     fontWeight: FontWeight.bold,
+  //                   ),
+  //                 ),
+  //                 TerminalText(
+  //                   npc.alive ? 'VIVO' : 'MORTO',
+  //                   fontSize: 10,
+  //                   color: npc.alive ? AppTheme.green : AppTheme.red,
+  //                 ),
+  //               ],
+  //             ),
+  //             const SizedBox(height: 4),
+  //             TerminalText(
+  //               'Origem: ${npc.origin.label} | Geracao ${npc.generation} | ${npc.age} anos | ${npc.daysSurvived} dias na Torre',
+  //               fontSize: 9,
+  //               color: AppTheme.textSecondary,
+  //             ),
+  //             const CyanDivider(label: 'ATRIBUTOS'),
+  //             StatBar(
+  //               label: 'Forca',
+  //               value: npc.totalStrength(gp.equippedOn(npc.id)),
+  //               maxValue: 20,
+  //             ),
+  //             StatBar(
+  //               label: 'Agil.',
+  //               value: npc.totalAgility(gp.equippedOn(npc.id)),
+  //               maxValue: 20,
+  //             ),
+  //             StatBar(
+  //               label: 'Intel.',
+  //               value: npc.totalIntelligence(gp.equippedOn(npc.id)),
+  //               maxValue: 20,
+  //             ),
+  //             StatBar(
+  //               label: 'Resist.',
+  //               value: npc.totalEndurance(gp.equippedOn(npc.id)),
+  //               maxValue: 20,
+  //             ),
+  //             StatBar(
+  //               label: 'Caris.',
+  //               value: npc.totalCharisma(gp.equippedOn(npc.id)),
+  //               maxValue: 20,
+  //             ),
+  //             StatBar(
+  //               label: 'Sanid.',
+  //               value: npc.attributes.mentalStability,
+  //               maxValue: 100,
+  //               color: npc.attributes.mentalStability > 60
+  //                   ? AppTheme.green
+  //                   : npc.attributes.mentalStability > 30
+  //                   ? AppTheme.yellow
+  //                   : AppTheme.red,
+  //             ),
+  //             StatBar(
+  //               label: 'Fadiga',
+  //               value: npc.fatigue,
+  //               maxValue: 100,
+  //               color: npc.fatigue < 30
+  //                   ? AppTheme.green
+  //                   : npc.fatigue < 50
+  //                   ? AppTheme.yellow
+  //                   : npc.fatigue < 70
+  //                   ? AppTheme.orange
+  //                   : AppTheme.red,
+  //             ),
+  //             const SizedBox(height: 2),
+  //             TerminalText(
+  //               'Estado fisico: ${npc.fatigueLabel}${npc.isIncapacitated
+  //                   ? " [INCAPACITADO]"
+  //                   : npc.isExhausted
+  //                   ? " [EXAUSTO]"
+  //                   : ""}',
+  //               fontSize: 9,
+  //               color: npc.fatigue >= 70
+  //                   ? AppTheme.red
+  //                   : npc.fatigue >= 50
+  //                   ? AppTheme.orange
+  //                   : AppTheme.green,
+  //             ),
+  //             const SizedBox(height: 4),
+  //             TerminalText(
+  //               'Poder de combate: ${npc.effectiveCombatPowerWithGear(gp.equippedOn(npc.id)).toStringAsFixed(1)} | Media geral: ${npc.attributes.average.toStringAsFixed(1)}',
+  //               fontSize: 9,
+  //               color: AppTheme.orange,
+  //             ),
+  //             const CyanDivider(label: 'PERSONALIDADE'),
+  //             Wrap(
+  //               spacing: 6,
+  //               runSpacing: 4,
+  //               children: npc.traits
+  //                   .map(
+  //                     (t) => Container(
+  //                       padding: const EdgeInsets.symmetric(
+  //                         horizontal: 6,
+  //                         vertical: 2,
+  //                       ),
+  //                       decoration: BoxDecoration(
+  //                         border: Border.all(
+  //                           color: AppTheme.purple.withValues(alpha: 0.5),
+  //                         ),
+  //                         borderRadius: BorderRadius.circular(2),
+  //                       ),
+  //                       child: TerminalText(
+  //                         t.label,
+  //                         fontSize: 9,
+  //                         color: AppTheme.purple,
+  //                       ),
+  //                     ),
+  //                   )
+  //                   .toList(),
+  //             ),
+  //             if (npc.hiddenTalent != HiddenTalent.none) ...[
+  //               const CyanDivider(label: 'TALENTO OCULTO'),
+  //               TerminalText(
+  //                 npc.talentDiscovered
+  //                     ? '${npc.hiddenTalent.label}: ${npc.hiddenTalent.description}'
+  //                     : '??? Talento ainda nao revelado',
+  //                 fontSize: 10,
+  //                 color: npc.talentDiscovered
+  //                     ? AppTheme.purple
+  //                     : AppTheme.textDim,
+  //               ),
+  //             ],
+  //             if (npc.talentDiscovered && _hasSpecialCapabilities(npc)) ...[
+  //               const CyanDivider(label: 'CAPACIDADES'),
+  //               ..._buildCapabilities(npc),
+  //             ],
+  //             const CyanDivider(label: 'FUNCAO NA CIDADELA'),
+  //             TerminalText(
+  //               'Funcao atual: ${npc.profession.label}',
+  //               fontSize: 10,
+  //               color: AppTheme.textPrimary,
+  //             ),
+  //             const CyanDivider(label: 'ESTATISTICAS'),
+  //             TerminalText(
+  //               'Andares superados: ${npc.floorsCleared}',
+  //               fontSize: 9,
+  //               color: AppTheme.textSecondary,
+  //             ),
+  //             TerminalText(
+  //               'Fama acumulada: ${npc.fame.toStringAsFixed(0)}',
+  //               fontSize: 9,
+  //               color: AppTheme.yellow,
+  //             ),
+  //             TerminalText(
+  //               'Estado mental: ${npc.mentalCondition.label}',
+  //               fontSize: 9,
+  //               color: AppTheme.textSecondary,
+  //             ),
+  //             const CyanDivider(label: 'SOCIAL'),
+  //             StatBar(
+  //               label: 'Leal.',
+  //               value: npc.loyalty,
+  //               maxValue: 100,
+  //               color: npc.loyalty > 60
+  //                   ? AppTheme.green
+  //                   : npc.loyalty > 30
+  //                   ? AppTheme.yellow
+  //                   : AppTheme.red,
+  //             ),
+  //             TerminalText(
+  //               'Reputacao: ${npc.fameLabel} (${npc.fame.toStringAsFixed(0)})',
+  //               fontSize: 9,
+  //               color: npc.fame >= 0 ? AppTheme.yellow : AppTheme.red,
+  //             ),
+  //             if (npc.betrayalRisk > 10)
+  //               TerminalText(
+  //                 'Risco de traicao: ${npc.betrayalRisk.toStringAsFixed(0)}%',
+  //                 fontSize: 9,
+  //                 color: npc.betrayalRisk > 50 ? AppTheme.red : AppTheme.orange,
+  //               ),
+  //             if (npc.groupId != null)
+  //               Builder(
+  //                 builder: (_) {
+  //                   final group = gp.groups
+  //                       .where((g) => g.id == npc.groupId)
+  //                       .firstOrNull;
+  //                   return TerminalText(
+  //                     'Grupo: ${group?.name ?? "Sem grupo"}',
+  //                     fontSize: 9,
+  //                     color: AppTheme.blue,
+  //                   );
+  //                 },
+  //               ),
+  //             if (npc.trainingSuggestionsReceived > 0)
+  //               TerminalText(
+  //                 'Sugestoes: ${npc.trainingSuggestionsAccepted}/${npc.trainingSuggestionsReceived} aceitas',
+  //                 fontSize: 9,
+  //                 color: AppTheme.textDim,
+  //               ),
+  //             if (npc.origin.isDarkOrigin)
+  //               TerminalText(
+  //                 'ORIGEM OBSCURA: ${npc.origin.label}',
+  //                 fontSize: 9,
+  //                 color: AppTheme.red,
+  //               ),
+  //             // ── Parceiro (detalhado no modal) ──
+  //             if (npc.partnerId != null)
+  //               Builder(
+  //                 builder: (_) {
+  //                   final partner = gp.allNpcs
+  //                       .where((n) => n.id == npc.partnerId)
+  //                       .firstOrNull;
+  //                   if (partner == null) return const SizedBox.shrink();
+  //                   return Column(
+  //                     crossAxisAlignment: CrossAxisAlignment.start,
+  //                     children: [
+  //                       Row(
+  //                         children: [
+  //                           Icon(
+  //                             partner.alive
+  //                                 ? Icons.favorite
+  //                                 : Icons.heart_broken,
+  //                             size: 11,
+  //                             color: partner.alive
+  //                                 ? AppTheme.pink
+  //                                 : AppTheme.textDim,
+  //                           ),
+  //                           const SizedBox(width: 4),
+  //                           TerminalText(
+  //                             'Parceiro(a): ${partner.name}',
+  //                             fontSize: 9,
+  //                             color: partner.alive
+  //                                 ? AppTheme.pink
+  //                                 : AppTheme.textDim,
+  //                           ),
+  //                           if (!partner.alive)
+  //                             TerminalText(
+  //                               ' [falecido(a)]',
+  //                               fontSize: 9,
+  //                               color: AppTheme.red,
+  //                             ),
+  //                         ],
+  //                       ),
+  //                       if (npc.childrenIds.isNotEmpty)
+  //                         TerminalText(
+  //                           '${npc.childrenIds.length} filho(s) juntos',
+  //                           fontSize: 9,
+  //                           color: AppTheme.green,
+  //                         ),
+  //                     ],
+  //                   );
+  //                 },
+  //               ),
+  //             // Mostra filhos se não tem parceiro mas tem filhos
+  //             if (npc.partnerId == null && npc.childrenIds.isNotEmpty)
+  //               TerminalText(
+  //                 '${npc.childrenIds.length} filho(s)',
+  //                 fontSize: 9,
+  //                 color: AppTheme.green,
+  //               ),
+  //             // ── Relacionamentos ──
+  //             if (npc.relationships.isNotEmpty) ...[
+  //               const CyanDivider(label: 'VINCULOS'),
+  //               ...npc.relationships
+  //                   .where((r) => r.affinity.abs() > 0.2)
+  //                   .take(6)
+  //                   .map((r) {
+  //                     final target = gp.allNpcs.firstWhereOrNull(
+  //                       (n) => n.id == r.targetId,
+  //                     );
+  //                     if (target == null) return const SizedBox.shrink();
+  //                     final color = r.affinity > 0.6
+  //                         ? AppTheme.green
+  //                         : r.affinity > 0.2
+  //                         ? AppTheme.yellow
+  //                         : AppTheme.red;
+  //                     final icon = r.type == 'parceiro'
+  //                         ? '♥'
+  //                         : r.type == 'familiar'
+  //                         ? '⌂'
+  //                         : r.affinity > 0.3
+  //                         ? '+'
+  //                         : '−';
+  //                     final label = r.affinity > 0.6
+  //                         ? 'proximo'
+  //                         : r.affinity > 0.2
+  //                         ? 'amigavel'
+  //                         : 'hostil';
+  //                     return Padding(
+  //                       padding: const EdgeInsets.symmetric(vertical: 2),
+  //                       child: Row(
+  //                         children: [
+  //                           TerminalText('$icon ', fontSize: 9, color: color),
+  //                           TerminalText(
+  //                             target.name,
+  //                             fontSize: 9,
+  //                             color: target.alive
+  //                                 ? AppTheme.textPrimary
+  //                                 : AppTheme.textDim,
+  //                           ),
+  //                           if (!target.alive)
+  //                             TerminalText(
+  //                               ' ✝',
+  //                               fontSize: 9,
+  //                               color: AppTheme.red,
+  //                             ),
+  //                           const Spacer(),
+  //                           TerminalText(label, fontSize: 8, color: color),
+  //                           TerminalText(
+  //                             '  ${(r.affinity * 100).toStringAsFixed(0)}%',
+  //                             fontSize: 8,
+  //                             color: AppTheme.textDim,
+  //                           ),
+  //                         ],
+  //                       ),
+  //                     );
+  //                   }),
+  //             ],
+  //             if (npc.traumas.isNotEmpty) ...[
+  //               const CyanDivider(label: 'TRAUMAS'),
+  //               ...npc.traumas.map(
+  //                 (t) => TerminalText('- $t', fontSize: 9, color: AppTheme.red),
+  //               ),
+  //             ],
+  //             const CyanDivider(label: 'EQUIPAMENTOS'),
+  //             Row(
+  //               children: [
+  //                 _EquipSlot(
+  //                   label: 'ARMA',
+  //                   icon: '⚔',
+  //                   equipment: gp
+  //                       .equippedOn(npc.id)
+  //                       .firstWhereOrNull(
+  //                         (e) => e.slot == EquipmentSlot.weapon,
+  //                       ),
+  //                 ),
+  //                 const SizedBox(width: 8),
+  //                 _EquipSlot(
+  //                   label: 'ARMOR',
+  //                   icon: '🛡',
+  //                   equipment: gp
+  //                       .equippedOn(npc.id)
+  //                       .firstWhereOrNull((e) => e.slot == EquipmentSlot.armor),
+  //                 ),
+  //                 const SizedBox(width: 8),
+  //                 _EquipSlot(
+  //                   label: 'ACESS.',
+  //                   icon: '💍',
+  //                   equipment: gp
+  //                       .equippedOn(npc.id)
+  //                       .firstWhereOrNull(
+  //                         (e) => e.slot == EquipmentSlot.accessory,
+  //                       ),
+  //                 ),
+  //               ],
+  //             ),
+  //             if (npc.history.isNotEmpty) ...[
+  //               const CyanDivider(label: 'HISTORICO'),
+  //               ...npc.history.reversed
+  //                   .take(10)
+  //                   .map(
+  //                     (h) => TerminalText(
+  //                       '> $h',
+  //                       fontSize: 9,
+  //                       color: AppTheme.textDim,
+  //                     ),
+  //                   ),
+  //             ],
+  //           ],
+  //         ),
+  //       ),
+  //     ),
+  //   );
+  // }
+
 }
 
-class _EquipSlot extends StatelessWidget {
-  final String label;
-  final String icon;
-  final Equipment? equipment;
-  const _EquipSlot({
-    required this.label,
-    required this.icon,
-    required this.equipment,
-  });
+// class _EquipSlot extends StatelessWidget {
+//   final String label;
+//   final String icon;
+//   final Equipment? equipment;
+//   const _EquipSlot({
+//     required this.label,
+//     required this.icon,
+//     required this.equipment,
+//   });
 
-  @override
-  Widget build(BuildContext context) {
-    final eq = equipment;
-    final rarityColor = eq == null
-        ? AppTheme.border
-        : switch (eq.rarity) {
-            EquipmentRarity.common => AppTheme.textDim,
-            EquipmentRarity.uncommon => AppTheme.green,
-            EquipmentRarity.rare => AppTheme.blue,
-            EquipmentRarity.epic => AppTheme.purple,
-            EquipmentRarity.legendary => AppTheme.yellow,
-            _ => AppTheme.textDim,
-          };
+//   @override
+//   Widget build(BuildContext context) {
+//     final eq = equipment;
+//     final rarityColor = eq == null
+//         ? AppTheme.border
+//         : switch (eq.rarity) {
+//             EquipmentRarity.common => AppTheme.textDim,
+//             EquipmentRarity.uncommon => AppTheme.green,
+//             EquipmentRarity.rare => AppTheme.blue,
+//             EquipmentRarity.epic => AppTheme.purple,
+//             EquipmentRarity.legendary => AppTheme.yellow,
+//             _ => AppTheme.textDim,
+//           };
 
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          border: Border.all(color: rarityColor.withValues(alpha: 0.5)),
-          borderRadius: BorderRadius.circular(3),
-          color: rarityColor.withValues(alpha: 0.04),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(icon, style: const TextStyle(fontSize: 10)),
-                const SizedBox(width: 4),
-                TerminalText(label, fontSize: 7, color: AppTheme.textDim),
-              ],
-            ),
-            const SizedBox(height: 4),
-            if (eq == null)
-              TerminalText('—', fontSize: 8, color: AppTheme.textDim)
-            else ...[
-              TerminalText(
-                eq.name,
-                fontSize: 8,
-                color: rarityColor,
-                fontWeight: FontWeight.bold,
-              ),
-              const SizedBox(height: 2),
-              TerminalText(
-                eq.bonusSummary,
-                fontSize: 7,
-                color: AppTheme.textSecondary,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-bool _hasSpecialCapabilities(Npc npc) {
-  final a = npc.attributes;
-  return a.canHealAfterBattle ||
-      a.canEvadeCombat ||
-      a.canCraftMedicine ||
-      a.canTameCreatures ||
-      a.canRevealSecrets ||
-      a.immuneToSanityLoss ||
-      a.equipmentBonusMultiplier > 1.0 ||
-      a.combatPowerMultiplier > 1.0 ||
-      a.groupMortalityReduction > 0 ||
-      a.groupMoraleBonus > 0 ||
-      a.groupSynergyBonus > 0;
-}
+//     return Expanded(
+//       child: Container(
+//         padding: const EdgeInsets.all(8),
+//         decoration: BoxDecoration(
+//           border: Border.all(color: rarityColor.withValues(alpha: 0.5)),
+//           borderRadius: BorderRadius.circular(3),
+//           color: rarityColor.withValues(alpha: 0.04),
+//         ),
+//         child: Column(
+//           crossAxisAlignment: CrossAxisAlignment.start,
+//           children: [
+//             Row(
+//               children: [
+//                 Text(icon, style: const TextStyle(fontSize: 10)),
+//                 const SizedBox(width: 4),
+//                 TerminalText(label, fontSize: 7, color: AppTheme.textDim),
+//               ],
+//             ),
+//             const SizedBox(height: 4),
+//             if (eq == null)
+//               TerminalText('—', fontSize: 8, color: AppTheme.textDim)
+//             else ...[
+//               TerminalText(
+//                 eq.name,
+//                 fontSize: 8,
+//                 color: rarityColor,
+//                 fontWeight: FontWeight.bold,
+//               ),
+//               const SizedBox(height: 2),
+//               TerminalText(
+//                 eq.bonusSummary,
+//                 fontSize: 7,
+//                 color: AppTheme.textSecondary,
+//               ),
+//             ],
+//           ],
+//         ),
+//       ),
+//     );
+//   }
+// }
 
-List<Widget> _buildCapabilities(Npc npc) {
-  final a = npc.attributes;
-  final caps = <(String, String, Color)>[];
+// bool _hasSpecialCapabilities(Npc npc) {
+//   final a = npc.attributes;
+//   return a.canHealAfterBattle ||
+//       a.canEvadeCombat ||
+//       a.canCraftMedicine ||
+//       a.canTameCreatures ||
+//       a.canRevealSecrets ||
+//       a.immuneToSanityLoss ||
+//       a.equipmentBonusMultiplier > 1.0 ||
+//       a.combatPowerMultiplier > 1.0 ||
+//       a.groupMortalityReduction > 0 ||
+//       a.groupMoraleBonus > 0 ||
+//       a.groupSynergyBonus > 0;
+// }
 
-  if (a.canHealAfterBattle) {
-    caps.add(('✚', 'Cura aliados após batalha', AppTheme.green));
-  }
-  if (a.canEvadeCombat) {
-    caps.add(('◈', 'Pode evadir combate', AppTheme.blue));
-  }
-  if (a.canCraftMedicine) {
-    caps.add(('⚗', 'Cria medicamentos', AppTheme.green));
-  }
-  if (a.canTameCreatures) {
-    caps.add(('⬡', 'Domina criaturas', AppTheme.yellow));
-  }
-  if (a.canRevealSecrets) {
-    caps.add(('◉', 'Revela segredos da Torre', AppTheme.purple));
-  }
-  if (a.immuneToSanityLoss) {
-    caps.add(('◇', 'Imune à perda de sanidade', AppTheme.cyan));
-  }
-  if (a.equipmentBonusMultiplier > 1.0) {
-    caps.add(('⚒', 'Equipamentos ${a.equipmentBonusMultiplier.toStringAsFixed(1)}x eficientes', AppTheme.orange));
-  }
-  if (a.combatPowerMultiplier > 1.0) {
-    caps.add(('⚡', 'Poder de combate ${a.combatPowerMultiplier.toStringAsFixed(1)}x', AppTheme.red));
-  }
-  if (a.groupMortalityReduction > 0) {
-    caps.add(('☯', '−${(a.groupMortalityReduction * 100).toStringAsFixed(0)}% mortalidade do grupo', AppTheme.green));
-  }
-  if (a.groupMoraleBonus > 0) {
-    caps.add(('♦', '+${(a.groupMoraleBonus * 100).toStringAsFixed(0)}% moral do grupo', AppTheme.yellow));
-  }
-  if (a.groupSynergyBonus > 0) {
-    caps.add(('∞', '+${(a.groupSynergyBonus * 100).toStringAsFixed(0)}% sinergia', AppTheme.cyan));
-  }
+// List<Widget> _buildCapabilities(Npc npc) {
+//   final a = npc.attributes;
+//   final caps = <(String, String, Color)>[];
 
-  return caps.map((c) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 2),
-    child: Row(children: [
-      TerminalText('${c.$1} ', fontSize: 10, color: c.$3),
-      Expanded(
-        child: TerminalText(c.$2, fontSize: 9, color: AppTheme.textSecondary),
-      ),
-    ]),
-  )).toList();
-}
+//   if (a.canHealAfterBattle) {
+//     caps.add(('✚', 'Cura aliados após batalha', AppTheme.green));
+//   }
+//   if (a.canEvadeCombat) {
+//     caps.add(('◈', 'Pode evadir combate', AppTheme.blue));
+//   }
+//   if (a.canCraftMedicine) {
+//     caps.add(('⚗', 'Cria medicamentos', AppTheme.green));
+//   }
+//   if (a.canTameCreatures) {
+//     caps.add(('⬡', 'Domina criaturas', AppTheme.yellow));
+//   }
+//   if (a.canRevealSecrets) {
+//     caps.add(('◉', 'Revela segredos da Torre', AppTheme.purple));
+//   }
+//   if (a.immuneToSanityLoss) {
+//     caps.add(('◇', 'Imune à perda de sanidade', AppTheme.cyan));
+//   }
+//   if (a.equipmentBonusMultiplier > 1.0) {
+//     caps.add((
+//       '⚒',
+//       'Equipamentos ${a.equipmentBonusMultiplier.toStringAsFixed(1)}x eficientes',
+//       AppTheme.orange,
+//     ));
+//   }
+//   if (a.combatPowerMultiplier > 1.0) {
+//     caps.add((
+//       '⚡',
+//       'Poder de combate ${a.combatPowerMultiplier.toStringAsFixed(1)}x',
+//       AppTheme.red,
+//     ));
+//   }
+//   if (a.groupMortalityReduction > 0) {
+//     caps.add((
+//       '☯',
+//       '−${(a.groupMortalityReduction * 100).toStringAsFixed(0)}% mortalidade do grupo',
+//       AppTheme.green,
+//     ));
+//   }
+//   if (a.groupMoraleBonus > 0) {
+//     caps.add((
+//       '♦',
+//       '+${(a.groupMoraleBonus * 100).toStringAsFixed(0)}% moral do grupo',
+//       AppTheme.yellow,
+//     ));
+//   }
+//   if (a.groupSynergyBonus > 0) {
+//     caps.add((
+//       '∞',
+//       '+${(a.groupSynergyBonus * 100).toStringAsFixed(0)}% sinergia',
+//       AppTheme.cyan,
+//     ));
+//   }
+
+//   return caps
+//       .map(
+//         (c) => Padding(
+//           padding: const EdgeInsets.symmetric(vertical: 2),
+//           child: Row(
+//             children: [
+//               TerminalText('${c.$1} ', fontSize: 10, color: c.$3),
+//               Expanded(
+//                 child: TerminalText(
+//                   c.$2,
+//                   fontSize: 9,
+//                   color: AppTheme.textSecondary,
+//                 ),
+//               ),
+//             ],
+//           ),
+//         ),
+//       )
+//       .toList();
+// }
