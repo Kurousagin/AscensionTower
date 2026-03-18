@@ -3,7 +3,10 @@ import 'dart:math';
 import 'package:collection/collection.dart';
 import 'package:tower_ascension/models/floor_faction.dart';
 import 'package:tower_ascension/models/floor_inhabitant.dart';
+import 'package:tower_ascension/models/simulacrum_battle.dart';
 import 'package:tower_ascension/services/crisis_flag_service.dart';
+import 'package:tower_ascension/services/rank_service.dart';
+import 'package:tower_ascension/services/simulacrum_service.dart';
 import 'package:tower_ascension/widgets/event_toast.dart';
 import '../models/npc.dart';
 import '../models/citadel.dart';
@@ -60,7 +63,10 @@ class GameEngine {
   late final FactionService _factionService = FactionService(_rng, _warService);
   late final TradeService _tradeService = TradeService(_rng);
   late final QuestService _questService = QuestService(_rng);
-
+  late final RankService _rankService = RankService(_rng);
+  late final SimulacrumService _simulacrumService = SimulacrumService(_rng);
+  final Map<String, int> _simulacrumCooldowns = {}; // npcId → lastBattleDay
+  int _battleIdCounter = 0;
   // ── Accessors para novos serviços ──
   FactionService get factionService => _factionService;
   WarService get warService => _warService;
@@ -120,9 +126,9 @@ class GameEngine {
       buildings: [Building(type: BuildingType.firepit)],
       resources: Resources(
         food: 30,
-        wood: 30,
-        stone: 30,
-        iron: 0,
+        woodLog: 30,
+        stoneRaw: 30,
+        ironOre: 30,
         knowledge: 5,
         morale: 25,
       ),
@@ -200,6 +206,7 @@ class GameEngine {
   Profession _professionFromOrigin(NpcOrigin origin) {
     switch (origin) {
       case NpcOrigin.chef:
+        return Profession.chef;
       case NpcOrigin.farmer:
         return Profession.farmer;
       case NpcOrigin.doctor:
@@ -210,6 +217,15 @@ class GameEngine {
         return Profession.guard;
       case NpcOrigin.teacher:
         return Profession.teacher;
+      case NpcOrigin.mechanic:
+        return Profession.blacksmith;
+      case NpcOrigin.scientist:
+      case NpcOrigin.programmer:
+        return Profession.scribe;
+      case NpcOrigin.athlete:
+        return Profession.explorer;
+      case NpcOrigin.businessOwner:
+        return Profession.merchant;
       default:
         return Profession.idle;
     }
@@ -268,6 +284,7 @@ class GameEngine {
     _processTavernEvents();
     _processEmergencySummon();
     _processPrisonSystem();
+    _processDesertionWish();
 
     _processFameGains();
     _processFactionIncursions();
@@ -369,14 +386,23 @@ class GameEngine {
     if (overflow.food > 0) {
       parts.add('Comida:${overflow.food.toStringAsFixed(0)}');
     }
-    if (overflow.wood > 0) {
-      parts.add('Madeira:${overflow.wood.toStringAsFixed(0)}');
+    if (overflow.woodLog > 0) {
+      parts.add('Troncos:${overflow.woodLog.toStringAsFixed(0)}');
     }
-    if (overflow.stone > 0) {
-      parts.add('Pedra:${overflow.stone.toStringAsFixed(0)}');
+    if (overflow.stoneRaw > 0) {
+      parts.add('Pedra Bruta:${overflow.stoneRaw.toStringAsFixed(0)}');
     }
-    if (overflow.iron > 0) {
-      parts.add('Ferro:${overflow.iron.toStringAsFixed(0)}');
+    if (overflow.ironOre > 0) {
+      parts.add('Minério:${overflow.ironOre.toStringAsFixed(0)}');
+    }
+    if (overflow.lumber > 0) {
+      parts.add('Madeira:${overflow.lumber.toStringAsFixed(0)}');
+    }
+    if (overflow.stoneBrick > 0) {
+      parts.add('Tijolos:${overflow.stoneBrick.toStringAsFixed(0)}');
+    }
+    if (overflow.ironBar > 0) {
+      parts.add('Ferro:${overflow.ironBar.toStringAsFixed(0)}');
     }
     if (overflow.knowledge > 0) {
       parts.add('Conhec.:${overflow.knowledge.toStringAsFixed(0)}');
@@ -392,10 +418,14 @@ class GameEngine {
         1 + ((citadel.resources.morale - 50) / 200).clamp(-0.25, 0.25);
 
     res.food *= moraleModifier;
-    res.wood *= moraleModifier;
-    res.stone *= moraleModifier;
-    res.iron *= moraleModifier;
     res.knowledge *= moraleModifier;
+    // Raw e processados também sofrem efeito de moral
+    res.woodLog *= moraleModifier;
+    res.stoneRaw *= moraleModifier;
+    res.ironOre *= moraleModifier;
+    res.lumber *= moraleModifier;
+    res.stoneBrick *= moraleModifier;
+    res.ironBar *= moraleModifier;
   }
 
   // double _softCap(double value, double capStart) {
@@ -406,23 +436,48 @@ class GameEngine {
   void _processResourceProduction() {
     final res = citadel.resources;
     final farmers = _countProfession(Profession.farmer);
-    final builders = _countProfession(Profession.builder);
+    _countProfession(Profession.builder);
     final scribes = _countProfession(Profession.scribe);
 
     res.food += 2.0 + farmers * 1.0;
-    res.wood += 1.0 + builders * 2.0;
-    res.stone += 0.5 + builders * 1.0;
     res.knowledge += 0.2 + scribes * 1.5;
 
+    // PASSE 1 — produção bruta (coleta de recursos primários)
+    // Silvicultura, Pedreira, Farm, Kitchen, Library, School, Temple, Firepit
+    final productionTypes = {
+      BuildingType.silviculture,
+      BuildingType.quarry,
+      BuildingType.farm,
+      BuildingType.kitchen,
+      BuildingType.library,
+      BuildingType.school,
+      BuildingType.temple,
+      BuildingType.firepit,
+      BuildingType.monument,
+      BuildingType.barracks,
+      BuildingType.trainingField,
+      BuildingType.promotionHall,
+    };
     for (final building in citadel.buildings) {
-      _applyBuildingProduction(building, res);
+      if (productionTypes.contains(building.type)) {
+        _applyBuildingProduction(building, res);
+      }
+    }
+
+    // PASSE 2 — conversão (usa recursos coletados no passe 1)
+    // Serraria, Cantaria, Forja — só convertem o que já existe
+    final conversionTypes = {
+      BuildingType.sawmill,
+      BuildingType.masonry,
+      BuildingType.forge,
+    };
+    for (final building in citadel.buildings) {
+      if (conversionTypes.contains(building.type)) {
+        _applyBuildingProduction(building, res);
+      }
     }
 
     _applyGlobalModifiers(citadel.resources);
-
-    // Não aplicamos soft cap aqui — o clampToCapacity no final do processDay
-    // é o único ponto de corte. Isso permite que coletas e produção do mesmo dia
-    // se acumulem livremente; o excedente "estraga" apenas ao virar o dia.
   }
 
   double _expProduction({
@@ -437,6 +492,9 @@ class GameEngine {
     final level = building.level;
     final tierBonus = 1 + (building.tier * 0.15);
     final population = aliveNpcs.length;
+    // Bônus herdado de níveis/tiers anteriores — acumulado no upgrade.
+    // Aplicado como aditivo fixo ao recurso principal de cada edifício.
+    final inherited = building.inheritedBonus.toDouble();
 
     switch (building.type) {
       // 🌾 FARM
@@ -467,6 +525,8 @@ class GameEngine {
             farmTierBonus *
             softPopBonus *
             chefMultiplier;
+        // Bônus herdado de tiers anteriores (horta→farm→plantação etc.)
+        res.food += inherited;
         break;
 
       // 🍲 KITCHEN — amplificador da farm, não fonte direta de food
@@ -475,51 +535,76 @@ class GameEngine {
         // Seu efeito é contabilizado na fórmula do farm via chefMultiplier.
         break;
 
-      // ⚒ WORKSHOP
-      case BuildingType.workshop:
-        final ironProduction = _expProduction(
-          level: level,
-          base: 1,
-          growth: 2.0,
-        );
-
-        final woodProduction = _expProduction(
-          level: level,
-          base: 0.5,
-          growth: 1.8,
-        );
-
-        res.iron += ironProduction * tierBonus;
-        res.wood += woodProduction * tierBonus;
+      // 🌲 SILVICULTURA — coleta woodLog via lenhadores
+      case BuildingType.silviculture:
+        final lumberjacks = _countProfession(Profession.lumberjack);
+        final effLumberjacks = min(lumberjacks, level + 1);
+        const silvBaseProd = <int, double>{1: 3, 2: 5, 3: 8, 4: 12, 5: 16};
+        final silvBase = silvBaseProd[level] ?? 16.0;
+        res.woodLog += (silvBase + effLumberjacks * 3.0) * tierBonus;
+        res.woodLog += inherited;
         break;
 
-      // 🪵 WOODWORKING
-      case BuildingType.woodworking:
-        final woodProduction = _expProduction(
-          level: level,
-          base: 2,
-          growth: 1.9,
-        );
-
-        final moraleBonus = _expProduction(
-          level: level,
-          base: 0.5,
-          growth: 1.5,
-        );
-
-        res.wood += woodProduction * tierBonus;
-        res.morale += moraleBonus;
+      // ⛏ PEDREIRA — coleta stoneRaw via pedreiros
+      case BuildingType.quarry:
+        final quarrymen = _countProfession(Profession.quarryman);
+        final effQuarrymen = min(quarrymen, level + 1);
+        const quarryBaseProd = <int, double>{1: 2, 2: 4, 3: 6, 4: 9, 5: 12};
+        final quarryBase = quarryBaseProd[level] ?? 12.0;
+        res.stoneRaw += (quarryBase + effQuarrymen * 2.5) * tierBonus;
+        res.stoneRaw += inherited;
         break;
 
-      // 🔨 FORGE
+      // 🪵 SERRARIA — carpinteiros convertem woodLog → lumber
+      case BuildingType.sawmill:
+        final carpenters = _countProfession(Profession.carpenter);
+        final effCarpenters = min(carpenters, level + 1);
+        if (effCarpenters == 0) break;
+        const conversionRate = 0.7; // 1 woodLog → 0.7 lumber
+        final capacity = _expProduction(level: level, base: 4, growth: 1.6);
+        final toProcess = min(
+          res.woodLog,
+          capacity * effCarpenters * tierBonus,
+        );
+        res.woodLog -= toProcess;
+        res.lumber += toProcess * conversionRate;
+        res.lumber += inherited;
+        break;
+
+      // 🧱 CANTARIA — canteiros convertem stoneRaw → stoneBrick
+      case BuildingType.masonry:
+        final masons = _countProfession(Profession.mason);
+        final effMasons = min(masons, level + 1);
+        if (effMasons == 0) break;
+        const stoneConversionRate = 0.6; // pedra bruta tem mais perda
+        final stoneCapacity = _expProduction(
+          level: level,
+          base: 3,
+          growth: 1.6,
+        );
+        final stoneToProcess = min(
+          res.stoneRaw,
+          stoneCapacity * effMasons * tierBonus,
+        );
+        res.stoneRaw -= stoneToProcess;
+        res.stoneBrick += stoneToProcess * stoneConversionRate;
+        res.stoneBrick += inherited;
+        break;
+
+      // 🔨 FORJA — ferreiros convertem ironOre → ironBar
       case BuildingType.forge:
-        final ironProduction = _expProduction(
-          level: level,
-          base: 2,
-          growth: 1.8,
+        final blacksmiths = _countProfession(Profession.blacksmith);
+        final effBlacksmiths = min(blacksmiths, level + 1);
+        if (effBlacksmiths == 0) break;
+        const ironConversionRate = 0.5; // minério tem maior perda no processo
+        final ironCapacity = _expProduction(level: level, base: 3, growth: 1.7);
+        final ironToProcess = min(
+          res.ironOre,
+          ironCapacity * effBlacksmiths * tierBonus,
         );
-
-        res.iron += ironProduction * tierBonus;
+        res.ironOre -= ironToProcess;
+        res.ironBar += ironToProcess * ironConversionRate;
+        res.ironBar += inherited;
         break;
 
       // 📚 LIBRARY
@@ -531,6 +616,7 @@ class GameEngine {
         );
 
         res.knowledge += knowledgeProduction * tierBonus;
+        res.knowledge += inherited;
         break;
 
       // 🏫 SCHOOL
@@ -542,6 +628,7 @@ class GameEngine {
         );
 
         res.knowledge += schoolProduction * tierBonus;
+        res.knowledge += inherited;
         break;
       // ⛪ TEMPLE
       case BuildingType.temple:
@@ -552,6 +639,7 @@ class GameEngine {
         );
 
         res.morale += moraleBoost;
+        res.morale += inherited;
 
         for (final npc in aliveNpcs) {
           npc.attributes.mentalStability =
@@ -564,6 +652,7 @@ class GameEngine {
         final moraleBoost = _expProduction(level: level, base: 1, growth: 1.7);
 
         res.morale += moraleBoost;
+        res.morale += inherited;
         break;
       // 🏛 MONUMENT
       case BuildingType.monument:
@@ -1045,18 +1134,34 @@ class GameEngine {
   }
 
   Map<String, double> _analyzeCitadelNeeds() {
-    final population = aliveNpcs.length;
-    final farmers = _countProfession(Profession.farmer);
-    final guards = _countProfession(Profession.guard);
-    final builders = _countProfession(Profession.builder);
-    final doctors = _countProfession(Profession.doctor);
+    final population = aliveNpcs.length.toDouble().clamp(1, 9999);
+    final res = citadel.resources;
+
+    double need(int count, double idealRatio) =>
+        (1.0 - (count / (population * idealRatio))).clamp(0.0, 1.0);
+
+    double resourceNeed(double amount, double idealAmount) =>
+        (1.0 - (amount / idealAmount)).clamp(0.0, 1.0);
+
     return {
-      'food': population > 0 ? 1.0 - (farmers / (population * 0.3)) : 1.0,
-      'defense': population > 0 ? 1.0 - (guards / (population * 0.2)) : 1.0,
-      'construction': population > 0
-          ? 1.0 - (builders / (population * 0.15))
-          : 1.0,
-      'health': population > 0 ? 1.0 - (doctors / (population * 0.1)) : 1.0,
+      'food': need(_countProfession(Profession.farmer), 0.25),
+      'defense': need(_countProfession(Profession.guard), 0.20),
+      'construction': need(_countProfession(Profession.builder), 0.15),
+      'health': need(_countProfession(Profession.doctor), 0.10),
+      'knowledge': need(
+        _countProfession(Profession.teacher) +
+            _countProfession(Profession.scribe),
+        0.10,
+      ),
+      'morale': res.morale < 40 ? (40 - res.morale) / 40 : 0.0,
+      // Coleta
+      'woodLog': resourceNeed(res.woodLog, population * 5),
+      'stoneRaw': resourceNeed(res.stoneRaw, population * 3),
+      'ironOre': resourceNeed(res.ironOre, population * 2),
+      // Manufatura
+      'lumber': resourceNeed(res.lumber, population * 3),
+      'stoneBrick': resourceNeed(res.stoneBrick, population * 2),
+      'ironBar': resourceNeed(res.ironBar, population * 1.5),
     };
   }
 
@@ -1103,6 +1208,46 @@ class GameEngine {
       case Profession.chef:
         score += npc.attributes.intelligence / 20;
         break;
+
+      // Coleta
+      case Profession.lumberjack:
+        score += npc.attributes.strength / 15;
+        score += npc.attributes.endurance / 20;
+        score += (needs['woodLog'] ?? 0) * 0.5;
+        if (npc.traits.contains(PersonalityTrait.pragmatic)) score += 0.2;
+        break;
+      case Profession.quarryman:
+        score += npc.attributes.strength / 15;
+        score += npc.attributes.endurance / 18;
+        score += (needs['stoneRaw'] ?? 0) * 0.5;
+        break;
+      case Profession.miner:
+        score += npc.attributes.endurance / 15;
+        score += npc.attributes.agility / 20;
+        score += (needs['ironOre'] ?? 0) * 0.4;
+        if (npc.traits.contains(PersonalityTrait.brave)) score += 0.2;
+        if (npc.traits.contains(PersonalityTrait.coward)) score -= 0.3;
+        break;
+
+      // Manufatura
+      case Profession.carpenter:
+        score += npc.attributes.intelligence / 18;
+        score += npc.attributes.agility / 20;
+        score += (needs['lumber'] ?? 0) * 0.5;
+        if (npc.traits.contains(PersonalityTrait.creative)) score += 0.2;
+        break;
+      case Profession.mason:
+        score += npc.attributes.strength / 18;
+        score += npc.attributes.intelligence / 20;
+        score += (needs['stoneBrick'] ?? 0) * 0.5;
+        break;
+      case Profession.blacksmith:
+        score += npc.attributes.strength / 15;
+        score += npc.attributes.intelligence / 18;
+        score += (needs['ironBar'] ?? 0) * 0.5;
+        if (npc.hiddenTalent == HiddenTalent.forgemaster) score += 0.5;
+        break;
+
       default:
         break;
     }
@@ -1487,13 +1632,16 @@ class GameEngine {
 
       relation.incursionsCaused++;
 
+      final foodLost = (10 * severity).toStringAsFixed(1);
+      final moraleLost = (5 * severity).toStringAsFixed(1);
       _addEvent(
         GameEventType.crisis,
-        'Incursão: ${relation.faction.label}',
-        '${relation.faction.label} atacou os suprimentos da cidadela. '
-            'Standing atual: ${relation.standing.toStringAsFixed(0)}. '
-            'Incursões totais desta facção: ${relation.incursionsCaused}.',
-        isMajor: severity > 0.7,
+        '⚔ INCURSÃO: ${relation.faction.label}',
+        '${relation.faction.label} atacou os suprimentos da cidadela!\n'
+            '−$foodLost comida  −$moraleLost moral\n'
+            'Standing: ${relation.standing.toStringAsFixed(0)} · '
+            'Incursão nº ${relation.incursionsCaused}.',
+        isMajor: true,
       );
       relation.lastInteractionDay = state.currentDay;
     }
@@ -1803,8 +1951,8 @@ class GameEngine {
     final standing = relation.standing;
     final narratives = <String>[];
     if (faction == FloorFaction.bloodMarket && standing >= 50) {
-      if (citadel.resources.iron >= 5) {
-        citadel.resources.iron -= 5;
+      if (citadel.resources.ironOre >= 5) {
+        citadel.resources.ironOre -= 5;
         citadel.resources.food += 15 + (standing / 10);
         narratives.add(
           '💰 Mercado de Sangue trocou ferro por mantimentos. '
@@ -1934,12 +2082,20 @@ class GameEngine {
           if (citadel.resources.food < entry.value) {
             return 'Recursos insuficientes.';
           }
-        case 'iron':
-          if (citadel.resources.iron < entry.value) {
+        case 'ironBar':
+          if (citadel.resources.ironBar < entry.value) {
             return 'Recursos insuficientes.';
           }
-        case 'wood':
-          if (citadel.resources.wood < entry.value) {
+        case 'ironOre':
+          if (citadel.resources.ironOre < entry.value) {
+            return 'Recursos insuficientes.';
+          }
+        case 'woodLog':
+          if (citadel.resources.woodLog < entry.value) {
+            return 'Recursos insuficientes.';
+          }
+        case 'lumber':
+          if (citadel.resources.lumber < entry.value) {
             return 'Recursos insuficientes.';
           }
         case 'knowledge':
@@ -1954,10 +2110,14 @@ class GameEngine {
       switch (entry.key) {
         case 'food':
           citadel.resources.food -= entry.value;
-        case 'iron':
-          citadel.resources.iron -= entry.value;
-        case 'wood':
-          citadel.resources.wood -= entry.value;
+        case 'ironBar':
+          citadel.resources.ironBar -= entry.value;
+        case 'ironOre':
+          citadel.resources.ironOre -= entry.value;
+        case 'woodLog':
+          citadel.resources.woodLog -= entry.value;
+        case 'lumber':
+          citadel.resources.lumber -= entry.value;
         case 'knowledge':
           citadel.resources.knowledge -= entry.value;
       }
@@ -2246,20 +2406,30 @@ class GameEngine {
       synergy += 0.1;
     }
 
-    int positiveRels = 0, negativeRels = 0;
+    int positiveRels = 0, strongBonds = 0, negativeRels = 0, rivalries = 0;
     for (final a in party) {
       for (final b in party) {
         if (a.id == b.id) continue;
         final rel = a.relationships.firstWhereOrNull((r) => r.targetId == b.id);
         if (rel != null) {
-          if (rel.affinity > 0.3) positiveRels++;
-          if (rel.affinity < -0.2) negativeRels++;
+          if (rel.affinity > 0.7) {
+            strongBonds++; // laço forte
+          } else if (rel.affinity > 0.3) {
+            positiveRels++;
+          }
+          if (rel.affinity < -0.5) {
+            rivalries++; // rivalidade séria
+          } else if (rel.affinity < -0.2) {
+            negativeRels++;
+          }
         }
       }
     }
-    synergy += (positiveRels * 0.03).clamp(0.0, 0.2);
-    synergy -= (negativeRels * 0.05).clamp(0.0, 0.3);
-
+    // Laços fortes dão bônus maior — amigos de verdade batalham melhor juntos
+    synergy += (strongBonds * 0.07).clamp(0.0, 0.35);
+    synergy += (positiveRels * 0.02).clamp(0.0, 0.12);
+    synergy -= (rivalries * 0.10).clamp(0.0, 0.40);
+    synergy -= (negativeRels * 0.03).clamp(0.0, 0.15);
     final loyal = party
         .where((n) => n.traits.contains(PersonalityTrait.loyal))
         .length;
@@ -2385,6 +2555,71 @@ class GameEngine {
 
     final synergy = _calculateGroupSynergy(party);
 
+    // ── Evento narrativo de bond forte ─────────────────────────────────────
+    if (_rng.nextDouble() < 0.15) {
+      // 15% de chance por expedição
+      for (final a in party) {
+        for (final b in party) {
+          if (a.id == b.id) continue;
+          final rel = a.relationships.firstWhereOrNull(
+            (r) => r.targetId == b.id,
+          );
+          if (rel != null && rel.affinity > 0.7) {
+            final rival = party.any((n) {
+              final r = n.relationships.firstWhereOrNull(
+                (r) => r.targetId == a.id || r.targetId == b.id,
+              );
+              return r != null && r.affinity < -0.4;
+            });
+            if (!rival) {
+              _addEvent(
+                GameEventType.exploration,
+                'Laço em Campo',
+                '${a.name} e ${b.name} cobriram um ao outro no andar ${floor.number}. '
+                    'A confiança entre eles cresceu.',
+                involvedIds: [a.id, b.id],
+              );
+              // Reforça o laço
+              final idxA = a.relationships.indexWhere(
+                (r) => r.targetId == b.id,
+              );
+              if (idxA != -1) {
+                a.relationships[idxA] = a.relationships[idxA].copyWith(
+                  affinity: (a.relationships[idxA].affinity + 0.05).clamp(
+                    0.0,
+                    1.0,
+                  ),
+                );
+              }
+            }
+            break; // um evento por expedição
+          }
+        }
+      }
+    }
+
+    // ── Evento de rivalidade em campo ───────────────────────────────────────
+    if (_rng.nextDouble() < 0.10) {
+      // 10% de chance
+      for (final a in party) {
+        for (final b in party) {
+          if (a.id == b.id) continue;
+          final rel = a.relationships.firstWhereOrNull(
+            (r) => r.targetId == b.id && r.affinity < -0.5,
+          );
+          if (rel != null) {
+            _addEvent(
+              GameEventType.betrayalAttempt,
+              'Tensão no Grupo',
+              '${a.name} e ${b.name} tiveram um desentendimento durante a expedição. '
+                  'A performance do grupo foi prejudicada.',
+              involvedIds: [a.id, b.id],
+            );
+            break;
+          }
+        }
+      }
+    }
     // ── RECURSOS COM DIMINISHING RETURNS (centralizado no TowerFloor) ──
     for (final entry in floor.farmableResources.entries) {
       double totalYield = 0.0;
@@ -2438,14 +2673,14 @@ class GameEngine {
         case 'food':
           res.food = entry.value;
           break;
-        case 'wood':
-          res.wood = entry.value;
+        case 'woodLog':
+          res.woodLog += entry.value;
           break;
-        case 'stone':
-          res.stone = entry.value;
+        case 'stoneRaw':
+          res.stoneRaw += entry.value;
           break;
-        case 'iron':
-          res.iron = entry.value;
+        case 'ironOre':
+          res.ironOre += entry.value;
           break;
         case 'knowledge':
           res.knowledge = entry.value;
@@ -3012,10 +3247,18 @@ class GameEngine {
 
   void _trainInTrainingField(List<Npc> participants) {
     for (final npc in participants) {
-      final gain = 0.08 + _rng.nextDouble() * 0.12;
-      npc.attributes.strength += gain;
-      npc.attributes.endurance += gain * 0.8;
-      npc.attributes.agility += gain * 0.5;
+      final base = 0.08 + _rng.nextDouble() * 0.12;
+      final gain = base * _rankGrowthMultiplier(npc.rank);
+      final cap = npc.effectiveAttributeCap;
+      npc.attributes.strength = (npc.attributes.strength + gain).clamp(1, cap);
+      npc.attributes.endurance = (npc.attributes.endurance + gain * 0.8).clamp(
+        1,
+        cap,
+      );
+      npc.attributes.agility = (npc.attributes.agility + gain * 0.5).clamp(
+        1,
+        cap,
+      );
       npc.history.add('Treinou no Campo de Treino (Dia ${state.currentDay})');
       if (_rng.nextDouble() < 0.005) {
         npc.attributes.endurance -= 0.2;
@@ -3630,11 +3873,14 @@ class GameEngine {
         );
         break;
       case 3:
-        citadel.resources.wood = (citadel.resources.wood - 10).clamp(0, 9999);
+        citadel.resources.woodLog = (citadel.resources.woodLog - 10).clamp(
+          0,
+          9999,
+        );
         _addEvent(
           GameEventType.resourceLoss,
           'Tempestade',
-          'Uma tempestade danificou estruturas. -10 madeira.',
+          'Uma tempestade danificou estruturas. -10 troncos.',
           isMajor: true,
         );
         break;
@@ -4103,12 +4349,23 @@ class GameEngine {
 
       // Crescimento juvenil (geração 2+, ainda jovem)
       if (npc.age < 18 && npc.generation > 1) {
-        npc.attributes.strength += 0.3;
-        npc.attributes.agility += 0.3;
-        npc.attributes.intelligence += 0.2;
-        npc.attributes.endurance += 0.3;
+        final gm = _rankGrowthMultiplier(npc.rank);
+        final cap = npc.effectiveAttributeCap;
+        npc.attributes.strength = (npc.attributes.strength + 0.3 * gm).clamp(
+          1,
+          cap,
+        );
+        npc.attributes.agility = (npc.attributes.agility + 0.3 * gm).clamp(
+          1,
+          cap,
+        );
+        npc.attributes.intelligence = (npc.attributes.intelligence + 0.2 * gm)
+            .clamp(1, cap);
+        npc.attributes.endurance = (npc.attributes.endurance + 0.3 * gm).clamp(
+          1,
+          cap,
+        );
       }
-
       final maxAge = _lifeExpectancy(npc);
 
       // Semi-divinos: imortais — só marcamos história
@@ -4213,12 +4470,21 @@ class GameEngine {
   List<String> _applyProfessionTraining(Npc npc) {
     if (_rng.nextDouble() >= 0.1) return [];
     final gains = <String>[];
+    _rankGrowthMultiplier(npc.rank);
 
     switch (npc.profession) {
       case Profession.guard:
       case Profession.explorer:
-        npc.attributes.strength += 0.1;
-        npc.attributes.endurance += 0.1;
+        final gm = _rankGrowthMultiplier(npc.rank);
+        final cap = npc.effectiveAttributeCap;
+        npc.attributes.strength = (npc.attributes.strength + 0.1 * gm).clamp(
+          1,
+          cap,
+        );
+        npc.attributes.endurance = (npc.attributes.endurance + 0.1 * gm).clamp(
+          1,
+          cap,
+        );
         gains.addAll(['FOR+0.1', 'RES+0.1']);
 
         final barracks = citadel.getBuilding(BuildingType.barracks);
@@ -4242,6 +4508,36 @@ class GameEngine {
       case Profession.teacher:
         npc.attributes.intelligence += 0.1;
         gains.add('INT+0.1');
+        break;
+      case Profession.lumberjack:
+      case Profession.quarryman:
+        npc.attributes.strength += 0.08;
+        npc.attributes.endurance += 0.08;
+        gains.addAll(['FOR+0.08', 'RES+0.08']);
+        break;
+      case Profession.miner:
+        npc.attributes.endurance += 0.1;
+        npc.attributes.agility += 0.05;
+        gains.addAll(['RES+0.1', 'AGI+0.05']);
+        break;
+      case Profession.carpenter:
+        npc.attributes.intelligence += 0.08;
+        npc.attributes.agility += 0.08;
+        gains.addAll(['INT+0.08', 'AGI+0.08']);
+        break;
+      case Profession.mason:
+        npc.attributes.strength += 0.08;
+        npc.attributes.intelligence += 0.06;
+        gains.addAll(['FOR+0.08', 'INT+0.06']);
+        break;
+      case Profession.blacksmith:
+        npc.attributes.strength += 0.1;
+        npc.attributes.intelligence += 0.08;
+        gains.addAll(['FOR+0.1', 'INT+0.08']);
+        break;
+      case Profession.merchant:
+        npc.attributes.charisma += 0.1;
+        gains.add('CAR+0.1');
         break;
       case Profession.scout:
         npc.attributes.agility += 0.1;
@@ -4329,7 +4625,17 @@ class GameEngine {
 
     // 🔥 EVOLUÇÃO DE TIER COM HERANÇA
     if (building.level >= building.maxLevel) {
-      building.inheritedBonus += building.levelBonus.round();
+      // Acumula a soma de TODOS os níveis (1→maxLevel), não só o último
+      final values = Building.levelValues[building.type];
+      if (values != null) {
+        final levelSum = values
+            .take(building.maxLevel)
+            .fold(0.0, (sum, v) => sum + v)
+            .round();
+        building.inheritedBonus += levelSum;
+      } else {
+        building.inheritedBonus += building.levelBonus.round();
+      }
 
       // sobe tier
       building.tier++;
@@ -4390,21 +4696,27 @@ class GameEngine {
       final c = b.upgradeCost;
       return Resources(
         food: total.food + c.food,
-        wood: total.wood + c.wood,
-        stone: total.stone + c.stone,
-        iron: total.iron + c.iron,
         knowledge: total.knowledge + c.knowledge,
+        woodLog: total.woodLog + c.woodLog,
+        stoneRaw: total.stoneRaw + c.stoneRaw,
+        ironOre: total.ironOre + c.ironOre,
+        lumber: total.lumber + c.lumber,
+        stoneBrick: total.stoneBrick + c.stoneBrick,
+        ironBar: total.ironBar + c.ironBar,
       );
     });
   }
 
   void upgradeBuildingWithInheritance(Building building) {
     if (building.level >= building.maxLevel && building.tier < 3) {
-      // Soma o bônus do nível antigo ao inheritedBonus
+      // Acumula a soma de TODOS os níveis (1→maxLevel), não só o último
       final values = Building.levelValues[building.type];
-      if (values != null && building.level > 1) {
-        building.inheritedBonus +=
-            values[(building.level - 1).clamp(0, values.length - 1)].round();
+      if (values != null) {
+        final levelSum = values
+            .take(building.maxLevel)
+            .fold(0.0, (sum, v) => sum + v)
+            .round();
+        building.inheritedBonus += levelSum;
       }
       building.tier++;
       building.level = 1; // Reset de nível
@@ -4439,11 +4751,14 @@ class GameEngine {
       (b) => b.canEvolve && b.tier < newTier,
     )) {
       final oldName = building.name;
-      // MIGRAÇÃO DE BONUS: soma bônus do nível antigo
+      // MIGRAÇÃO DE BONUS: acumula soma de TODOS os níveis até o atual
       final values = Building.levelValues[building.type];
-      if (values != null && building.level > 1) {
-        building.inheritedBonus +=
-            values[(building.level - 1).clamp(0, values.length - 1)].round();
+      if (values != null) {
+        final levelSum = values
+            .take(building.level)
+            .fold(0.0, (sum, v) => sum + v)
+            .round();
+        building.inheritedBonus += levelSum;
       }
       building.tier = newTier;
       building.level = 1; // reset de nível
@@ -4636,15 +4951,11 @@ class GameEngine {
         );
         break;
       case BuildingType.promotionHall:
-        for (final npc in aliveNpcs.where(
-          (n) => n.traits.contains(PersonalityTrait.leader),
-        )) {
-          npc.loyalty += 3;
-        }
         _addEvent(
           GameEventType.politicalEvent,
-          'Caminho para Grandeza',
-          'Os ambiciosos planejam sua ascensao.',
+          'Salão de Promoção Ativo',
+          'O Salão de Promoção aguarda. NPCs podem agora ser promovidos de rank — mas há um preço.',
+          isMajor: true,
         );
         break;
       case BuildingType.farm:
@@ -4695,11 +5006,14 @@ class GameEngine {
 
   void migrateOldSave(Citadel citadel) {
     for (final building in citadel.buildings) {
-      if (building.tier > 1 && building.inheritedBonus == 0) {
+      if (building.tier > 0 && building.inheritedBonus == 0) {
+        // Reconstrói herdado como soma de todos os níveis anteriores ao atual
         final values = Building.levelValues[building.type];
-        if (values != null && building.level > 1) {
-          building.inheritedBonus +=
-              values[(building.level - 1).clamp(0, values.length - 1)].round();
+        if (values != null) {
+          building.inheritedBonus = values
+              .take(building.level)
+              .fold(0.0, (s, v) => s + v)
+              .round();
         }
         // Opcional: resetar nível para 1 se quiser
         // building.level = 1;
@@ -4814,8 +5128,9 @@ class GameEngine {
 
   /// Duelo manual disparado pelo jogador. Retorna mensagem de resultado ou erro.
   String runArenaChallenge(String idA, String idB) {
-    if (!citadel.hasBuilding(BuildingType.arena))
+    if (!citadel.hasBuilding(BuildingType.arena)) {
       return 'Arena não construída.';
+    }
     final arenaLevel = citadel.getBuilding(BuildingType.arena)?.level ?? 1;
     final foodCost = 5 + (arenaLevel * 5); // nível 1: 10, nível 5: 30
 
@@ -5188,6 +5503,28 @@ class GameEngine {
 
       partyPower += power;
       challenge.log.add('  ${npc.name} [PWR: ${power.toStringAsFixed(1)}]');
+    }
+    // ── Modificador de luto ────────────────────────────────────────────────
+    for (final npc in effectiveParty) {
+      final recentLoss = npc.traumas.any(
+        (t) =>
+            t.startsWith('Perda de') && t.contains('Dia ${state.currentDay}') ||
+            t.contains('Dia ${state.currentDay - 1}') ||
+            t.contains('Dia ${state.currentDay - 2}'),
+      );
+      if (recentLoss) {
+        // Luto recente: -15% power mas +5% yield (raiva/determinação)
+        // Isso cria a tensão narrativa: a dor pode virar força
+        final idx = effectiveParty.indexOf(npc);
+        if (idx != -1) {
+          // Aplica via personalityRewardMod indireto — registra no atributo temporário
+          npc.attributes.mentalStability -= 5; // pressão adicional
+          if (npc.traits.contains(PersonalityTrait.brave) ||
+              npc.traits.contains(PersonalityTrait.aggressive)) {
+            npc.fame += 2; // raiva vira determinação nos bravos
+          }
+        }
+      }
     }
 
     // weakLeads: NPC mais fraco define o poder total
@@ -5586,6 +5923,13 @@ class GameEngine {
           Profession.teacher => 'intelligence',
           Profession.farmer => 'endurance',
           Profession.builder => 'strength',
+          Profession.lumberjack => 'strength',
+          Profession.quarryman => 'strength',
+          Profession.miner => 'endurance',
+          Profession.carpenter => 'agility',
+          Profession.mason => 'strength',
+          Profession.blacksmith => 'strength',
+          Profession.merchant => 'charisma',
           _ => 'strength',
         };
       case EquipmentSlot.armor:
@@ -5698,9 +6042,9 @@ class GameEngine {
 
     if (n % 10 == 0) {
       res.food += 30 * mult;
-      res.wood += 30 * mult;
-      res.stone += 30 * mult;
-      res.iron += 25 * mult;
+      res.woodLog += 30 * mult;
+      res.stoneRaw += 30 * mult;
+      res.ironOre += 25 * mult;
       res.knowledge += 25 * mult;
       res.morale += (10 + tier * 2).toDouble();
 
@@ -5733,9 +6077,9 @@ class GameEngine {
     if (n % 5 == 0) {
       final m = tier * 0.7;
       res.food += 15 * m;
-      res.wood += 10 * m;
-      res.stone += 10 * m;
-      res.iron += 10 * m;
+      res.woodLog += 10 * m;
+      res.stoneRaw += 10 * m;
+      res.ironOre += 10 * m;
       res.knowledge += 15 * m;
       res.morale += 5;
       _rollEquipmentDrop(n, tier); // ← [FASE 1] drop em elite
@@ -5746,18 +6090,18 @@ class GameEngine {
     switch (floor.type) {
       case FloorType.combat:
       case FloorType.gauntlet:
-        res.iron += 5 * base;
-        res.stone += 3 * base;
+        res.ironOre += 5 * base;
+        res.stoneRaw += 3 * base;
         break;
       case FloorType.survival:
       case FloorType.hunt:
         res.food += 8 * base;
-        res.wood += 5 * base;
+        res.woodLog += 5 * base;
         break;
       case FloorType.strategic:
       case FloorType.puzzle:
         res.knowledge += 6 * base;
-        res.iron += 3 * base;
+        res.ironOre += 3 * base;
         break;
       case FloorType.moral:
         res.knowledge += 5 * base;
@@ -5769,9 +6113,9 @@ class GameEngine {
         break;
       case FloorType.elite:
         res.food += 4 * base;
-        res.wood += 4 * base;
-        res.stone += 4 * base;
-        res.iron += 4 * base;
+        res.woodLog += 4 * base;
+        res.stoneRaw += 4 * base;
+        res.ironOre += 4 * base;
         res.knowledge += 4 * base;
         break;
       default:
@@ -5859,32 +6203,318 @@ class GameEngine {
       }
     }
 
+    final grieving = <String>[]; // amigos que sofrem luto
+    final relieved = <String>[]; // rivais que ficam aliviados
+
     for (final other in aliveNpcs) {
       final rel = other.relationships.firstWhereOrNull(
         (r) => r.targetId == npc.id,
       );
-      if (rel != null && rel.affinity > 0.3) {
-        other.attributes.mentalStability -= 3;
+      if (rel == null) continue;
+
+      if (rel.affinity > 0.6) {
+        // Amigo próximo — luto pesado
+        other.attributes.mentalStability -= 12;
+        other.loyalty -= 3;
+        other.traumas.add('Perda de ${npc.name} (Dia ${state.currentDay})');
+        // Afeta a relação com todos que estavam no mesmo grupo
+        grieving.add(other.name);
+      } else if (rel.affinity > 0.3) {
+        // Conhecido — luto moderado
+        other.attributes.mentalStability -= 4;
+        other.traumas.add('Presenciou morte de ${npc.name}');
+      } else if (rel.affinity < -0.4) {
+        // Rival — alívio, mas moral coletiva cai mesmo assim
+        other.loyalty += 2;
+        relieved.add(other.name);
       }
     }
 
     citadel.resources.morale -= 5;
 
-    if (npc.fame > 20) {
+    // Evento de morte sempre gera notificação se houve luto ou é famoso
+    final hasGrief = grieving.isNotEmpty;
+    final isFamous = npc.fame > 20;
+
+    if (hasGrief || isFamous) {
+      final griefLine = grieving.isNotEmpty
+          ? '\n${grieving.take(3).join(', ')} estão em luto.'
+          : '';
+      final relievedLine = relieved.isNotEmpty
+          ? '\n${relieved.take(2).join(', ')} pareciam... aliviados.'
+          : '';
       _addEvent(
         GameEventType.death,
-        'Queda de ${npc.name}',
-        '${npc.name} (${npc.origin.label}, G${npc.generation}) morreu. $cause. Fama: ${npc.fame.toStringAsFixed(0)}.',
-        involvedIds: [npc.id],
-        isMajor: true,
+        isFamous ? 'Queda de ${npc.name}' : 'Morte de ${npc.name}',
+        '${npc.name} (${npc.origin.label}, G${npc.generation}) morreu. '
+        '$cause.$griefLine$relievedLine',
+        involvedIds: [
+          npc.id,
+          ...grieving
+              .take(3)
+              .map(
+                (name) => aliveNpcs.firstWhereOrNull((n) => n.name == name)?.id,
+              )
+              .whereType<String>(),
+        ],
+        isMajor: hasGrief || isFamous,
       );
     }
+  }
+  // ─────────────────────────────────────────────
+  // SISTEMA DE ESTRELAS E PROMOÇÃO DE RANK
+  // Lógica em RankService — game_engine só delega e aplica os eventos.
+  // ─────────────────────────────────────────────
+
+  String addStar(String targetId, String sacrificeId) {
+    final result = _rankService.addStar(
+      targetId: targetId,
+      sacrificeId: sacrificeId,
+      npcs: npcs,
+      citadel: citadel,
+      currentDay: state.currentDay,
+      nextDeathCount: () => state.totalDeaths++,
+    );
+    for (final ev in result.events) {
+      _addEvent(
+        ev.type,
+        ev.title,
+        ev.description,
+        involvedIds: ev.involvedNpcIds,
+        isMajor: ev.isMajor,
+      );
+    }
+    return result.message;
+  }
+
+  String attemptPromotion(String targetId, List<String> sacrificeIds) {
+    final result = _rankService.attemptPromotion(
+      targetId: targetId,
+      sacrificeIds: sacrificeIds,
+      npcs: npcs,
+      citadel: citadel,
+      currentDay: state.currentDay,
+      nextDeathCount: () => state.totalDeaths++,
+    );
+    for (final ev in result.events) {
+      _addEvent(
+        ev.type,
+        ev.title,
+        ev.description,
+        involvedIds: ev.involvedNpcIds,
+        isMajor: ev.isMajor,
+      );
+    }
+    return result.message;
+  }
+  // ─────────────────────────────────────────────
+  // DESERÇÃO DE NPC
+  // ─────────────────────────────────────────────
+
+  void _processDesertionWish() {
+    if (state.currentDay % 7 != 0) return;
+
+    for (final npc in aliveNpcs) {
+      if (npc.wantsToLeave) {
+        if (state.currentDay - npc.wantsToLeaveDay >= 3) {
+          _executeDesertion(npc);
+        }
+        continue;
+      }
+
+      final shouldConsider =
+          npc.loyalty < 20 ||
+          (npc.daysIdle > 30 &&
+              npc.traits.contains(PersonalityTrait.ambitious)) ||
+          (npc.traits.contains(PersonalityTrait.loner) &&
+              aliveNpcs.length > 20) ||
+          (npc.attributes.mentalStability < 15 && npc.traumas.length > 4);
+
+      if (!shouldConsider) continue;
+      if (_rng.nextDouble() > 0.25) continue;
+
+      npc.wantsToLeave = true;
+      npc.wantsToLeaveDay = state.currentDay;
+
+      _addEvent(
+        GameEventType.politicalEvent,
+        '${npc.name} quer partir',
+        '${npc.name} [${npc.rank.label}] expressou desejo de abandonar a cidadela. '
+            '${_desertionReason(npc)}\nVocê tem 3 dias para agir.',
+        involvedIds: [npc.id],
+        isMajor: npc.rank == NpcRank.sr || npc.rank == NpcRank.ssr,
+      );
+    }
+  }
+
+  void _executeDesertion(Npc npc) {
+    npc.wantsToLeave = false;
+    npc.alive = false;
+    npc.origin = NpcOrigin.towerDweller;
+    npc.history.add('Desertou da cidadela no Dia ${state.currentDay}.');
+
+    final targetFloor = floors.firstWhereOrNull(
+      (f) => !f.cleared && f.inhabitants.length < 3,
+    );
+    if (targetFloor != null) {
+      final inhabitant = InhabitantFactory.generateForFloor(
+        floorNumber: targetFloor.number,
+        tier: targetFloor.tier,
+        seed: npc.id.hashCode.abs(),
+      );
+      inhabitant.name = npc.name;
+      inhabitant.disposition = InhabitantDisposition.neutral;
+      targetFloor.inhabitants.add(inhabitant);
+    }
+
+    state.totalDeaths++;
+
+    _addEvent(
+      GameEventType.groupDissolved,
+      '${npc.name} partiu',
+      '${npc.name} [${npc.rank.label}] abandonou a cidadela. '
+          '${targetFloor != null ? "Foi visto nos andares da Torre." : "Sumiu no escuro."}',
+      involvedIds: [npc.id],
+      isMajor: npc.rank == NpcRank.ssr,
+    );
+  }
+
+  String tryRetainNpc(String npcId) {
+    final npc = npcs.firstWhereOrNull((n) => n.id == npcId);
+    if (npc == null || !npc.wantsToLeave) return 'NPC não quer partir.';
+
+    final foodCost = switch (npc.rank) {
+      NpcRank.ssr => 50.0,
+      NpcRank.sr => 25.0,
+      NpcRank.r => 10.0,
+      NpcRank.n => 5.0,
+    };
+
+    if (citadel.resources.food < foodCost) {
+      return 'Recursos insuficientes. Necessário: ${foodCost.toStringAsFixed(0)} comida.';
+    }
+
+    citadel.resources.food -= foodCost;
+    npc.wantsToLeave = false;
+    npc.loyalty = (npc.loyalty + 10).clamp(0, 100);
+    npc.attributes.mentalStability = (npc.attributes.mentalStability + 5).clamp(
+      0,
+      100,
+    );
+
+    _addEvent(
+      GameEventType.celebration,
+      '${npc.name} ficou',
+      'Após negociação, ${npc.name} decidiu permanecer na cidadela.',
+      involvedIds: [npc.id],
+      isMajor: npc.rank == NpcRank.ssr,
+    );
+
+    return '${npc.name} ficou. -${foodCost.toStringAsFixed(0)} comida.';
+  }
+
+  String _desertionReason(Npc npc) {
+    if (npc.loyalty < 20) return '"Ninguém aqui se importa com o que fazemos."';
+    if (npc.daysIdle > 30) return '"Estou desperdiçando meu potencial aqui."';
+    if (npc.traits.contains(PersonalityTrait.loner)) {
+      return '"Gente demais. Preciso de espaço."';
+    }
+    return '"Talvez haja algo melhor lá fora."';
+  }
+
+  // ─────────────────────────────────────────────
+  // SIMULACRO
+  // ─────────────────────────────────────────────
+
+  /// Verifica se o NPC pode iniciar uma batalha simulada
+  String? canStartSimulacrum(String npcId) {
+    if (!citadel.hasBuilding(BuildingType.simulacrum)) {
+      return 'Simulacro não construído.';
+    }
+    final npc = npcs.firstWhereOrNull((n) => n.id == npcId && n.alive);
+    if (npc == null) return 'NPC não encontrado.';
+    final lastDay = _simulacrumCooldowns[npcId] ?? 0;
+    if (state.currentDay - lastDay < 3) {
+      return 'Em recuperação. Disponível em ${3 - (state.currentDay - lastDay)} dia(s).';
+    }
+    return null; // null = pode iniciar
+  }
+
+  /// Cria uma nova batalha simulada para um NPC num andar strategic
+  SimulacrumBattle? startSimulacrumBattle(String npcId, int floorNumber) {
+    final error = canStartSimulacrum(npcId);
+    if (error != null) return null;
+
+    final npc = npcs.firstWhereOrNull((n) => n.id == npcId && n.alive);
+    final floor = floors.firstWhereOrNull(
+      (f) =>
+          f.number == floorNumber && f.cleared && f.type == FloorType.strategic,
+    );
+    if (npc == null || floor == null) return null;
+
+    final battle = _simulacrumService.createBattle(
+      battleId: 'battle_${++_battleIdCounter}',
+      npc: npc,
+      floor: floor,
+      currentDay: state.currentDay,
+    );
+
+    // Gera o pool de monstros disponíveis para o Master
+    battle.masterMonsters = _simulacrumService.generateMonsterPool(battle);
+
+    // Gera as tropas do NPC baseadas nos atributos
+    battle.npcTroops = _simulacrumService.generateNpcTroops(npc);
+
+    return battle;
+  }
+
+  /// Retorna estratégias visíveis para o NPC nesta batalha
+  List<ZoneStrategy> getAvailableStrategies(String npcId) {
+    final npc = npcs.firstWhereOrNull((n) => n.id == npcId);
+    if (npc == null) return [ZoneStrategy.directAssault];
+    return _simulacrumService.availableStrategies(npc);
+  }
+
+  /// Resolve a batalha e aplica o ganho de INT ao NPC
+  String resolveSimulacrumBattle(SimulacrumBattle battle) {
+    final npc = npcs.firstWhereOrNull((n) => n.id == battle.npcId && n.alive);
+    if (npc == null) return 'NPC não encontrado.';
+
+    final resolved = _simulacrumService.resolve(battle, npc);
+
+    // Aplica ganho de INT
+    final cap = npc.effectiveAttributeCap;
+    npc.attributes.intelligence =
+        (npc.attributes.intelligence + resolved.intGained).clamp(1, cap);
+
+    // Registra cooldown
+    _simulacrumCooldowns[npc.id] = state.currentDay;
+
+    // Registra no histórico do NPC
+    final outcome = resolved.npcVictory ? 'Venceu' : 'Perdeu';
+    npc.history.add(
+      '$outcome simulacro em ${battle.floorName} '
+      '(+${resolved.intGained.toStringAsFixed(2)} INT). Dia ${state.currentDay}.',
+    );
+
+    // Gera evento
+    final summary = _simulacrumService.generateBattleSummary(resolved, npc);
+    _addEvent(
+      GameEventType.training,
+      resolved.npcVictory
+          ? '${npc.name} venceu o Simulacro!'
+          : '${npc.name} aprendeu com a derrota no Simulacro',
+      summary,
+      involvedIds: [npc.id],
+      isMajor: resolved.npcVictory && resolved.intGained >= 1.0,
+    );
+
+    return summary;
   }
 
   // ─────────────────────────────────────────────
   // HELPERS PRIVADOS
   // ─────────────────────────────────────────────
-
   ({double power, double intel, double fame, double luck}) _calcPartyStats(
     List<Npc> party,
   ) {
@@ -5898,8 +6528,16 @@ class GameEngine {
     );
   }
 
-  double _averagePartyPower() => _calcPartyStats(aliveNpcs).power;
+  /// Multiplicador de ganho de atributos por rank.
+  /// N=1.0x · R=1.15x · SR=1.35x · SSR=1.6x
+  double _rankGrowthMultiplier(NpcRank rank) => switch (rank) {
+    NpcRank.n => 1.00,
+    NpcRank.r => 1.15,
+    NpcRank.sr => 1.35,
+    NpcRank.ssr => 1.60,
+  };
 
+  double _averagePartyPower() => _calcPartyStats(aliveNpcs).power;
   int _countProfession(Profession p) =>
       aliveNpcs.where((n) => n.profession == p).length;
 

@@ -202,18 +202,25 @@ class WarService {
       }
     }
 
-    // Impacto no standing com o jogador
+    // Forçar saída do estado de guerra — tier volta a hostile no mínimo
+    // (standing -29 = teto de hostile, abaixo de atWar que começa em -30)
     final winnerRel = factionRelations[winner.name];
     if (winnerRel != null) {
+      // Garantir que sai de atWar/bloodFeud
+      if (winnerRel.standing < -29) winnerRel.standing = -29;
       if (war.playerSidedWith == winner) {
-        winnerRel.standing = (winnerRel.standing + 15).clamp(-100, 100);
-      } else if (war.playerSidedWith == loser) {
-        winnerRel.standing = (winnerRel.standing - 5).clamp(-100, 100);
+        winnerRel.standing = (winnerRel.standing + 15).clamp(-29, 100);
       }
     }
     final loserRel = factionRelations[loser.name];
-    if (loserRel != null && war.playerSidedWith == loser) {
-      loserRel.standing = (loserRel.standing + 5).clamp(-100, 100);
+    if (loserRel != null) {
+      // Perdedor também sai de guerra mas fica hostil
+      if (loserRel.standing < -29) loserRel.standing = -29;
+      if (war.playerSidedWith == loser) {
+        loserRel.standing = (loserRel.standing + 5).clamp(-29, 100);
+      } else if (war.playerSidedWith == winner) {
+        loserRel.standing = (loserRel.standing - 5).clamp(-29, 100);
+      }
     }
 
     events.add(

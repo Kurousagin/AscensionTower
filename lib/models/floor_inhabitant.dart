@@ -114,7 +114,7 @@ class SurvivorStats {
 
 class FloorInhabitant {
   final String id;
-  final String name;
+  String name;
   final String description;
   final InhabitantCategory category;
   InhabitantDisposition disposition;

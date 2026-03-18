@@ -236,18 +236,18 @@ class TowerFloor {
     switch (type) {
       case FloorType.combat:
       case FloorType.gauntlet:
-        base['iron'] = 3 + t * 2;
-        base['stone'] = 2 + t;
+        base['ironOre'] = 3 + t * 2;
+        base['stoneRaw'] = 2 + t;
         break;
       case FloorType.survival:
       case FloorType.hunt:
         base['food'] = 5 + t * 3;
-        base['wood'] = 3 + t * 2;
+        base['woodLog'] = 3 + t * 2;
         break;
       case FloorType.strategic:
       case FloorType.puzzle:
         base['knowledge'] = 4 + t * 3;
-        base['iron'] = 2 + t;
+        base['ironOre'] = 2 + t;
         break;
       case FloorType.moral:
         base['knowledge'] = 3 + t * 2;
@@ -258,45 +258,38 @@ class TowerFloor {
         base['food'] = 2 + t;
         break;
       case FloorType.elite:
-        base['iron'] = 5 + t * 3;
+        base['ironOre'] = 5 + t * 3;
         base['knowledge'] = 3 + t * 2;
         break;
       case FloorType.boss:
-        // Boss dá recursos premium, mas apenas os 2 mais temáticos do tier.
-        // Dar todos os 5 criava picos absurdos de farm no endgame.
         final bossIdx = ((number - 1) ~/ 10) % 5;
         switch (bossIdx) {
-          case 0: // Tier 1-2: Iron + Food
-            base['iron'] = 10 + t * 3;
+          case 0:
+            base['ironOre'] = 10 + t * 3;
             base['food'] = 8 + t * 2;
             break;
-          case 1: // Tier 3-4: Wood + Stone
-            base['wood'] = 10 + t * 3;
-            base['stone'] = 8 + t * 2;
+          case 1:
+            base['woodLog'] = 10 + t * 3;
+            base['stoneRaw'] = 8 + t * 2;
             break;
-          case 2: // Tier 5-6: Knowledge + Iron
+          case 2:
             base['knowledge'] = 10 + t * 3;
-            base['iron'] = 8 + t * 2;
+            base['ironOre'] = 8 + t * 2;
             break;
-          case 3: // Tier 7-8: Food + Knowledge (endgame)
+          case 3:
             base['food'] = 10 + t * 2;
             base['knowledge'] = 10 + t * 2;
             break;
-          default: // Tier 9-10: Stone + Wood
-            base['stone'] = 10 + t * 3;
-            base['wood'] = 8 + t * 2;
+          default:
+            base['stoneRaw'] = 10 + t * 3;
+            base['woodLog'] = 8 + t * 2;
         }
         break;
     }
 
-    // ── DIMINISHING RETURNS ─────────────────────────────────────
     final repeats = timesReexplored.clamp(0, 20);
-    // 90% do anterior a cada re-exploração (mínimo 15% para não zerar)
     final double multiplier = pow(0.90, repeats).clamp(0.15, 1.0).toDouble();
-
-    // Aplica em todos os recursos
     base.updateAll((key, value) => (value * multiplier).roundToDouble());
-
     return base;
   }
 

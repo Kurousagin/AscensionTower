@@ -82,8 +82,8 @@ class TradeService {
             merchantId: merchantId,
             floorNumber: floorNumber,
             faction: faction,
-            cost: {'iron': (20 * priceMod).round()},
-            reward: {'food': 30, 'stone': 15},
+            cost: {'ironOre': (20 * priceMod).round()},
+            reward: {'food': 30, 'stoneRaw': 15},
             refreshDay: currentDay,
             standingReq: -30,
           ),
@@ -94,8 +94,8 @@ class TradeService {
               merchantId: merchantId,
               floorNumber: floorNumber,
               faction: faction,
-              cost: {'iron': (35 * priceMod).round(), 'food': 10},
-              reward: {'food': 20, 'stone': 30, 'knowledge': 5},
+              cost: {'ironOre': (35 * priceMod).round(), 'food': 10},
+              reward: {'food': 20, 'stoneRaw': 30, 'knowledge': 5},
               refreshDay: currentDay,
               standingReq: 30,
             ),
@@ -111,7 +111,7 @@ class TradeService {
             faction: faction,
             cost: {
               'food': (15 * priceMod).round(),
-              'wood': (10 * priceMod).round(),
+              'woodLog': (10 * priceMod).round(),
             },
             reward: {'knowledge': 25},
             refreshDay: currentDay,
@@ -125,7 +125,7 @@ class TradeService {
               floorNumber: floorNumber,
               faction: faction,
               cost: {'knowledge': (20 * priceMod).round()},
-              reward: {'food': 10, 'iron': 5, 'wood': 15},
+              reward: {'food': 10, 'ironOre': 5, 'woodLongLog': 15},
               refreshDay: currentDay,
               standingReq: 20,
             ),
@@ -140,7 +140,7 @@ class TradeService {
             floorNumber: floorNumber,
             faction: faction,
             cost: {'food': (25 * priceMod).round()},
-            reward: {'iron': 20, 'wood': 10},
+            reward: {'ironOre': 20, 'woodLong': 10},
             refreshDay: currentDay,
             standingReq: -30,
           ),
@@ -150,7 +150,7 @@ class TradeService {
             merchantId: merchantId,
             floorNumber: floorNumber,
             faction: faction,
-            cost: {'iron': (15 * priceMod).round(), 'wood': 10},
+            cost: {'ironOre': (15 * priceMod).round(), 'woodLong': 10},
             reward: {'food': 35, 'knowledge': 8},
             refreshDay: currentDay,
             standingReq: -10,
@@ -164,7 +164,7 @@ class TradeService {
               floorNumber: floorNumber,
               faction: faction,
               cost: {'food': (10 * priceMod * 0.85).round()},
-              reward: {'stone': 25, 'iron': 10, 'knowledge': 5},
+              reward: {'stoneRaw': 25, 'ironOre': 10, 'knowledge': 5},
               refreshDay: currentDay,
               standingReq: 50,
             ),
@@ -181,7 +181,7 @@ class TradeService {
               floorNumber: floorNumber,
               faction: faction,
               cost: {'food': (5 * priceMod).round()},
-              reward: {'food': 50, 'iron': 20, 'knowledge': 15}, // muito bom
+              reward: {'food': 50, 'ironOre': 20, 'knowledge': 15}, // muito bom
               refreshDay: currentDay,
               standingReq: -50,
             ),
@@ -208,10 +208,10 @@ class TradeService {
             floorNumber: floorNumber,
             faction: faction,
             cost: {
-              'iron': (40 * priceMod).round(),
+              'ironOre': (40 * priceMod).round(),
               'knowledge': (30 * priceMod).round(),
             },
-            reward: {'food': 60, 'stone': 40, 'wood': 30},
+            reward: {'food': 60, 'stoneRaw': 40, 'woodLong': 30},
             refreshDay: currentDay,
             standingReq: 0,
           ),
@@ -327,12 +327,18 @@ class TradeService {
     switch (key) {
       case 'food':
         return citadel.resources.food;
-      case 'iron':
-        return citadel.resources.iron;
-      case 'wood':
-        return citadel.resources.wood;
-      case 'stone':
-        return citadel.resources.stone;
+      case 'ironOre':
+        return citadel.resources.ironOre;
+      case 'woodLongLog':
+        return citadel.resources.woodLog;
+      case 'stoneRaw':
+        return citadel.resources.stoneRaw;
+      case 'ironOreBar':
+        return citadel.resources.ironBar;
+      case 'lumber':
+        return citadel.resources.lumber;
+      case 'stoneBrick':
+        return citadel.resources.stoneBrick;
       case 'knowledge':
         return citadel.resources.knowledge;
       default:
@@ -344,12 +350,12 @@ class TradeService {
     switch (key) {
       case 'food':
         citadel.resources.food += amount;
-      case 'iron':
-        citadel.resources.iron += amount;
-      case 'wood':
-        citadel.resources.wood += amount;
-      case 'stone':
-        citadel.resources.stone += amount;
+      case 'ironOre':
+        citadel.resources.ironOre += amount;
+      case 'woodLong':
+        citadel.resources.woodLog += amount;
+      case 'stoneRaw':
+        citadel.resources.stoneRaw += amount;
       case 'knowledge':
         citadel.resources.knowledge += amount;
       default:

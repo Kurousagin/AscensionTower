@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:collection/collection.dart';
+import 'package:tower_ascension/models/npc_enums.dart';
 import '../models/npc.dart';
 import '../widgets/theme.dart';
 import '../widgets/terminal_widgets.dart';

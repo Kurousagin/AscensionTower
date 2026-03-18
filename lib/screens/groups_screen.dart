@@ -3,6 +3,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tower_ascension/models/citadel.dart';
+import 'package:tower_ascension/models/npc_enums.dart';
 import '../providers/game_provider.dart';
 import '../models/npc.dart';
 import '../models/group_model.dart';

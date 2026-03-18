@@ -4,6 +4,8 @@
 // julgamentos, votos dos jurados, sentenças e soltura automática.
 
 import 'dart:math';
+import 'package:tower_ascension/models/npc_enums.dart';
+
 import '../models/prison.dart';
 import '../models/npc.dart';
 import '../models/citadel.dart';

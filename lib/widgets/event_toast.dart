@@ -171,6 +171,18 @@ class ToastController extends ChangeNotifier {
     if (_current == null) _next();
   }
 
+  /// Limpa toda a fila — chamado ao sair do jogo ou carregar novo save
+  void clear() {
+    _timer?.cancel();
+    _timer = null;
+    _current = null;
+    _queue.clear();
+    _celebrationQueue.clear();
+    _crisisQueue.clear();
+    _loreQueue.clear();
+    notifyListeners();
+  }
+
   void _next() {
     _timer?.cancel();
     if (_queue.isEmpty) {
@@ -235,40 +247,52 @@ class _EventToastOverlayState extends State<EventToastOverlay>
   bool _crisisDialogOpen = false;
 
   void _onToastChange() {
-    // PRIORIDADE MÁXIMA: Crise
-    if (_ctrl.pendingCrises.isNotEmpty && mounted && !_crisisDialogOpen) {
+    // PRIORIDADE MÁXIMA: Crise — guard duplo evita re-entrada
+    if (_crisisDialogOpen) return;
+
+    if (_ctrl.pendingCrises.isNotEmpty && mounted) {
       final event = _ctrl.pendingCrises.first;
       _ctrl.consumeCrisis();
+      _crisisDialogOpen = true;
 
       final gp = Provider.of<GameProvider>(context, listen: false);
       gp.pauseForCrisis();
 
-      _crisisDialogOpen = true; // ← guard
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          CrisisDialog.show(context, event).then((_) {
-            _crisisDialogOpen = false;
-            _onToastChange();
-          });
+        if (!mounted) {
+          _crisisDialogOpen = false;
+          return;
         }
+        CrisisDialog.show(context, event).then((_) {
+          _crisisDialogOpen = false;
+          // Agenda próximo processamento no próximo frame
+          // evita re-entrância síncrona
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _onToastChange();
+          });
+        });
       });
       return;
     }
-    // Depois lore
+
+    // Lore — só processa se não há crise pendente
     if (_ctrl.pendingLore.isNotEmpty && mounted) {
       final event = _ctrl.pendingLore.first;
       _ctrl.consumeLore();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _showLoreDialog(context, event);
       });
+      return; // ← processa um por vez
     }
-    // Depois celebrações normais
+
+    // Celebrações — só processa se não há crise nem lore pendente
     if (_ctrl.pendingCelebrations.isNotEmpty && mounted) {
       final event = _ctrl.pendingCelebrations.first;
       _ctrl.consumeCelebration();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) CelebrationDialog.show(context, event);
       });
+      return; // ← processa um por vez
     }
 
     if (_ctrl.current != null) {

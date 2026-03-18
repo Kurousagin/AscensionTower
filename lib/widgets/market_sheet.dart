@@ -274,9 +274,9 @@ class _TradeCard extends StatelessWidget {
     final res = gp.citadel.resources;
     final canAfford = offer.cost.entries.every((e) => switch (e.key) {
           'food' => res.food >= e.value,
-          'iron' => res.iron >= e.value,
-          'wood' => res.wood >= e.value,
-          'stone' => res.stone >= e.value,
+          'iron' => res.ironBar >= e.value,
+          'wood' => res.woodLog >= e.value,
+          'stone' => res.stoneBrick >= e.value,
           'knowledge' => res.knowledge >= e.value,
           _ => false,
         });

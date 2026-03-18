@@ -5,6 +5,7 @@
 // diplomatia, recrutamento de survivors, expiração de tratados e recompensas de aliança.
 
 import 'dart:math';
+
 import '../models/floor_faction.dart';
 import '../models/floor_inhabitant.dart';
 import '../models/tower.dart';
@@ -88,15 +89,18 @@ class FactionService {
       relation.incursionsCaused++;
       relation.lastInteractionDay = currentDay;
 
+      final foodLost = (10 * severity).toStringAsFixed(1);
+      final moraleLost = (5 * severity).toStringAsFixed(1);
       events.add(
         ServiceEvent(
           type: GameEventType.crisis,
-          title: 'Incursão: ${relation.faction.label}',
+          title: '⚔ INCURSÃO: ${relation.faction.label}',
           description:
-              '${relation.faction.label} atacou os suprimentos da cidadela. '
-              'Standing atual: ${relation.standing.toStringAsFixed(0)}. '
-              'Incursões totais desta facção: ${relation.incursionsCaused}.',
-          isMajor: severity > 0.7,
+              '${relation.faction.label} atacou os suprimentos da cidadela!\n'
+              '−$foodLost comida  −$moraleLost moral\n'
+              'Standing: ${relation.standing.toStringAsFixed(0)} · '
+              'Incursão nº ${relation.incursionsCaused}.',
+          isMajor: true,
         ),
       );
     }
@@ -224,8 +228,8 @@ class FactionService {
 
     // Custom faction logic
     if (faction == FloorFaction.bloodMarket && standing >= 50) {
-      if (citadel.resources.iron >= 5) {
-        citadel.resources.iron -= 5;
+      if (citadel.resources.ironOre >= 5) {
+        citadel.resources.ironOre -= 5;
         citadel.resources.food += 15 + (standing / 10);
         narratives.add(
           '💰 Mercado de Sangue trocou ferro por mantimentos. '
@@ -417,12 +421,12 @@ class FactionService {
           if (citadel.resources.food < entry.value) {
             return 'Recursos insuficientes.';
           }
-        case 'iron':
-          if (citadel.resources.iron < entry.value) {
+        case 'ironOre':
+          if (citadel.resources.ironOre < entry.value) {
             return 'Recursos insuficientes.';
           }
-        case 'wood':
-          if (citadel.resources.wood < entry.value) {
+        case 'woodLog':
+          if (citadel.resources.woodLog < entry.value) {
             return 'Recursos insuficientes.';
           }
         case 'knowledge':
@@ -436,10 +440,10 @@ class FactionService {
       switch (entry.key) {
         case 'food':
           citadel.resources.food -= entry.value;
-        case 'iron':
-          citadel.resources.iron -= entry.value;
-        case 'wood':
-          citadel.resources.wood -= entry.value;
+        case 'ironOre':
+          citadel.resources.ironOre -= entry.value;
+        case 'woodLong':
+          citadel.resources.woodLog -= entry.value;
         case 'knowledge':
           citadel.resources.knowledge -= entry.value;
       }
@@ -519,7 +523,7 @@ class FactionService {
 
       switch (relation.faction) {
         case FloorFaction.ironPact:
-          citadel.resources.iron += 50;
+          citadel.resources.ironOre += 50;
           description = '+50 ferro como presente de aliança do Pacto de Ferro';
         case FloorFaction.silentOrder:
           citadel.resources.knowledge += 60;
@@ -542,7 +546,7 @@ class FactionService {
               description =
                   'Evento caótico especial: +30 moral infundido pelos Filhos do Vazio';
             default:
-              citadel.resources.iron += 60;
+              citadel.resources.ironOre += 60;
               description =
                   'Evento caótico especial: +60 ferro forjado no Vazio';
           }

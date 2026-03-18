@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:tower_ascension/models/npc_enums.dart';
 import 'package:tower_ascension/widgets/market_sheet.dart';
 import '../providers/game_provider.dart';
 import '../widgets/theme.dart';
@@ -485,10 +486,21 @@ class DashboardScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           _resRow('🌾', res.food, cap, isInfinite, AppTheme.green),
-          _resRow('🪵', res.wood, cap, isInfinite, AppTheme.orange),
-          _resRow('🪨', res.stone, cap, isInfinite, AppTheme.textSecondary),
-          _resRow('⚙️', res.iron, cap, isInfinite, AppTheme.blue),
           _resRow('📚', res.knowledge, cap, isInfinite, AppTheme.purple),
+          // Raw
+          _resRow('🪵', res.woodLog, cap, isInfinite, AppTheme.orange),
+          _resRow('🪨', res.stoneRaw, cap, isInfinite, AppTheme.textSecondary),
+          _resRow('⛏', res.ironOre, cap, isInfinite, AppTheme.blue),
+          // Processado
+          _resRow('🪚', res.lumber, cap, isInfinite, AppTheme.orange),
+          _resRow(
+            '🧱',
+            res.stoneBrick,
+            cap,
+            isInfinite,
+            AppTheme.textSecondary,
+          ),
+          _resRow('⚙️', res.ironBar, cap, isInfinite, AppTheme.blue),
           const SizedBox(height: 6),
           // Moral com barra larga
           Row(
@@ -573,6 +585,15 @@ class DashboardScreen extends StatelessWidget {
   // NPC DESTAQUE — protagonista com peso visual
   // ═══════════════════════════════════════════════════════════
 
+  Color _rankColor(NpcRank rank) {
+    switch (rank) {
+      case NpcRank.ssr: return const Color(0xFFECC94B);
+      case NpcRank.sr:  return const Color(0xFF00B4D8);
+      case NpcRank.r:   return const Color(0xFF48BB78);
+      case NpcRank.n:   return const Color(0xFF718096);
+    }
+  }
+
   Widget _buildNpcDestaque(GameProvider gp) {
     if (gp.aliveNpcs.isEmpty) return const SizedBox.shrink();
 
@@ -655,15 +676,39 @@ class DashboardScreen extends StatelessWidget {
           ),
           const SizedBox(height: 6),
 
-          // Nome
-          TerminalText(
-            npc.name,
-            fontSize: 13,
-            color: accentColor,
-            fontWeight: FontWeight.bold,
+          // Nome + rank
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: TerminalText(
+                  npc.name,
+                  fontSize: 13,
+                  color: accentColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: _rankColor(npc.rank).withValues(alpha: 0.7),
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                  color: _rankColor(npc.rank).withValues(alpha: 0.1),
+                ),
+                child: TerminalText(
+                  npc.rank.label,
+                  fontSize: 8,
+                  color: _rankColor(npc.rank),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
           TerminalText(
-            '${npc.profession.label} · G${npc.generation} · ${npc.age}a',
+            '\${npc.profession.label} · G\${npc.generation} · \${npc.age}a',
             fontSize: 8,
             color: AppTheme.textDim,
           ),
@@ -802,6 +847,36 @@ class DashboardScreen extends StatelessWidget {
 
   Widget _buildAlerts(GameProvider gp) {
     final alerts = <_AlertItem>[];
+
+    // Alerta de deserção de SR/SSR — prioridade máxima
+    final deserting = gp.aliveNpcs
+        .where((n) => n.wantsToLeave)
+        .toList();
+    final highRankDeserting = deserting
+        .where((n) => n.rank == NpcRank.sr || n.rank == NpcRank.ssr)
+        .toList();
+    if (highRankDeserting.isNotEmpty) {
+      final names = highRankDeserting
+          .map((n) => '\${n.name} [\${n.rank.label}]')
+          .join(', ');
+      alerts.add(
+        _AlertItem(
+          'DESERÇÃO IMINENTE: $names quer partir!',
+          AppTheme.orange,
+          Icons.exit_to_app,
+          priority: 3,
+        ),
+      );
+    } else if (deserting.isNotEmpty) {
+      alerts.add(
+        _AlertItem(
+          '\${deserting.length} habitante(s) querendo abandonar a cidadela',
+          AppTheme.yellow,
+          Icons.exit_to_app,
+          priority: 2,
+        ),
+      );
+    }
 
     final suspicious = gp.suspiciousNpcs;
     if (suspicious.isNotEmpty) {

@@ -43,19 +43,19 @@ extension StorageLevelExt on StorageLevel {
   }[this]!;
 
   Resources get upgradeCost => {
-    StorageLevel.none: Resources(wood: 15, stone: 10),
-    StorageLevel.basic: Resources(wood: 40, stone: 30, iron: 10),
+    StorageLevel.none: Resources(woodLog: 15, stoneRaw: 10),
+    StorageLevel.basic: Resources(woodLog: 40, stoneRaw: 30, ironOre: 10),
     StorageLevel.expanded: Resources(
-      wood: 80,
-      stone: 60,
-      iron: 30,
+      woodLog: 80,
+      stoneRaw: 60,
+      ironOre: 30,
       knowledge: 15,
     ),
     StorageLevel.grand: Resources(
-      iron: 80,
-      stone: 100,
       knowledge: 60,
-      wood: 60,
+      ironOre: 80,
+      stoneRaw: 100,
+      woodLog: 60,
     ),
     StorageLevel.spatial: Resources(),
   }[this]!;
@@ -72,93 +72,143 @@ extension StorageLevelExt on StorageLevel {
 // ─────────────────────────────────────────────
 
 class ResourcesCost {
-  final double food, wood, stone, iron, knowledge;
+  final double food,
+      woodLog,
+      stoneRaw,
+      ironOre,
+      lumber,
+      stoneBrick,
+      ironBar,
+      knowledge;
   const ResourcesCost({
     this.food = 0,
-    this.wood = 0,
-    this.stone = 0,
-    this.iron = 0,
+    this.woodLog = 0,
+    this.stoneRaw = 0,
+    this.ironOre = 0,
+    this.lumber = 0,
+    this.stoneBrick = 0,
+    this.ironBar = 0,
     this.knowledge = 0,
   });
 
   Resources toResources() => Resources(
     food: food,
-    wood: wood,
-    stone: stone,
-    iron: iron,
+    woodLog: woodLog,
+    stoneRaw: stoneRaw,
+    ironOre: ironOre,
+    lumber: lumber,
+    stoneBrick: stoneBrick,
+    ironBar: ironBar,
     knowledge: knowledge,
   );
 }
 
 class Resources {
-  double food, wood, stone, iron, knowledge, morale;
+  double food, knowledge, morale;
+  // Raw — da torre ou coleta
+  double woodLog, stoneRaw, ironOre;
+  // Processado — manufatura
+  double lumber, stoneBrick, ironBar;
 
   Resources({
     this.food = 0,
-    this.wood = 0,
-    this.stone = 0,
-    this.iron = 0,
     this.knowledge = 0,
     this.morale = 0,
+    this.woodLog = 0,
+    this.stoneRaw = 0,
+    this.ironOre = 0,
+    this.lumber = 0,
+    this.stoneBrick = 0,
+    this.ironBar = 0,
   });
 
   Resources copyWith({
     double? food,
-    double? wood,
-    double? stone,
-    double? iron,
     double? knowledge,
     double? morale,
+    double? woodLog,
+    double? stoneRaw,
+    double? ironOre,
+    double? lumber,
+    double? stoneBrick,
+    double? ironBar,
   }) => Resources(
     food: food ?? this.food,
-    wood: wood ?? this.wood,
-    stone: stone ?? this.stone,
-    iron: iron ?? this.iron,
     knowledge: knowledge ?? this.knowledge,
     morale: morale ?? this.morale,
+    woodLog: woodLog ?? this.woodLog,
+    stoneRaw: stoneRaw ?? this.stoneRaw,
+    ironOre: ironOre ?? this.ironOre,
+    lumber: lumber ?? this.lumber,
+    stoneBrick: stoneBrick ?? this.stoneBrick,
+    ironBar: ironBar ?? this.ironBar,
   );
-
   Resources clone() => copyWith();
 
   Map<String, dynamic> toJson() => {
     'food': food,
-    'wood': wood,
-    'stone': stone,
-    'iron': iron,
+    'woodLog': woodLog,
+    'stoneRaw': stoneRaw,
+    'ironOre': ironOre,
+    'lumber': lumber,
+    'stoneBrick': stoneBrick,
+    'ironBar': ironBar,
     'knowledge': knowledge,
     'morale': morale,
   };
 
   factory Resources.fromJson(Map<String, dynamic> json) => Resources(
-    food: (json['food'] as num?)?.toDouble() ?? 50,
-    wood: (json['wood'] as num?)?.toDouble() ?? 30,
-    stone: (json['stone'] as num?)?.toDouble() ?? 10,
-    iron: (json['iron'] as num?)?.toDouble() ?? 0,
+    food: (json['food'] as num?)?.toDouble() ?? 0,
+    // raw — saves antigos migram wood/stone/iron como ponto de partida
+    woodLog:
+        (json['woodLog'] as num?)?.toDouble() ??
+        (json['wood'] as num?)?.toDouble() ??
+        0,
+    stoneRaw:
+        (json['stoneRaw'] as num?)?.toDouble() ??
+        (json['stone'] as num?)?.toDouble() ??
+        0,
+    ironOre:
+        (json['ironOre'] as num?)?.toDouble() ??
+        (json['iron'] as num?)?.toDouble() ??
+        0,
+    lumber: (json['lumber'] as num?)?.toDouble() ?? 0,
+    stoneBrick: (json['stoneBrick'] as num?)?.toDouble() ?? 0,
+    ironBar: (json['ironBar'] as num?)?.toDouble() ?? 0,
     knowledge: (json['knowledge'] as num?)?.toDouble() ?? 5,
     morale: (json['morale'] as num?)?.toDouble() ?? 60,
   );
 
   bool canAfford(Resources cost) =>
       food >= cost.food &&
-      wood >= cost.wood &&
-      stone >= cost.stone &&
-      iron >= cost.iron &&
+      woodLog >= cost.woodLog &&
+      stoneRaw >= cost.stoneRaw &&
+      ironOre >= cost.ironOre &&
+      lumber >= cost.lumber &&
+      stoneBrick >= cost.stoneBrick &&
+      ironBar >= cost.ironBar &&
       knowledge >= cost.knowledge;
 
   void spend(Resources cost) {
     food -= cost.food;
-    wood -= cost.wood;
-    stone -= cost.stone;
-    iron -= cost.iron;
+    woodLog -= cost.woodLog;
+    stoneRaw -= cost.stoneRaw;
+    ironOre -= cost.ironOre;
+    lumber -= cost.lumber;
+    stoneBrick -= cost.stoneBrick;
+    ironBar -= cost.ironBar;
     knowledge -= cost.knowledge;
     clampNegatives();
   }
 
   void add(Resources gain) {
     food += gain.food;
-    wood += gain.wood;
-    stone += gain.stone;
-    iron += gain.iron;
+    woodLog += gain.woodLog;
+    stoneRaw += gain.stoneRaw;
+    ironOre += gain.ironOre;
+    lumber += gain.lumber;
+    stoneBrick += gain.stoneBrick;
+    ironBar += gain.ironBar;
     knowledge += gain.knowledge;
     morale += gain.morale;
   }
@@ -178,17 +228,29 @@ class Resources {
         lost.food = food - cap;
         food = cap;
       }
-      if (wood > cap) {
-        lost.wood = wood - cap;
-        wood = cap;
+      if (woodLog > cap) {
+        lost.woodLog = woodLog - cap;
+        woodLog = cap;
       }
-      if (stone > cap) {
-        lost.stone = stone - cap;
-        stone = cap;
+      if (stoneRaw > cap) {
+        lost.stoneRaw = stoneRaw - cap;
+        stoneRaw = cap;
       }
-      if (iron > cap) {
-        lost.iron = iron - cap;
-        iron = cap;
+      if (ironOre > cap) {
+        lost.ironOre = ironOre - cap;
+        ironOre = cap;
+      }
+      if (lumber > cap) {
+        lost.lumber = lumber - cap;
+        lumber = cap;
+      }
+      if (stoneBrick > cap) {
+        lost.stoneBrick = stoneBrick - cap;
+        stoneBrick = cap;
+      }
+      if (ironBar > cap) {
+        lost.ironBar = ironBar - cap;
+        ironBar = cap;
       }
       if (knowledge > cap) {
         lost.knowledge = knowledge - cap;
@@ -200,33 +262,36 @@ class Resources {
 
   void clampNegatives() {
     if (food < 0) food = 0;
-    if (wood < 0) wood = 0;
-    if (stone < 0) stone = 0;
-    if (iron < 0) iron = 0;
+    if (woodLog < 0) woodLog = 0;
+    if (stoneRaw < 0) stoneRaw = 0;
+    if (ironOre < 0) ironOre = 0;
+    if (lumber < 0) lumber = 0;
+    if (stoneBrick < 0) stoneBrick = 0;
+    if (ironBar < 0) ironBar = 0;
     if (knowledge < 0) knowledge = 0;
   }
 
   bool hasOverflow(StorageLevel storage) {
     if (storage.isInfinite) return false;
     final cap = storage.capacity;
-    return food > cap ||
-        wood > cap ||
-        stone > cap ||
-        iron > cap ||
-        knowledge > cap;
+    return food > cap || knowledge > cap;
   }
 
   bool anyAtCapacity(StorageLevel storage) {
     if (storage.isInfinite) return false;
     final cap = storage.capacity;
-    return food >= cap ||
-        wood >= cap ||
-        stone >= cap ||
-        iron >= cap ||
-        knowledge >= cap;
+    return food >= cap || knowledge >= cap;
   }
 
-  double get totalPhysical => food + wood + stone + iron + knowledge;
+  double get totalPhysical =>
+      food +
+      woodLog +
+      stoneRaw +
+      ironOre +
+      lumber +
+      stoneBrick +
+      ironBar +
+      knowledge;
 
   double usageRatio(StorageLevel storage) {
     if (storage.isInfinite) return 0.0;
@@ -282,13 +347,13 @@ extension CitadelLevelExt on CitadelLevel {
 
   int get maxBuildings => const {
     CitadelLevel.shelter: 3,
-    CitadelLevel.camp: 5,
-    CitadelLevel.village: 8,
-    CitadelLevel.town: 11,
-    CitadelLevel.city: 15,
-    CitadelLevel.fortress: 19,
-    CitadelLevel.citadel: 23,
-    CitadelLevel.kingdom: 27,
+    CitadelLevel.camp: 6,
+    CitadelLevel.village: 10,
+    CitadelLevel.town: 14,
+    CitadelLevel.city: 19,
+    CitadelLevel.fortress: 23,
+    CitadelLevel.citadel: 25,
+    CitadelLevel.kingdom: 30,
     CitadelLevel.empire: 32,
     CitadelLevel.ascended: 45,
   }[this]!;
@@ -355,11 +420,14 @@ enum BuildingType {
   firepit,
   tent,
   farm,
-  // Produção (Tier 1)
+  // Coleta de recursos (Tier 1)
+  silviculture, // lenhadores → woodLog
+  quarry, // pedreiros → stoneRaw
+  // Manufatura (Tier 1–2)
   kitchen,
-  workshop,
-  forge,
-  woodworking,
+  sawmill, // carpinteiros → woodLog → lumber  (era woodworking)
+  masonry, // canteiros → stoneRaw → stoneBrick (era workshop)
+  forge, // ferreiros → ironOre → ironBar
   granary,
   // Conhecimento (Tier 1–2)
   school,
@@ -375,6 +443,7 @@ enum BuildingType {
   market,
   temple,
   prison,
+  simulacrum,
   // ── NOVO: Abrigo de Viajantes (Tier 2) ──────────────────────────────────
   // Permite recrutar survivors encontrados nos andares conquistados.
   // Único (isUnique = true). Não evolui automaticamente (canEvolve = false).
@@ -451,9 +520,11 @@ class Building {
   static const Map<BuildingType, List<double>> levelValues = {
     BuildingType.farm: [2, 4, 6, 8, 10],
     BuildingType.firepit: [1, 3, 4, 5, 6],
-    BuildingType.woodworking: [2, 4, 6, 8, 10],
+    BuildingType.silviculture: [3, 5, 8, 12, 16],
+    BuildingType.quarry: [2, 4, 7, 10, 14],
+    BuildingType.sawmill: [2, 4, 6, 9, 12],
+    BuildingType.masonry: [2, 4, 6, 9, 12],
     BuildingType.forge: [2, 5, 8, 12, 16],
-    BuildingType.workshop: [1, 2, 4, 6, 8],
     BuildingType.school: [1, 2, 4, 6, 8],
     BuildingType.library: [1, 2, 4, 6, 8],
     BuildingType.kitchen: [1, 2, 4, 6, 8],
@@ -499,7 +570,30 @@ class Building {
       'Salão de Banquetes',
       'Salão de Banquetes',
     ],
-    BuildingType.workshop: ['Oficina', 'Manufatura', 'Fábrica', 'Fábrica'],
+    BuildingType.silviculture: [
+      'Clareira',
+      'Plantação Florestal',
+      'Campo Florestal',
+      'Floresta Gerenciada',
+    ],
+    BuildingType.quarry: [
+      'Escavação',
+      'Pedreira',
+      'Mina Aberta',
+      'Mina Profunda',
+    ],
+    BuildingType.sawmill: [
+      'Serraria',
+      'Madeireira',
+      'Complexo Madeireiro',
+      'Complexo Madeireiro',
+    ],
+    BuildingType.masonry: [
+      'Cantaria',
+      'Oficina de Pedra',
+      'Lapidação',
+      'Lapidação',
+    ],
     BuildingType.forge: ['Forja', 'Fundição', 'Refinaria', 'Refinaria'],
     BuildingType.barracks: [
       'Quartel',
@@ -508,12 +602,6 @@ class Building {
       'Complexo de Treinamento',
     ],
     BuildingType.school: ['Escola', 'Escola', 'Escola', 'Escola'],
-    BuildingType.woodworking: [
-      'Lenharia',
-      'Serraria',
-      'Madeireira',
-      'Complexo Madeireiro',
-    ],
     BuildingType.library: [
       'Biblioteca',
       'Biblioteca',
@@ -574,6 +662,12 @@ class Building {
       'Armazém de Grãos',
       'Estoque Real',
     ],
+    BuildingType.simulacrum: [
+      'Simulacro',
+      'Simulacro Avançado',
+      'Simulacro Arcano',
+      'Simulacro Transcendente',
+    ],
     BuildingType.warRoom: [
       'Sala de Guerra',
       'Sala de Guerra',
@@ -605,9 +699,11 @@ class Building {
     BuildingType.tent: BuildingCategory.essential,
     BuildingType.farm: BuildingCategory.essential,
     BuildingType.kitchen: BuildingCategory.production,
-    BuildingType.workshop: BuildingCategory.production,
+    BuildingType.silviculture: BuildingCategory.production,
+    BuildingType.quarry: BuildingCategory.production,
+    BuildingType.sawmill: BuildingCategory.production,
+    BuildingType.masonry: BuildingCategory.production,
     BuildingType.forge: BuildingCategory.production,
-    BuildingType.woodworking: BuildingCategory.production,
     BuildingType.school: BuildingCategory.knowledge,
     BuildingType.library: BuildingCategory.knowledge,
     BuildingType.infirmary: BuildingCategory.knowledge,
@@ -625,6 +721,7 @@ class Building {
     BuildingType.promotionHall: BuildingCategory.advanced,
     BuildingType.councilHall: BuildingCategory.advanced,
     BuildingType.alchemyLab: BuildingCategory.advanced,
+    BuildingType.simulacrum: BuildingCategory.advanced,
     BuildingType.warRoom: BuildingCategory.advanced,
     BuildingType.monument: BuildingCategory.advanced,
     BuildingType.nexus: BuildingCategory.advanced,
@@ -636,20 +733,24 @@ class Building {
       const {
         BuildingType.firepit: 0, BuildingType.tent: 0, BuildingType.farm: 0,
         BuildingType.kitchen: 1,
-        BuildingType.workshop: 1,
+        BuildingType.silviculture: 1, BuildingType.quarry: 1,
+        BuildingType.sawmill: 1, BuildingType.masonry: 2,
         BuildingType.forge: 1,
         BuildingType.school: 1,
         BuildingType.library: 2,
         BuildingType.infirmary: 1,
-        BuildingType.woodworking: 2, BuildingType.granary: 2,
+        BuildingType.granary: 2,
         BuildingType.barracks: 2, BuildingType.trainingField: 2,
         BuildingType.wall: 2, BuildingType.watchtower: 2,
         BuildingType.tavern: 3, BuildingType.prison: 3,
         BuildingType.market: 3, BuildingType.temple: 3,
         BuildingType.arena: 4, BuildingType.synthesisLab: 5,
-        BuildingType.promotionHall: 5, BuildingType.councilHall: 4,
-        BuildingType.alchemyLab: 7, BuildingType.warRoom: 6,
-        BuildingType.monument: 8, BuildingType.nexus: 9,
+        BuildingType.promotionHall: 1, BuildingType.councilHall: 4,
+        BuildingType.simulacrum: 1,
+        BuildingType.alchemyLab: 7,
+        BuildingType.warRoom: 6,
+        BuildingType.monument: 8,
+        BuildingType.nexus: 9,
         // ── NOVO: disponível no Tier 2 (mesmo nível que barracks) ────────────────
         BuildingType.wayfareresRefuge: 2,
       }[type] ??
@@ -660,6 +761,7 @@ class Building {
     BuildingType.temple,
     BuildingType.arena,
     BuildingType.synthesisLab,
+    BuildingType.simulacrum,
     BuildingType.promotionHall,
     BuildingType.councilHall,
     BuildingType.alchemyLab,
@@ -677,9 +779,12 @@ class Building {
     BuildingType.tent,
     BuildingType.farm,
     BuildingType.kitchen,
-    BuildingType.workshop,
+    BuildingType.silviculture,
+    BuildingType.simulacrum,
+    BuildingType.quarry,
+    BuildingType.sawmill,
+    BuildingType.masonry,
     BuildingType.forge,
-    BuildingType.woodworking,
     BuildingType.granary,
     BuildingType.barracks,
     BuildingType.infirmary,
@@ -693,18 +798,10 @@ class Building {
         return '+${bonus.toStringAsFixed(0)} capacidade de população';
       case BuildingType.farm:
         return '+${bonus.toStringAsFixed(0)} comida/dia';
-      case BuildingType.kitchen:
-        return '+${bonus.toStringAsFixed(0)} comida/dia por chef';
-      case BuildingType.workshop:
-        return '+${bonus.toStringAsFixed(0)} produção avançada/dia';
-      case BuildingType.woodworking:
-        return '+${bonus.toStringAsFixed(0)} madeira/dia';
       case BuildingType.granary:
         if (tier == 0) return 'Reduz o gasto de comida em 1.5%';
         if (tier == 1) return 'Reduz o gasto de comida em 2.5%';
         return 'Reduz o gasto de comida em 5%';
-      case BuildingType.forge:
-        return '+${bonus.toStringAsFixed(0)} ferro/dia';
       case BuildingType.school:
         return '+${bonus.toStringAsFixed(0)} conhecimento/dia, treina jovens';
       case BuildingType.library:
@@ -739,12 +836,31 @@ class Building {
         return 'Votações políticas, resolve crises democraticamente';
       case BuildingType.alchemyLab:
         return 'Cria poções e itens especiais de recursos raros';
+      case BuildingType.simulacrum:
+        return 'Batalhas simuladas com o Master. NPCs ganham INT treinando estratégia nos andares conquistados.';
       case BuildingType.warRoom:
         return '+25% chance de sucesso em expedições, estratégia global';
       case BuildingType.monument:
         return '+5 moral/dia, símbolo de poder, +lealdade geral';
       case BuildingType.nexus:
         return 'Conexão com a Torre: −10% dificuldade, +visão dos andares';
+      case BuildingType.silviculture:
+        return 'Profissão: Lenhador. Gera troncos/dia baseado no nível + lenhadores alocados. '
+            'Troncos são matéria-prima — sem Serraria não viram madeira utilizável.';
+      case BuildingType.quarry:
+        return 'Profissão: Pedreiro. Extrai pedra bruta/dia baseado no nível + pedreiros. '
+            'Pedra bruta é matéria-prima — a Cantaria a transforma em tijolos.';
+      case BuildingType.sawmill:
+        return 'Profissão: Carpinteiro. Converte troncos em madeira serrada (0.7:1). '
+            'Madeira serrada é necessária para construções tier 2+.';
+      case BuildingType.masonry:
+        return 'Profissão: Canteiro. Converte pedra bruta em tijolos (0.6:1). '
+            'Tijolos necessários para construções tier 3+ e muralhas.';
+      case BuildingType.forge:
+        return 'Profissão: Ferreiro. Converte minério em barras de ferro (0.5:1). '
+            'Ferro processado essencial para equipamentos e construções avançadas.';
+      case BuildingType.kitchen:
+        return 'Profissão: Cozinheiro. Multiplica a produção da farm — sem cozinheiros, sem efeito.';
       // ── NOVO ───────────────────────────────────────────────────────────────
       case BuildingType.wayfareresRefuge:
         return 'Permite recrutar survivors encontrados nos andares conquistados. '
@@ -754,129 +870,136 @@ class Building {
 
   ResourcesCost get cost =>
       const {
-        BuildingType.firepit: ResourcesCost(wood: 5),
-        BuildingType.tent: ResourcesCost(wood: 10),
-        BuildingType.farm: ResourcesCost(wood: 15, stone: 5, food: 3),
-        BuildingType.granary: ResourcesCost(wood: 20, stone: 10, food: 5),
-        BuildingType.kitchen: ResourcesCost(wood: 10, stone: 5, food: 3),
-        BuildingType.workshop: ResourcesCost(
-          wood: 20,
-          stone: 15,
-          iron: 5,
-          food: 8,
+        // ── Tier 0 — só raw ──
+        BuildingType.firepit: ResourcesCost(woodLog: 5),
+        BuildingType.tent: ResourcesCost(woodLog: 10),
+        BuildingType.farm: ResourcesCost(woodLog: 15, stoneRaw: 5, food: 3),
+        BuildingType.granary: ResourcesCost(woodLog: 20, stoneRaw: 10, food: 5),
+        BuildingType.kitchen: ResourcesCost(woodLog: 10, stoneRaw: 5, food: 3),
+        // ── Tier 1 — raw ──
+        BuildingType.silviculture: ResourcesCost(woodLog: 10, stoneRaw: 5),
+        BuildingType.quarry: ResourcesCost(
+          woodLog: 8,
+          stoneRaw: 15,
+          ironOre: 5,
         ),
-        BuildingType.forge: ResourcesCost(
-          stone: 25,
-          iron: 15,
-          knowledge: 5,
-          food: 10,
+        BuildingType.sawmill: ResourcesCost(
+          woodLog: 20,
+          stoneRaw: 10,
+          ironOre: 5,
         ),
-        BuildingType.woodworking: ResourcesCost(
-          wood: 15,
-          stone: 10,
-          knowledge: 5,
-          food: 5,
+        BuildingType.masonry: ResourcesCost(
+          woodLog: 15,
+          stoneRaw: 20,
+          ironOre: 8,
         ),
         BuildingType.school: ResourcesCost(
-          wood: 15,
-          stone: 10,
+          woodLog: 15,
+          stoneRaw: 10,
           knowledge: 10,
           food: 5,
         ),
         BuildingType.library: ResourcesCost(
-          wood: 20,
-          stone: 15,
+          lumber: 20,
+          stoneRaw: 15,
           knowledge: 15,
           food: 8,
         ),
         BuildingType.infirmary: ResourcesCost(
-          wood: 15,
-          stone: 10,
+          woodLog: 15,
+          stoneRaw: 10,
           knowledge: 5,
           food: 8,
         ),
         BuildingType.barracks: ResourcesCost(
-          wood: 25,
-          stone: 20,
-          iron: 10,
-          food: 12,
-        ),
-        BuildingType.trainingField: ResourcesCost(
-          wood: 25,
-          stone: 20,
-          iron: 10,
-          knowledge: 10,
-          food: 12,
-        ),
-        BuildingType.wall: ResourcesCost(stone: 30, iron: 10, food: 15),
-        BuildingType.watchtower: ResourcesCost(
-          wood: 15,
-          stone: 25,
-          iron: 5,
+          woodLog: 25,
+          stoneRaw: 20,
+          ironOre: 10,
           food: 10,
         ),
-        BuildingType.tavern: ResourcesCost(wood: 30, stone: 15, food: 10),
-        BuildingType.market: ResourcesCost(wood: 20, stone: 15, food: 8),
+        BuildingType.trainingField: ResourcesCost(
+          woodLog: 25,
+          stoneRaw: 20,
+          ironOre: 10,
+          food: 15,
+        ),
+        BuildingType.wall: ResourcesCost(stoneRaw: 30, ironOre: 10, food: 15),
+        BuildingType.watchtower: ResourcesCost(
+          woodLog: 15,
+          stoneRaw: 25,
+          ironOre: 5,
+          food: 8,
+        ),
+        BuildingType.tavern: ResourcesCost(lumber: 30, stoneRaw: 15, food: 10),
+        BuildingType.market: ResourcesCost(lumber: 20, stoneBrick: 15, food: 8),
         BuildingType.temple: ResourcesCost(
-          stone: 30,
-          wood: 20,
-          knowledge: 20,
+          stoneBrick: 30,
+          lumber: 20,
+          food: 15,
+        ),
+        BuildingType.prison: ResourcesCost(
+          lumber: 30,
+          stoneBrick: 40,
+          ironBar: 20,
+        ),
+        BuildingType.arena: ResourcesCost(
+          stoneBrick: 40,
+          ironBar: 25,
+          lumber: 20,
           food: 20,
         ),
-        BuildingType.prison: ResourcesCost(wood: 30, stone: 40, iron: 20),
-        BuildingType.arena: ResourcesCost(
-          stone: 40,
-          iron: 25,
-          wood: 20,
-          food: 25,
-        ),
         BuildingType.synthesisLab: ResourcesCost(
-          iron: 40,
+          lumber: 40,
+          ironBar: 30,
           knowledge: 30,
-          stone: 25,
-          food: 30,
+          food: 20,
         ),
         BuildingType.promotionHall: ResourcesCost(
-          knowledge: 50,
-          iron: 30,
-          stone: 30,
-          food: 35,
+          lumber: 40,
+          stoneBrick: 35,
+          ironBar: 20,
+          knowledge: 25,
         ),
         BuildingType.councilHall: ResourcesCost(
-          wood: 35,
-          stone: 30,
-          knowledge: 20,
-          food: 25,
+          lumber: 35,
+          stoneBrick: 30,
+          knowledge: 25,
+          food: 20,
         ),
         BuildingType.alchemyLab: ResourcesCost(
-          knowledge: 80,
-          iron: 50,
-          stone: 30,
-          food: 40,
+          ironBar: 50,
+          stoneBrick: 30,
+          knowledge: 40,
+          food: 25,
+        ),
+        BuildingType.simulacrum: ResourcesCost(
+          lumber: 30,
+          stoneBrick: 25,
+          ironBar: 15,
+          knowledge: 40,
         ),
         BuildingType.warRoom: ResourcesCost(
-          iron: 60,
-          stone: 40,
-          knowledge: 40,
-          food: 35,
+          ironBar: 60,
+          stoneBrick: 40,
+          knowledge: 30,
+          food: 30,
         ),
         BuildingType.monument: ResourcesCost(
-          stone: 100,
-          iron: 50,
-          knowledge: 50,
-          wood: 50,
-          food: 50,
+          stoneBrick: 100,
+          ironBar: 50,
+          lumber: 50,
+          food: 40,
         ),
         BuildingType.nexus: ResourcesCost(
-          knowledge: 150,
-          iron: 80,
-          stone: 80,
-          food: 60,
+          ironBar: 80,
+          stoneBrick: 80,
+          lumber: 60,
+          knowledge: 60,
+          food: 50,
         ),
-        // ── NOVO: custo acessível — disponível no Tier 2 ─────────────────────────
         BuildingType.wayfareresRefuge: ResourcesCost(
-          wood: 25,
-          stone: 15,
+          woodLog: 25,
+          stoneRaw: 15,
           food: 10,
         ),
       }[type] ??
@@ -887,10 +1010,13 @@ class Building {
     final mult = level * 1.5;
     return Resources(
       food: base.food * mult,
-      wood: base.wood * mult,
-      stone: base.stone * mult,
-      iron: base.iron * mult,
       knowledge: base.knowledge * mult,
+      woodLog: base.woodLog * mult,
+      stoneRaw: base.stoneRaw * mult,
+      ironOre: base.ironOre * mult,
+      lumber: base.lumber * mult,
+      stoneBrick: base.stoneBrick * mult,
+      ironBar: base.ironBar * mult,
     );
   }
 
@@ -969,53 +1095,54 @@ class Citadel {
   }
 
   ResourcesCost get upgradeCost => const {
-    CitadelLevel.shelter: ResourcesCost(wood: 50, stone: 30, food: 30),
+    CitadelLevel.shelter: ResourcesCost(woodLog: 50, stoneRaw: 30, food: 30),
     CitadelLevel.camp: ResourcesCost(
-      wood: 80,
-      stone: 60,
-      iron: 10,
-      knowledge: 10,
+      woodLog: 80,
+      stoneRaw: 60,
+      ironOre: 10,
+      food: 40,
     ),
     CitadelLevel.village: ResourcesCost(
-      wood: 120,
-      stone: 100,
-      iron: 30,
-      knowledge: 25,
+      woodLog: 120,
+      stoneRaw: 100,
+      ironOre: 30,
+      food: 60,
     ),
     CitadelLevel.town: ResourcesCost(
-      wood: 180,
-      stone: 150,
-      iron: 60,
-      knowledge: 50,
+      lumber: 180,
+      stoneBrick: 150,
+      ironOre: 60,
+      food: 80,
     ),
     CitadelLevel.city: ResourcesCost(
-      wood: 300,
-      stone: 250,
-      iron: 100,
-      knowledge: 80,
+      lumber: 300,
+      stoneBrick: 250,
+      ironBar: 100,
+      food: 120,
     ),
     CitadelLevel.fortress: ResourcesCost(
-      wood: 500,
-      stone: 400,
-      iron: 200,
-      knowledge: 150,
+      lumber: 500,
+      stoneBrick: 400,
+      ironBar: 200,
+      food: 200,
     ),
+    // (continuar o padrão para os níveis seguintes com processed crescente)
     CitadelLevel.citadel: ResourcesCost(
-      wood: 800,
-      stone: 600,
-      iron: 350,
+      lumber: 800,
+      stoneBrick: 600,
+      ironBar: 350,
       knowledge: 250,
     ),
     CitadelLevel.kingdom: ResourcesCost(
-      wood: 1200,
-      stone: 1000,
-      iron: 600,
+      lumber: 1200,
+      stoneBrick: 1000,
+      ironBar: 600,
       knowledge: 500,
     ),
     CitadelLevel.empire: ResourcesCost(
-      wood: 2000,
-      stone: 1800,
-      iron: 1000,
+      lumber: 2000,
+      stoneBrick: 1800,
+      ironBar: 1000,
       knowledge: 800,
     ),
     CitadelLevel.ascended: ResourcesCost(),
@@ -1025,12 +1152,20 @@ class Citadel {
       .where((b) => b.type == BuildingType.farm)
       .fold(0.0, (sum, b) => sum + b.bonus);
 
-  double get totalWoodProduction => buildings
-      .where((b) => b.type == BuildingType.woodworking)
+  double get totalLumberProduction => buildings
+      .where((b) => b.type == BuildingType.sawmill)
       .fold(0.0, (sum, b) => sum + b.bonus);
 
-  double get totalIronProduction => buildings
+  double get totalIronBarProduction => buildings
       .where((b) => b.type == BuildingType.forge)
+      .fold(0.0, (sum, b) => sum + b.bonus);
+
+  double get totalWoodLogProduction => buildings
+      .where((b) => b.type == BuildingType.silviculture)
+      .fold(0.0, (sum, b) => sum + b.bonus);
+
+  double get totalStoneRawProduction => buildings
+      .where((b) => b.type == BuildingType.quarry)
       .fold(0.0, (sum, b) => sum + b.bonus);
 
   int get totalPopulationCapacity {

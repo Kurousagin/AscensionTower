@@ -1,6 +1,8 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:tower_ascension/models/npc_enums.dart';
+import 'package:tower_ascension/models/rank_up_sheet.dart';
 import 'package:tower_ascension/widgets/family_threee_widget.dart';
 import '../providers/game_provider.dart';
 import '../widgets/theme.dart';
@@ -60,7 +62,7 @@ class _NpcDetailScreenState extends State<NpcDetailScreen>
 
         return Scaffold(
           backgroundColor: AppTheme.bg,
-          appBar: _buildAppBar(npc),
+          appBar: _buildAppBar(npc, gp),
           body: ScanlineOverlay(
             child: Column(
               children: [
@@ -89,7 +91,20 @@ class _NpcDetailScreenState extends State<NpcDetailScreen>
 
   // ── AppBar ─────────────────────────────────────────────────
 
-  PreferredSizeWidget _buildAppBar(Npc npc) {
+  Color _rankColor(NpcRank rank) {
+    switch (rank) {
+      case NpcRank.ssr:
+        return const Color(0xFFECC94B);
+      case NpcRank.sr:
+        return const Color(0xFF00B4D8);
+      case NpcRank.r:
+        return const Color(0xFF48BB78);
+      case NpcRank.n:
+        return const Color(0xFF718096);
+    }
+  }
+
+  PreferredSizeWidget _buildAppBar(Npc npc, GameProvider gp) {
     return AppBar(
       backgroundColor: AppTheme.bg,
       elevation: 0,
@@ -115,6 +130,45 @@ class _NpcDetailScreenState extends State<NpcDetailScreen>
         ],
       ),
       actions: [
+        // Badge de rank
+        if (npc.alive) ...[
+          Container(
+            margin: const EdgeInsets.only(right: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: _rankColor(npc.rank).withValues(alpha: 0.7),
+              ),
+              borderRadius: BorderRadius.circular(2),
+              color: _rankColor(npc.rank).withValues(alpha: 0.1),
+            ),
+            child: TerminalText(
+              npc.rank.label,
+              fontSize: 9,
+              color: _rankColor(npc.rank),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+        // Botão favorito
+        if (npc.alive)
+          GestureDetector(
+            onTap: () {
+              gp.toggleFavorite(npc.id);
+            },
+            child: Container(
+              margin: const EdgeInsets.only(right: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Icon(
+                npc.isFavorite ? Icons.star : Icons.star_border,
+                size: 20,
+                color: npc.isFavorite
+                    ? const Color(0xFFECC94B)
+                    : AppTheme.textDim,
+              ),
+            ),
+          ),
+        // Badge VIVO/MORTO
         Container(
           margin: const EdgeInsets.only(right: 12),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -225,30 +279,31 @@ class _NpcDetailScreenState extends State<NpcDetailScreen>
       children: [
         // Atributos
         const CyanDivider(label: 'ATRIBUTOS'),
+        // Cap visual reflete o rank do NPC
         StatBar(
           label: 'Força',
           value: npc.totalStrength(equipped),
-          maxValue: 20,
+          maxValue: npc.effectiveAttributeCap,
         ),
         StatBar(
           label: 'Agil.',
           value: npc.totalAgility(equipped),
-          maxValue: 20,
+          maxValue: npc.effectiveAttributeCap,
         ),
         StatBar(
           label: 'Intel.',
           value: npc.totalIntelligence(equipped),
-          maxValue: 20,
+          maxValue: npc.effectiveAttributeCap,
         ),
         StatBar(
           label: 'Resist.',
           value: npc.totalEndurance(equipped),
-          maxValue: 20,
+          maxValue: npc.effectiveAttributeCap,
         ),
         StatBar(
           label: 'Caris.',
           value: npc.totalCharisma(equipped),
-          maxValue: 20,
+          maxValue: npc.effectiveAttributeCap,
         ),
         const SizedBox(height: 4),
         StatBar(
@@ -365,6 +420,78 @@ class _NpcDetailScreenState extends State<NpcDetailScreen>
                 color: AppTheme.blue,
               );
             },
+          ),
+        ],
+
+        if (npc.alive) ...[
+          const CyanDivider(label: 'RANK'),
+          buildRankSection(context, npc, gp),
+        ],
+
+        // Deserção
+        if (npc.alive && npc.wantsToLeave) ...[
+          const CyanDivider(label: 'DESERÇÃO'),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.orange.withValues(alpha: 0.07),
+              border: Border.all(color: AppTheme.orange.withValues(alpha: 0.4)),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.exit_to_app, size: 13, color: AppTheme.orange),
+                    SizedBox(width: 6),
+                    TerminalText(
+                      'QUER ABANDONAR A CIDADELA',
+                      fontSize: 10,
+                      color: AppTheme.orange,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                TerminalText(
+                  'Você tem até 3 dias para agir antes que ${npc.name} parta.',
+                  fontSize: 9,
+                  color: AppTheme.textSecondary,
+                ),
+                const SizedBox(height: 8),
+                Builder(
+                  builder: (ctx) {
+                    final foodCost = switch (npc.rank) {
+                      NpcRank.ssr => 50,
+                      NpcRank.sr => 25,
+                      NpcRank.r => 10,
+                      NpcRank.n => 5,
+                    };
+                    final canAfford = gp.citadel.resources.food >= foodCost;
+                    return TerminalButton(
+                      label: 'RETER (−$foodCost comida)',
+                      icon: Icons.handshake_outlined,
+                      color: canAfford ? AppTheme.green : AppTheme.textDim,
+                      expanded: true,
+                      onPressed: canAfford
+                          ? () {
+                              final result = gp.engine.tryRetainNpc(npc.id);
+                              gp.refresh();
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                SnackBar(
+                                  content: Text(result),
+                                  backgroundColor: AppTheme.bgCard,
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            }
+                          : null,
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
         ],
 
@@ -856,7 +983,8 @@ class _NpcDetailScreenState extends State<NpcDetailScreen>
   // ── Barra de ações ─────────────────────────────────────────
 
   Widget _buildTabTree(Npc npc, GameProvider gp) {
-    final hasFamily = npc.parentAId != null ||
+    final hasFamily =
+        npc.parentAId != null ||
         npc.parentBId != null ||
         npc.partnerId != null ||
         npc.childrenIds.isNotEmpty;
@@ -877,9 +1005,9 @@ class _NpcDetailScreenState extends State<NpcDetailScreen>
       allNpcs: gp.allNpcs,
       onNodeTap: (tapped) {
         if (tapped.id == npc.id) return;
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => NpcDetailScreen(npcId: tapped.id),
-        ));
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => NpcDetailScreen(npcId: tapped.id)),
+        );
       },
     );
   }
@@ -893,29 +1021,56 @@ class _NpcDetailScreenState extends State<NpcDetailScreen>
         border: Border(top: BorderSide(color: AppTheme.border)),
         color: AppTheme.bgCard,
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: TerminalButton(
-              label: 'PROFISSÃO',
-              icon: Icons.work_outline,
-              color: AppTheme.blue,
-              expanded: true,
-              onPressed: () => _showProfessionDialog(context, npc, gp),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: TerminalButton(
+                  label: 'PROFISSÃO',
+                  icon: Icons.work_outline,
+                  color: AppTheme.blue,
+                  expanded: true,
+                  onPressed: () => _showProfessionDialog(context, npc, gp),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TerminalButton(
+                  label: 'PUNIR',
+                  icon: Icons.gavel,
+                  color: AppTheme.red,
+                  expanded: true,
+                  onPressed: gp.citadel.hasBuilding(BuildingType.prison)
+                      ? () => _showPunishDialog(context, npc, gp)
+                      : null,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TerminalButton(
-              label: 'PUNIR',
-              icon: Icons.gavel,
-              color: AppTheme.red,
+          if (npc.alive &&
+              gp.citadel.hasBuilding(BuildingType.promotionHall) &&
+              npc.rank != NpcRank.ssr) ...[
+            const SizedBox(height: 8),
+            TerminalButton(
+              label: npc.stars < 5
+                  ? 'ADICIONAR ESTRELA (${npc.stars}/5)'
+                  : npc.isPromoted
+                  ? 'LIMITE DE PROMOÇÃO ATINGIDO'
+                  : 'PROMOVER RANK (5★ → ${NpcRank.values[npc.rank.index + 1].label})',
+              icon: Icons.auto_awesome,
+              color: npc.isPromoted || npc.rank == NpcRank.ssr
+                  ? AppTheme.textDim
+                  : const Color(0xFFECC94B),
               expanded: true,
-              onPressed: gp.citadel.hasBuilding(BuildingType.prison)
-                  ? () => _showPunishDialog(context, npc, gp)
-                  : null,
+              onPressed: npc.isPromoted || npc.rank == NpcRank.ssr
+                  ? null
+                  : () => npc.stars < 5
+                        ? showAddStarSheet(context, npc, gp)
+                        : showPromotionSheet(context, npc, gp),
             ),
-          ),
+          ],
         ],
       ),
     );

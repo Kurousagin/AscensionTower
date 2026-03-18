@@ -4,7 +4,9 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:tower_ascension/models/floor_faction.dart';
 import 'package:tower_ascension/models/floor_inhabitant.dart';
+import 'package:tower_ascension/models/npc_enums.dart';
 import 'package:tower_ascension/models/prison.dart';
+import 'package:tower_ascension/models/simulacrum_battle.dart';
 import 'package:tower_ascension/services/events/notification_service.dart';
 import '../services/game_engine.dart';
 import '../services/save_service.dart';
@@ -572,12 +574,18 @@ class GameProvider extends ChangeNotifier {
   Resources get _dailyProduction => _engine.previewDailyProduction();
 
   double get dailyFoodBonus => _dailyProduction.food;
-  double get dailyWoodBonus => _dailyProduction.wood;
-  double get dailyIronBonus => _dailyProduction.iron;
-  double get dailyAdvancedBonus =>
-      _dailyProduction.iron + _dailyProduction.wood;
+  double get dailyWoodLogBonus => _dailyProduction.woodLog;
+  double get dailyLumberBonus => _dailyProduction.lumber;
+  double get dailyStoneRawBonus => _dailyProduction.stoneRaw;
+  double get dailyStoneBrickBonus => _dailyProduction.stoneBrick;
+  double get dailyIronOreBonus => _dailyProduction.ironOre;
+  double get dailyIronBarBonus => _dailyProduction.ironBar;
   double get dailyResearchBonus => _dailyProduction.knowledge;
   double get dailyMoraleBonus => _dailyProduction.morale;
+
+  // Mantido por compatibilidade com código existente
+  double get dailyWoodBonus => _dailyProduction.woodLog;
+  double get dailyIronBonus => _dailyProduction.ironOre;
   // ==================== ACOES DO JOGADOR (PRINCIPAL) ====================
 
   /// ACAO PRINCIPAL: Enviar expedição ao proximo andar
@@ -779,7 +787,7 @@ class GameProvider extends ChangeNotifier {
   bool get hasForge => _engine.citadel.hasBuilding(BuildingType.forge);
 
   /// Custo de craft para uma raridade específica
-  ({double iron, double knowledge, double stone}) craftCostFor(
+  ({double ironBar, double knowledge, double stoneBrick}) craftCostFor(
     EquipmentRarity rarity,
   ) => EquipmentFactory.craftCost(rarity);
 
@@ -1007,6 +1015,51 @@ class GameProvider extends ChangeNotifier {
         return 'Sem evidências de crime.';
       default:
         return 'Ação não permitida.';
+    }
+  }
+
+  // ==================== SIMULACRO ====================
+
+  String? canStartSimulacrum(String npcId) => _engine.canStartSimulacrum(npcId);
+
+  SimulacrumBattle? startSimulacrumBattle(String npcId, int floorNumber) =>
+      _engine.startSimulacrumBattle(npcId, floorNumber);
+
+  List<ZoneStrategy> getAvailableStrategies(String npcId) =>
+      _engine.getAvailableStrategies(npcId);
+
+  String resolveSimulacrumBattle(SimulacrumBattle battle) {
+    final result = _engine.resolveSimulacrumBattle(battle);
+    _saveGame();
+    notifyListeners();
+    return result;
+  }
+
+  List<TowerFloor> get strategicClearedFloors => _engine.clearedFloors
+      .where((f) => f.type == FloorType.strategic)
+      .toList();
+
+  // ==================== RANK UP ====================
+  String addStar(String targetId, String sacrificeId) {
+    final result = _engine.addStar(targetId, sacrificeId);
+    _saveGame();
+    notifyListeners();
+    return result;
+  }
+
+  String attemptPromotion(String targetId, List<String> sacrificeIds) {
+    final result = _engine.attemptPromotion(targetId, sacrificeIds);
+    _saveGame();
+    notifyListeners();
+    return result;
+  }
+
+  void toggleFavorite(String npcId) {
+    final npc = _engine.npcs.firstWhereOrNull((n) => n.id == npcId);
+    if (npc != null) {
+      npc.isFavorite = !npc.isFavorite;
+      _saveGame();
+      notifyListeners();
     }
   }
 

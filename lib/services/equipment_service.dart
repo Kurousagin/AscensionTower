@@ -19,8 +19,8 @@ enum EquipResult {
   success,
   npcNotFound,
   itemNotFound,
-  slotMismatch,      // item não é do slot correto
-  slotOccupied,      // slot já tem item; unequip primeiro
+  slotMismatch, // item não é do slot correto
+  slotOccupied, // slot já tem item; unequip primeiro
   itemAlreadyEquipped, // item já está em outro NPC
 }
 
@@ -54,7 +54,8 @@ class EquipmentService {
     if (_rng.nextDouble() > dropChance) return null;
 
     final rarity = _rollRarity(tier);
-    final slot = EquipmentSlot.values[_rng.nextInt(EquipmentSlot.values.length)];
+    final slot =
+        EquipmentSlot.values[_rng.nextInt(EquipmentSlot.values.length)];
     final id = 'eq_d${currentDay}_f${floorNumber}_${_rng.nextInt(99999)}';
 
     return EquipmentFactory.generate(
@@ -105,18 +106,19 @@ class EquipmentService {
 
     // 2. Verificar recursos
     final cost = EquipmentFactory.craftCost(rarity);
-    final canAfford = citadel.resources.iron >= cost.iron &&
+    final canAfford =
+        citadel.resources.ironBar >= cost.ironBar &&
         citadel.resources.knowledge >= cost.knowledge &&
-        citadel.resources.stone >= cost.stone;
+        citadel.resources.stoneBrick >= cost.stoneBrick;
 
     if (!canAfford) {
       return (CraftResult.insufficientResources, null);
     }
 
     // 3. Consumir recursos
-    citadel.resources.iron -= cost.iron;
+    citadel.resources.ironBar -= cost.ironBar;
     citadel.resources.knowledge -= cost.knowledge;
-    citadel.resources.stone -= cost.stone;
+    citadel.resources.stoneBrick -= cost.stoneBrick;
     citadel.resources.clampNegatives();
 
     // 4. Gerar item (tier 1 mínimo para craft, nível da forja escala)
@@ -230,9 +232,7 @@ class EquipmentService {
     EquipmentSlot slot,
     List<Equipment> inventory,
   ) =>
-      inventory
-          .where((e) => e.slot == slot && !e.isEquipped)
-          .toList()
+      inventory.where((e) => e.slot == slot && !e.isEquipped).toList()
         ..sort((a, b) => b.rarity.index.compareTo(a.rarity.index));
 
   /// Todos os itens equipados em um NPC
@@ -240,17 +240,16 @@ class EquipmentService {
       inventory.where((e) => e.equippedByNpcId == npcId).toList();
 
   /// Custo de craft para exibir na UI (sem instanciar item)
-  ({double iron, double knowledge, double stone}) craftCostFor(
+  ({double ironBar, double knowledge, double stoneBrick}) craftCostFor(
     EquipmentRarity rarity,
-  ) =>
-      EquipmentFactory.craftCost(rarity);
+  ) => EquipmentFactory.craftCost(rarity);
 
   /// Verifica se a cidadela tem recursos suficientes para craftar
   bool canCraft(EquipmentRarity rarity, Resources resources) {
     final cost = EquipmentFactory.craftCost(rarity);
-    return resources.iron >= cost.iron &&
+    return resources.ironBar >= cost.ironBar &&
         resources.knowledge >= cost.knowledge &&
-        resources.stone >= cost.stone;
+        resources.stoneBrick >= cost.stoneBrick;
   }
 }
 

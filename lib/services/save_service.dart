@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:tower_ascension/widgets/event_toast.dart';
 import 'game_engine.dart';
 
 class SaveService {
@@ -15,11 +16,12 @@ class SaveService {
     final box = Hive.box(_boxName);
     final jsonStr = box.get('game_save_$slot') as String?;
     if (jsonStr == null) return false;
-    try {
+try {
       final json = jsonDecode(jsonStr) as Map<String, dynamic>;
       engine.loadFromJson(json);
-      // MIGRAÇÃO: Ajusta saves antigos para herança de bônus
       engine.migrateOldSave(engine.citadel);
+      // Limpa toasts e filas de eventos do save anterior
+      ToastController().clear();
       return true;
     } catch (_) {
       return false;

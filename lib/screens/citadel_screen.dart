@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:tower_ascension/models/npc.dart';
+import 'package:tower_ascension/models/npc_enums.dart';
 import '../providers/game_provider.dart';
 import '../models/citadel.dart';
 import '../widgets/theme.dart';
@@ -7,9 +9,9 @@ import '../widgets/terminal_widgets.dart';
 
 // ── Paleta Gótica ────────────────────────────────────────────────────────────
 // Usada em todo o CitadelScreen para substituir a estética cyberpunk
-const _arcaneViolet = Color(0xFF9966EE);  // substitui cyan
+const _arcaneViolet = Color(0xFF9966EE); // substitui cyan
 const _tarnishedGold = Color(0xFFAA8844); // substitui yellow
-const _mossGreen = Color(0xFF4A9E6A);     // verde mais sombrio
+const _mossGreen = Color(0xFF4A9E6A); // verde mais sombrio
 // AppTheme.red, .orange, .purple, .textDim, etc. mantidos
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -73,7 +75,8 @@ class CitadelScreen extends StatelessWidget {
   }
 
   Widget _buildCitadelHeader(Citadel citadel, GameProvider gp) {
-    final tier = ((gp.state.highestFloorCleared) ~/ 10) +
+    final tier =
+        ((gp.state.highestFloorCleared) ~/ 10) +
         (gp.state.highestFloorCleared % 10 > 0 ? 1 : 0);
     final popRatio = gp.population / citadel.totalPopulationCapacity;
     final buildRatio = citadel.buildings.length / citadel.level.maxBuildings;
@@ -100,13 +103,12 @@ class CitadelScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 12),
             decoration: BoxDecoration(
               border: Border(
-                bottom: BorderSide(
-                  color: _arcaneViolet.withValues(alpha: 0.3),
-                ),
+                bottom: BorderSide(color: _arcaneViolet.withValues(alpha: 0.3)),
               ),
               color: _arcaneViolet.withValues(alpha: 0.04),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(4)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(4),
+              ),
             ),
             child: Row(
               children: [
@@ -172,9 +174,7 @@ class CitadelScreen extends StatelessWidget {
                     _headerStatChip(
                       '${citadel.buildings.length}/${citadel.level.maxBuildings}',
                       'ESTRUTURAS',
-                      buildRatio >= 1.0
-                          ? AppTheme.orange
-                          : _arcaneViolet,
+                      buildRatio >= 1.0 ? AppTheme.orange : _arcaneViolet,
                     ),
                     const SizedBox(width: 8),
                     _headerStatChip(
@@ -187,11 +187,7 @@ class CitadelScreen extends StatelessWidget {
                           : _mossGreen,
                     ),
                     const SizedBox(width: 8),
-                    _headerStatChip(
-                      'TIER $tier',
-                      'DA TORRE',
-                      _tarnishedGold,
-                    ),
+                    _headerStatChip('TIER $tier', 'DA TORRE', _tarnishedGold),
                   ],
                 ),
               ],
@@ -256,7 +252,11 @@ class CitadelScreen extends StatelessWidget {
         art =
             '       ._*_.\n      / * * \\\n   ._|__*__|_.\n  / * * * * * \\\n |=============|\n=|=== APEX ===|=';
     }
-    return TerminalText(art, fontSize: 9, color: _arcaneViolet.withValues(alpha: 0.8));
+    return TerminalText(
+      art,
+      fontSize: 9,
+      color: _arcaneViolet.withValues(alpha: 0.8),
+    );
   }
 
   Widget _buildResourcesDetailed(Citadel citadel, GameProvider gp) {
@@ -269,9 +269,12 @@ class CitadelScreen extends StatelessWidget {
         ? 0.0
         : [
             res.food / cap,
-            res.wood / cap,
-            res.stone / cap,
-            res.iron / cap,
+            res.woodLog / cap,
+            res.stoneRaw / cap,
+            res.ironOre / cap,
+            res.lumber / cap,
+            res.stoneBrick / cap,
+            res.ironBar / cap,
             res.knowledge / cap,
           ].reduce((a, b) => a > b ? a : b);
 
@@ -370,29 +373,55 @@ class CitadelScreen extends StatelessWidget {
             _mossGreen,
             'Consumo: ~${gp.dailyFoodConsumption.toStringAsFixed(1)}/dia',
           ),
+          // Raw
           _resRowCapped(
-            'Madeira',
-            res.wood,
+            'Troncos',
+            res.woodLog,
             cap,
             isInfinite,
             AppTheme.orange,
-            'Material de construcao',
+            'Coleta de madeira bruta',
           ),
           _resRowCapped(
-            'Pedra',
-            res.stone,
+            'Pedra Bruta',
+            res.stoneRaw,
             cap,
             isInfinite,
             AppTheme.textSecondary,
-            'Construcao avancada',
+            'Coleta de pedra bruta',
           ),
           _resRowCapped(
-            'Ferro',
-            res.iron,
+            'Minério',
+            res.ironOre,
             cap,
             isInfinite,
             AppTheme.blue,
-            'Armas e ferramentas',
+            'Minério de ferro',
+          ),
+          // Processado
+          _resRowCapped(
+            'Madeira',
+            res.lumber,
+            cap,
+            isInfinite,
+            AppTheme.orange,
+            'Madeira serrada',
+          ),
+          _resRowCapped(
+            'Tijolos',
+            res.stoneBrick,
+            cap,
+            isInfinite,
+            AppTheme.textSecondary,
+            'Pedra processada',
+          ),
+          _resRowCapped(
+            'Ferro',
+            res.ironBar,
+            cap,
+            isInfinite,
+            AppTheme.blue,
+            'Barras de ferro',
           ),
           _resRowCapped(
             'Conhecimento',
@@ -402,15 +431,7 @@ class CitadelScreen extends StatelessWidget {
             AppTheme.purple,
             'Pesquisa e evolucao',
           ),
-          TerminalText(
-            'Bônus diário: +${gp.dailyFoodBonus.toStringAsFixed(1)} comida  '
-            '+${gp.dailyWoodBonus.toStringAsFixed(1)} madeira  '
-            '+${gp.dailyIronBonus.toStringAsFixed(1)} ferro  '
-            '+${gp.dailyResearchBonus.toStringAsFixed(1)} conhecimento  '
-            '+${gp.dailyMoraleBonus.toStringAsFixed(1)} moral',
-            fontSize: 9,
-            color: _mossGreen,
-          ),
+          _DailyProductionBreakdown(gp: gp),
           const SizedBox(height: 4),
           StatBar(
             label: 'MORAL',
@@ -519,13 +540,12 @@ class CitadelScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 7, 12, 7),
             decoration: BoxDecoration(
               border: Border(
-                bottom: BorderSide(
-                  color: borderColor.withValues(alpha: 0.3),
-                ),
+                bottom: BorderSide(color: borderColor.withValues(alpha: 0.3)),
               ),
               color: borderColor.withValues(alpha: 0.04),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(4)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(4),
+              ),
             ),
             child: Row(
               children: [
@@ -545,10 +565,7 @@ class CitadelScreen extends StatelessWidget {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: child,
-          ),
+          Padding(padding: const EdgeInsets.all(12), child: child),
         ],
       ),
     );
@@ -648,7 +665,10 @@ class CitadelScreen extends StatelessWidget {
                     color: AppTheme.textDim.withValues(alpha: 0.4),
                   ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     border: Border.all(
                       color: StorageLevel.values[i] == citadel.storageLevel
@@ -711,7 +731,11 @@ class CitadelScreen extends StatelessWidget {
             color: canAfford ? _mossGreen : AppTheme.red,
           ),
           if (!canAfford)
-            TerminalText('Recursos insuficientes.', fontSize: 8, color: AppTheme.red),
+            TerminalText(
+              'Recursos insuficientes.',
+              fontSize: 8,
+              color: AppTheme.red,
+            ),
           if (!hasTier)
             TerminalText(
               'Requer Tier ${next.requiredTier} da Torre (atual: $currentTier)',
@@ -798,7 +822,11 @@ class CitadelScreen extends StatelessWidget {
                 color: AppTheme.textSecondary,
                 fontWeight: FontWeight.bold,
               ),
-              const TerminalText('  ⟶  ', fontSize: 10, color: AppTheme.textDim),
+              const TerminalText(
+                '  ⟶  ',
+                fontSize: 10,
+                color: AppTheme.textDim,
+              ),
               TerminalText(
                 next.label,
                 fontSize: 13,
@@ -809,12 +837,32 @@ class CitadelScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           _progressRow('Comida', citadel.resources.food, cost.food),
-          _progressRow('Madeira', citadel.resources.wood, cost.wood),
-          _progressRow('Pedra', citadel.resources.stone, cost.stone),
-          if (cost.iron > 0)
-            _progressRow('Ferro', citadel.resources.iron, cost.iron),
+          if (cost.woodLog > 0)
+            _progressRow('Troncos', citadel.resources.woodLog, cost.woodLog),
+          if (cost.stoneRaw > 0)
+            _progressRow(
+              'Pedra Bruta',
+              citadel.resources.stoneRaw,
+              cost.stoneRaw,
+            ),
+          if (cost.ironOre > 0)
+            _progressRow('Minério', citadel.resources.ironOre, cost.ironOre),
+          if (cost.lumber > 0)
+            _progressRow('Madeira', citadel.resources.lumber, cost.lumber),
+          if (cost.stoneBrick > 0)
+            _progressRow(
+              'Tijolos',
+              citadel.resources.stoneBrick,
+              cost.stoneBrick,
+            ),
+          if (cost.ironBar > 0)
+            _progressRow('Ferro', citadel.resources.ironBar, cost.ironBar),
           if (cost.knowledge > 0)
-            _progressRow('Conhecimento', citadel.resources.knowledge, cost.knowledge),
+            _progressRow(
+              'Conhecimento',
+              citadel.resources.knowledge,
+              cost.knowledge,
+            ),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -1022,7 +1070,9 @@ class CitadelScreen extends StatelessWidget {
                 child: TerminalText(
                   '— ${categoryEntry.key.label.toUpperCase()} —',
                   fontSize: 8,
-                  color: _categoryColor(categoryEntry.key).withValues(alpha: 0.6),
+                  color: _categoryColor(
+                    categoryEntry.key,
+                  ).withValues(alpha: 0.6),
                 ),
               ),
               ...categoryEntry.value.entries.map((typeEntry) {
@@ -1058,9 +1108,13 @@ class CitadelScreen extends StatelessWidget {
                                       vertical: 1,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: _arcaneViolet.withValues(alpha: 0.2),
+                                      color: _arcaneViolet.withValues(
+                                        alpha: 0.2,
+                                      ),
                                       border: Border.all(
-                                        color: _arcaneViolet.withValues(alpha: 0.5),
+                                        color: _arcaneViolet.withValues(
+                                          alpha: 0.5,
+                                        ),
                                       ),
                                       borderRadius: BorderRadius.circular(2),
                                     ),
@@ -1112,7 +1166,9 @@ class CitadelScreen extends StatelessWidget {
                               : AppTheme.textDim,
                           onPressed: gp.canUpgradeAllBuildings(first.type)
                               ? () {
-                                  final success = gp.upgradeAllBuildings(first.type);
+                                  final success = gp.upgradeAllBuildings(
+                                    first.type,
+                                  );
                                   if (success) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
@@ -1142,10 +1198,13 @@ class CitadelScreen extends StatelessWidget {
 
   Resources _multiplyResources(Resources r, int factor) => Resources(
     food: r.food * factor,
-    wood: r.wood * factor,
-    stone: r.stone * factor,
-    iron: r.iron * factor,
     knowledge: r.knowledge * factor,
+    woodLog: r.woodLog * factor,
+    stoneRaw: r.stoneRaw * factor,
+    ironOre: r.ironOre * factor,
+    lumber: r.lumber * factor,
+    stoneBrick: r.stoneBrick * factor,
+    ironBar: r.ironBar * factor,
   );
 
   // ==================== CONSTRUIR NOVOS EDIFICIOS ====================
@@ -1197,16 +1256,14 @@ class CitadelScreen extends StatelessWidget {
           const SizedBox(height: 8),
 
           if (available.isNotEmpty) ...[
-            TerminalText(
-              'DISPONÍVEIS:',
-              fontSize: 9,
-              color: _mossGreen,
-            ),
+            TerminalText('DISPONÍVEIS:', fontSize: 9, color: _mossGreen),
             const SizedBox(height: 4),
             ...available.map((type) {
               try {
                 final b = Building(type: type);
-                final canAfford = citadel.resources.canAfford(b.cost.toResources());
+                final canAfford = citadel.resources.canAfford(
+                  b.cost.toResources(),
+                );
                 return _buildBuildingOption(context, gp, b, canAfford, atLimit);
               } catch (e) {
                 return const SizedBox.shrink();
@@ -1492,12 +1549,194 @@ class CitadelScreen extends StatelessWidget {
   String _costString(Resources cost) {
     final parts = <String>[];
     if (cost.food > 0) parts.add('Comida:${cost.food.toStringAsFixed(0)}');
-    if (cost.wood > 0) parts.add('Madeira:${cost.wood.toStringAsFixed(0)}');
-    if (cost.stone > 0) parts.add('Pedra:${cost.stone.toStringAsFixed(0)}');
-    if (cost.iron > 0) parts.add('Ferro:${cost.iron.toStringAsFixed(0)}');
+    if (cost.woodLog > 0) {
+      parts.add('Troncos:${cost.woodLog.toStringAsFixed(0)}');
+    }
+    if (cost.stoneRaw > 0) {
+      parts.add('Pedra Bruta:${cost.stoneRaw.toStringAsFixed(0)}');
+    }
+    if (cost.ironOre > 0) {
+      parts.add('Minério:${cost.ironOre.toStringAsFixed(0)}');
+    }
+    if (cost.lumber > 0) parts.add('Madeira:${cost.lumber.toStringAsFixed(0)}');
+    if (cost.stoneBrick > 0) {
+      parts.add('Tijolos:${cost.stoneBrick.toStringAsFixed(0)}');
+    }
+    if (cost.ironBar > 0) parts.add('Ferro:${cost.ironBar.toStringAsFixed(0)}');
     if (cost.knowledge > 0) {
       parts.add('Conhec.:${cost.knowledge.toStringAsFixed(0)}');
     }
     return parts.join(' · ');
   }
+}
+// ── Breakdown de produção diária ─────────────────────────────────────────────
+
+class _DailyProductionBreakdown extends StatelessWidget {
+  final GameProvider gp;
+  const _DailyProductionBreakdown({required this.gp});
+
+  @override
+  Widget build(BuildContext context) {
+    final citadel = gp.citadel;
+
+    int count(Profession p) =>
+        gp.aliveNpcs.where((n) => n.profession == p).length;
+    final lumberjacks = count(Profession.lumberjack);
+    final carpenters = count(Profession.carpenter);
+    final quarrymen = count(Profession.quarryman);
+    final masons = count(Profession.mason);
+    final blacksmiths = count(Profession.blacksmith);
+    final farmers = count(Profession.farmer);
+    final chefs = count(Profession.chef);
+
+    bool has(BuildingType t) => citadel.hasBuilding(t);
+    int lvl(BuildingType t) => citadel.getBuilding(t)?.level ?? 0;
+
+    final rows = <_ProdRow>[
+      _ProdRow(
+        icon: '🌾',
+        label: 'Comida',
+        value: gp.dailyFoodBonus,
+        detail:
+            '$farmers fazendeiros'
+            '${chefs > 0 ? ' · $chefs cozinheiros ×${(1 + chefs * 0.06).toStringAsFixed(2)}' : ' · sem cozinha'}',
+        color: const Color(0xFF4A9E6A),
+      ),
+    ];
+
+    if (has(BuildingType.silviculture)) {
+      rows.add(
+        _ProdRow(
+          icon: '🪵',
+          label: 'Troncos',
+          value: gp.dailyWoodLogBonus,
+          detail:
+              'Silvicultura nv${lvl(BuildingType.silviculture)} · $lumberjacks lenhadores',
+          color: AppTheme.orange,
+        ),
+      );
+    }
+
+    if (has(BuildingType.sawmill)) {
+      rows.add(
+        _ProdRow(
+          icon: '🪚',
+          label: 'Madeira',
+          value: gp.dailyLumberBonus,
+          detail:
+              'Serraria nv${lvl(BuildingType.sawmill)} · $carpenters carpinteiros',
+          color: AppTheme.orange,
+        ),
+      );
+    }
+
+    if (has(BuildingType.quarry)) {
+      rows.add(
+        _ProdRow(
+          icon: '⛏',
+          label: 'Pedra Bruta',
+          value: gp.dailyStoneRawBonus,
+          detail:
+              'Pedreira nv${lvl(BuildingType.quarry)} · $quarrymen pedreiros',
+          color: AppTheme.textSecondary,
+        ),
+      );
+    }
+
+    if (has(BuildingType.masonry)) {
+      rows.add(
+        _ProdRow(
+          icon: '🧱',
+          label: 'Tijolos',
+          value: gp.dailyStoneBrickBonus,
+          detail: 'Cantaria nv${lvl(BuildingType.masonry)} · $masons canteiros',
+          color: AppTheme.textSecondary,
+        ),
+      );
+    }
+
+    if (has(BuildingType.forge)) {
+      rows.add(
+        _ProdRow(
+          icon: '⚙️',
+          label: 'Ferro',
+          value: gp.dailyIronBarBonus,
+          detail:
+              'Forja nv${lvl(BuildingType.forge)} · $blacksmiths ferreiros'
+              '${gp.dailyIronOreBonus > 0 ? ' · ${gp.dailyIronOreBonus.toStringAsFixed(0)} minério/dia' : ''}',
+          color: AppTheme.blue,
+        ),
+      );
+    } else if (gp.dailyIronOreBonus > 0) {
+      rows.add(
+        _ProdRow(
+          icon: '⛏',
+          label: 'Minério',
+          value: gp.dailyIronOreBonus,
+          detail: 'Sem Forja — minério acumulando sem uso',
+          color: AppTheme.blue,
+        ),
+      );
+    }
+    rows.addAll([
+      _ProdRow(
+        icon: '📚',
+        label: 'Conhecimento',
+        value: gp.dailyResearchBonus,
+        detail: '',
+        color: AppTheme.purple,
+      ),
+      _ProdRow(
+        icon: '💛',
+        label: 'Moral',
+        value: gp.dailyMoraleBonus,
+        detail: '',
+        color: AppTheme.yellow,
+      ),
+    ]);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: rows.map((r) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 3),
+          child: Row(
+            children: [
+              TerminalText('${r.icon} ${r.label}', fontSize: 9, color: r.color),
+              const Spacer(),
+              TerminalText(
+                '+${r.value.toStringAsFixed(1)}/dia',
+                fontSize: 9,
+                color: r.color,
+                fontWeight: FontWeight.bold,
+              ),
+              if (r.detail.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Flexible(
+                  child: TerminalText(
+                    r.detail,
+                    fontSize: 8,
+                    color: AppTheme.textDim,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _ProdRow {
+  final String icon, label, detail;
+  final double value;
+  final Color color;
+  const _ProdRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.detail,
+    required this.color,
+  });
 }

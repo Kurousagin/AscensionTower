@@ -262,15 +262,15 @@ class QuestService {
   Map<String, int> _rewardForFaction(FloorFaction faction) {
     switch (faction) {
       case FloorFaction.ironPact:
-        return {'iron': 25, 'food': 10};
+        return {'ironOre': 25, 'food': 10};
+      case FloorFaction.bloodMarket:
+        return {'food': 35, 'ironOre': 10};
+      case FloorFaction.voidChildren:
+        return {'food': 20, 'stoneRaw': 15, 'knowledge': 10};
+      case FloorFaction.towerServants:
+        return {'ironOre': 30, 'knowledge': 20, 'stoneRaw': 15};
       case FloorFaction.silentOrder:
         return {'knowledge': 30, 'food': 5};
-      case FloorFaction.bloodMarket:
-        return {'food': 35, 'iron': 10};
-      case FloorFaction.voidChildren:
-        return {'food': 20, 'stone': 15, 'knowledge': 10};
-      case FloorFaction.towerServants:
-        return {'iron': 30, 'knowledge': 20, 'stone': 15};
       case FloorFaction.none:
         return {'food': 15};
     }
@@ -548,12 +548,18 @@ class QuestService {
     switch (key) {
       case 'food':
         return citadel.resources.food;
-      case 'iron':
-        return citadel.resources.iron;
-      case 'wood':
-        return citadel.resources.wood;
-      case 'stone':
-        return citadel.resources.stone;
+      case 'ironOre':
+        return citadel.resources.ironOre;
+      case 'woodLog':
+        return citadel.resources.woodLog;
+      case 'stoneRaw':
+        return citadel.resources.stoneRaw;
+      case 'ironBar':
+        return citadel.resources.ironBar;
+      case 'lumber':
+        return citadel.resources.lumber;
+      case 'stoneBrick':
+        return citadel.resources.stoneBrick;
       case 'knowledge':
         return citadel.resources.knowledge;
       default:
@@ -566,11 +572,11 @@ class QuestService {
       case 'food':
         citadel.resources.food += amount;
       case 'iron':
-        citadel.resources.iron += amount;
+        citadel.resources.ironOre += amount;
       case 'wood':
-        citadel.resources.wood += amount;
+        citadel.resources.woodLog += amount;
       case 'stone':
-        citadel.resources.stone += amount;
+        citadel.resources.stoneRaw += amount;
       case 'knowledge':
         citadel.resources.knowledge += amount;
     }

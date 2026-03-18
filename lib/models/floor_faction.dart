@@ -497,14 +497,14 @@ class FactionProcessor {
     );
   }
 
-  /// Verifica se deve gerar incursão à cidadela neste dia.
   static bool shouldIncurse({
     required FactionRelation relation,
     required int currentDay,
     required int incursionCooldownDays,
   }) {
-    if (relation.hasTreaty) return false; // ← linha nova
-    if (relation.standing > -60) return false;
+    if (relation.hasTreaty) return false;
+    // Incursão ocorre em atWar (< -30) e bloodFeud (< -60)
+    if (relation.standing > -30) return false;
     if (currentDay % incursionCooldownDays != 0) return false;
     return true;
   }
@@ -526,9 +526,13 @@ class FactionProcessor {
 
     final standing = relation.standing;
     final food = (currentResources.food as num).toDouble();
-    final iron = (currentResources.iron as num).toDouble();
-    final wood = (currentResources.wood as num).toDouble();
+    final ironOre = (currentResources.ironOre as num).toDouble();
+    final ironBar = (currentResources.ironBar as num).toDouble();
+    final woodLog = (currentResources.woodLog as num).toDouble();
     final knowledge = (currentResources.knowledge as num).toDouble();
+    // Para compatibilidade com lógica de ofertas — usa o mais relevante
+    final iron = ironBar > 0 ? ironBar : ironOre;
+    final wood = woodLog;
 
     final offers = <DiplomacyOffer>[];
 
@@ -553,7 +557,7 @@ class FactionProcessor {
       offers.add(
         DiplomacyOffer(
           type: DiplomacyOfferType.payTribute,
-          resourceCost: const {'iron': 20},
+          resourceCost: const {'ironBar': 20},
           standingGain: 15,
           successChance: iron >= 20 ? 0.80 : 0.0,
           description:
@@ -592,7 +596,7 @@ class FactionProcessor {
       offers.add(
         DiplomacyOffer(
           type: DiplomacyOfferType.payTribute,
-          resourceCost: const {'wood': 15, 'knowledge': 10},
+          resourceCost: const {'woodLong': 15, 'knowledge': 10},
           standingGain: 14,
           successChance: (wood >= 15 && knowledge >= 10) ? 0.75 : 0.0,
           description:
@@ -620,7 +624,7 @@ class FactionProcessor {
         offers.add(
           DiplomacyOffer(
             type: DiplomacyOfferType.sendGoodwillMission,
-            resourceCost: const {'iron': 10, 'food': 10},
+            resourceCost: const {'ironOre': 10, 'food': 10},
             standingGain: 20,
             successChance: (iron >= 10 && food >= 10) ? 0.80 : 0.0,
             description:
@@ -662,7 +666,7 @@ class FactionProcessor {
       offers.add(
         DiplomacyOffer(
           type: DiplomacyOfferType.payTribute,
-          resourceCost: const {'iron': 25, 'knowledge': 20},
+          resourceCost: const {'ironBar': 25, 'knowledge': 20},
           standingGain: 22,
           successChance: (iron >= 25 && knowledge >= 20) ? 0.75 : 0.0,
           description:

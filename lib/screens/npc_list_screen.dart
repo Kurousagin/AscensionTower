@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:tower_ascension/models/npc_enums.dart';
 //import 'package:tower_ascension/models/equipment.dart';
 import 'package:tower_ascension/screens/equipment.dart';
 import 'package:tower_ascension/screens/npc_detail_screen.dart';
@@ -35,6 +36,12 @@ class _NpcListScreenState extends State<NpcListScreen> {
           case 'exhausted':
             npcs = gp.aliveNpcs.where((n) => n.fatigue >= 50).toList();
             break;
+          case 'deserting':
+            npcs = gp.aliveNpcs.where((n) => n.wantsToLeave).toList();
+            break;
+          case 'favorites':
+            npcs = gp.aliveNpcs.where((n) => n.isFavorite).toList();
+            break;
           default:
             npcs = gp.allNpcs;
         }
@@ -65,6 +72,11 @@ class _NpcListScreenState extends State<NpcListScreen> {
           case 'fatigue':
             npcs.sort((a, b) => b.fatigue.compareTo(a.fatigue));
             break;
+          case 'profession':
+            npcs.sort(
+              (a, b) => a.profession.label.compareTo(b.profession.label),
+            );
+            break;
           default:
             npcs.sort((a, b) => a.name.compareTo(b.name));
         }
@@ -74,39 +86,75 @@ class _NpcListScreenState extends State<NpcListScreen> {
             children: [
               _buildFilters(),
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(
-                      Icons.shield,
-                      size: 18,
-                      color: AppTheme.cyan,
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: Row(
+                  children: [
+                    // Botão Designar profissões em massa
+                    ElevatedButton.icon(
+                      icon: const Icon(
+                        Icons.work_outline,
+                        size: 16,
+                        color: AppTheme.yellow,
+                      ),
+                      label: const Text(
+                        'Designar',
+                        style: TextStyle(
+                          color: AppTheme.yellow,
+                          fontFamily: 'Consolas',
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.bgCard,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        side: const BorderSide(color: AppTheme.yellow),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                      ),
+                      onPressed: () => _showBulkProfessionSheet(context, gp),
                     ),
-                    label: const Text(
-                      'Equipamentos',
-                      style: TextStyle(
+                    const Spacer(),
+                    // Botão Equipamentos
+                    ElevatedButton.icon(
+                      icon: const Icon(
+                        Icons.shield,
+                        size: 16,
                         color: AppTheme.cyan,
-                        fontFamily: 'Consolas',
-                        fontWeight: FontWeight.bold,
                       ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.bgCard,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
+                      label: const Text(
+                        'Equipamentos',
+                        style: TextStyle(
+                          color: AppTheme.cyan,
+                          fontFamily: 'Consolas',
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
                       ),
-                      side: const BorderSide(color: AppTheme.cyan),
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).push(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.bgCard,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        side: const BorderSide(color: AppTheme.cyan),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                      ),
+                      onPressed: () => Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const EquipmentScreen(),
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
@@ -126,26 +174,50 @@ class _NpcListScreenState extends State<NpcListScreen> {
 
   Widget _buildFilters() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AppTheme.border)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _filterChip('TODOS', 'all'),
-          _filterChip('VIVOS', 'alive'),
-          _filterChip('MORTOS', 'dead'),
-          _filterChip('EXAUSTOS', 'exhausted'),
-          const Spacer(),
-          const TerminalText('Ordenar:', fontSize: 9, color: AppTheme.textDim),
-          const SizedBox(width: 4),
-          _sortChip('Nome', 'name'),
-          _sortChip('Poder', 'power'),
-          _sortChip('Mental', 'mental'),
-          _sortChip('Fama', 'fame'),
-          _sortChip('Leal.', 'loyalty'),
-          _sortChip('Risco', 'betrayal'),
-          _sortChip('Fadiga', 'fatigue'),
+          // Linha 1 — filtros de status
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            child: Row(
+              children: [
+                _filterChip('TODOS', 'all'),
+                _filterChip('VIVOS', 'alive'),
+                _filterChip('MORTOS', 'dead'),
+                _filterChip('EXAUSTOS', 'exhausted'),
+                _filterChip('QUERENDO IR', 'deserting'),
+                _filterChip('⭐ FAVORITOS', 'favorites'),
+              ],
+            ),
+          ),
+          // Linha 2 — ordenação
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Row(
+              children: [
+                const TerminalText(
+                  'Ordenar:',
+                  fontSize: 9,
+                  color: AppTheme.textDim,
+                ),
+                const SizedBox(width: 6),
+                _sortChip('Nome', 'name'),
+                _sortChip('Poder', 'power'),
+                _sortChip('Mental', 'mental'),
+                _sortChip('Fama', 'fame'),
+                _sortChip('Leal.', 'loyalty'),
+                _sortChip('Risco', 'betrayal'),
+                _sortChip('Fadiga', 'fatigue'),
+                _sortChip('Prof.', 'profession'),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -170,6 +242,60 @@ class _NpcListScreenState extends State<NpcListScreen> {
             color: active ? AppTheme.cyan : AppTheme.textDim,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _badge(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        border: Border.all(color: color),
+        borderRadius: BorderRadius.circular(2),
+      ),
+      child: TerminalText(
+        label,
+        fontSize: 8,
+        color: color,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+  }
+
+  Color _rankColor(NpcRank rank) {
+    switch (rank) {
+      case NpcRank.ssr:
+        return const Color(0xFFECC94B);
+      case NpcRank.sr:
+        return const Color(0xFF00B4D8);
+      case NpcRank.r:
+        return const Color(0xFF48BB78);
+      case NpcRank.n:
+        return const Color(0xFF718096);
+    }
+  }
+
+  Widget _rankBadge(NpcRank rank, int stars, bool isPromoted) {
+    final color = _rankColor(rank);
+    final starsStr = stars > 0 ? '★' * stars : '';
+    final promotedMark = isPromoted ? '*' : '';
+    final label = '${rank.label}$promotedMark$starsStr';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        border: Border.all(
+          color: color.withValues(alpha: isPromoted ? 1.0 : 0.6),
+          width: isPromoted ? 1.5 : 1.0,
+        ),
+        borderRadius: BorderRadius.circular(2),
+      ),
+      child: TerminalText(
+        label,
+        fontSize: 8,
+        color: color,
+        fontWeight: FontWeight.bold,
       ),
     );
   }
@@ -227,7 +353,7 @@ class _NpcListScreenState extends State<NpcListScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ROW 1 — header with icon, name, and badge
+            // ROW 1 — header with icon, name, badges
             Row(
               children: [
                 Icon(statusIcon, size: 14, color: statusColor),
@@ -242,70 +368,68 @@ class _NpcListScreenState extends State<NpcListScreen> {
                         : AppTheme.red.withValues(alpha: 0.6),
                   ),
                 ),
-                // Badge widget
-                if (!npc.alive)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.red.withValues(alpha: 0.1),
-                      border: Border.all(color: AppTheme.red),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                    child: const TerminalText(
-                      'MORTO',
-                      fontSize: 8,
-                      color: AppTheme.red,
-                    ),
-                  )
-                else if (npc.betrayalRisk > 60)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.orange.withValues(alpha: 0.1),
-                      border: Border.all(color: AppTheme.orange),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                    child: const TerminalText(
-                      '⚠ RISCO',
-                      fontSize: 8,
-                      color: AppTheme.orange,
-                    ),
-                  )
-                else if (npc.groupId != null)
-                  Builder(
-                    builder: (_) {
-                      final group = gp.groups
-                          .where((g) => g.id == npc.groupId)
-                          .firstOrNull;
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.cyan.withValues(alpha: 0.1),
-                          border: Border.all(color: AppTheme.cyan),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                        child: TerminalText(
-                          group?.name ?? 'Grupo',
-                          fontSize: 8,
-                          color: AppTheme.cyan,
-                        ),
-                      );
-                    },
-                  ),
+                // Badges agrupados num Row com mainAxisSize.min
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (!npc.alive)
+                      _badge('MORTO', AppTheme.red)
+                    else if (npc.betrayalRisk > 60)
+                      _badge('⚠ RISCO', AppTheme.orange)
+                    else if (npc.groupId != null)
+                      Builder(
+                        builder: (_) {
+                          final group = gp.groups
+                              .where((g) => g.id == npc.groupId)
+                              .firstOrNull;
+                          return _badge(group?.name ?? 'Grupo', AppTheme.cyan);
+                        },
+                      ),
+                    if (npc.alive) ...[
+                      const SizedBox(width: 4),
+                      _rankBadge(npc.rank, npc.stars, npc.isPromoted),
+                    ],
+                    if (npc.alive && npc.isFavorite) ...[
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.star,
+                        size: 11,
+                        color: Color(0xFFECC94B),
+                      ),
+                    ],
+                    if (npc.alive && npc.wantsToLeave) ...[
+                      const SizedBox(width: 4),
+                      _badge('QUER PARTIR', AppTheme.orange),
+                    ],
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 5),
 
             // ROW 2 — quote
+            // Profissão atual
+            if (npc.alive)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.work_outline,
+                      size: 10,
+                      color: AppTheme.textDim,
+                    ),
+                    const SizedBox(width: 4),
+                    TerminalText(
+                      npc.profession.label,
+                      fontSize: 8,
+                      color: npc.profession == Profession.idle
+                          ? AppTheme.textDim
+                          : AppTheme.blue,
+                    ),
+                  ],
+                ),
+              ),
             TerminalText(_npcQuote(npc), fontSize: 9, color: AppTheme.textDim),
             const SizedBox(height: 6),
 
@@ -396,6 +520,237 @@ class _NpcListScreenState extends State<NpcListScreen> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── Bottom sheet de designação em massa ─────────────────────────
+
+  void _showBulkProfessionSheet(BuildContext context, GameProvider gp) {
+    // Mapa mutavel: npcId -> profissão selecionada (parte do estado do pendênte)
+    final pending = <String, Profession>{
+      for (final npc in gp.aliveNpcs) npc.id: npc.profession,
+    };
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.bgCard,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+        side: BorderSide(color: AppTheme.border),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          final npcs = gp.aliveNpcs;
+          return DraggableScrollableSheet(
+            initialChildSize: 0.85,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            expand: false,
+            builder: (ctx, scrollCtrl) => Column(
+              children: [
+                // Handle
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 3,
+                    margin: const EdgeInsets.only(top: 10, bottom: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                // Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Row(
+                    children: [
+                      const TerminalText(
+                        'DESIGNAR PROFISSÕES',
+                        fontSize: 13,
+                        color: AppTheme.yellow,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      const Spacer(),
+                      TerminalText(
+                        '\${npcs.length} habitantes',
+                        fontSize: 9,
+                        color: AppTheme.textDim,
+                      ),
+                    ],
+                  ),
+                ),
+                Container(height: 1, color: AppTheme.border),
+                // Lista
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollCtrl,
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    itemCount: npcs.length,
+                    itemBuilder: (ctx, i) {
+                      final npc = npcs[i];
+                      final selected = pending[npc.id] ?? npc.profession;
+                      final changed = selected != npc.profession;
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(color: AppTheme.border),
+                          ),
+                          color: changed
+                              ? AppTheme.yellow.withValues(alpha: 0.04)
+                              : null,
+                        ),
+                        child: Row(
+                          children: [
+                            // Info do NPC
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      TerminalText(
+                                        npc.name,
+                                        fontSize: 11,
+                                        color: AppTheme.textPrimary,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      _rankBadge(
+                                        npc.rank,
+                                        npc.stars,
+                                        npc.isPromoted,
+                                      ),
+                                    ],
+                                  ),
+                                  TerminalText(
+                                    'G\${npc.generation} · \${npc.origin.label}',
+                                    fontSize: 8,
+                                    color: AppTheme.textDim,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Dropdown de profissão
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: changed
+                                      ? AppTheme.yellow
+                                      : AppTheme.border,
+                                ),
+                                borderRadius: BorderRadius.circular(4),
+                                color: AppTheme.bg,
+                              ),
+                              child: DropdownButton<Profession>(
+                                value: selected,
+                                isDense: true,
+                                underline: const SizedBox.shrink(),
+                                dropdownColor: AppTheme.bgCard,
+                                style: const TextStyle(
+                                  fontFamily: 'FiraCode',
+                                  fontSize: 11,
+                                  color: AppTheme.textPrimary,
+                                ),
+                                items: Profession.values.map((p) {
+                                  return DropdownMenuItem(
+                                    value: p,
+                                    child: Text(p.label),
+                                  );
+                                }).toList(),
+                                onChanged: (p) {
+                                  if (p != null) {
+                                    setSheetState(() => pending[npc.id] = p);
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                // Rodapé com contagem de mudanças e botão confirmar
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+                  decoration: const BoxDecoration(
+                    border: Border(top: BorderSide(color: AppTheme.border)),
+                    color: AppTheme.bgCard,
+                  ),
+                  child: Builder(
+                    builder: (ctx) {
+                      final changes = pending.entries.where((e) {
+                        final npc = gp.allNpcs.firstWhereOrNull(
+                          (n) => n.id == e.key,
+                        );
+                        return npc != null && e.value != npc.profession;
+                      }).length;
+                      return Row(
+                        children: [
+                          TerminalText(
+                            changes > 0
+                                ? '\$changes alteração(ões) pendente(s)'
+                                : 'Sem alterações',
+                            fontSize: 9,
+                            color: changes > 0
+                                ? AppTheme.yellow
+                                : AppTheme.textDim,
+                          ),
+                          const Spacer(),
+                          if (changes > 0)
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.yellow,
+                                foregroundColor: AppTheme.bg,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 10,
+                                ),
+                              ),
+                              onPressed: () {
+                                for (final entry in pending.entries) {
+                                  final npc = gp.allNpcs.firstWhereOrNull(
+                                    (n) => n.id == entry.key,
+                                  );
+                                  if (npc != null &&
+                                      entry.value != npc.profession) {
+                                    gp.assignProfession(entry.key, entry.value);
+                                  }
+                                }
+                                Navigator.pop(ctx);
+                              },
+                              child: const Text(
+                                'CONFIRMAR',
+                                style: TextStyle(
+                                  fontFamily: 'FiraCode',
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -872,7 +1227,6 @@ class _NpcListScreenState extends State<NpcListScreen> {
   //     ),
   //   );
   // }
-
 }
 
 // class _EquipSlot extends StatelessWidget {

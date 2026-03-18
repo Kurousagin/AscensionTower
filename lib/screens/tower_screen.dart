@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tower_ascension/models/citadel.dart';
+import 'package:tower_ascension/models/npc_enums.dart';
 import 'package:tower_ascension/widgets/collapsible_list.dart';
 import '../providers/game_provider.dart';
 import '../models/npc.dart';

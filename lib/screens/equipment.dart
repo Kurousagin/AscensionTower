@@ -338,9 +338,9 @@ class _CraftTabState extends State<_CraftTab> {
           // ── Custo detalhado ──
           _CostRow(
             resources: resources,
-            iron: cost.iron,
+            ironBar: cost.ironBar,
             knowledge: cost.knowledge,
-            stone: cost.stone,
+            stoneBrick: cost.stoneBrick,
           ),
 
           const SizedBox(height: 20),
@@ -1074,13 +1074,13 @@ class _BonusPreview extends StatelessWidget {
 
 class _CostRow extends StatelessWidget {
   final Resources resources;
-  final double iron, knowledge, stone;
+  final double ironBar, knowledge, stoneBrick;
 
   const _CostRow({
     required this.resources,
-    required this.iron,
+    required this.ironBar,
     required this.knowledge,
-    required this.stone,
+    required this.stoneBrick,
   });
 
   @override
@@ -1095,10 +1095,10 @@ class _CostRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          if (iron > 0) _CostItem('⛏ Ferro', iron, resources.iron),
+          if (ironBar > 0) _CostItem('⛏ Ferro', ironBar, resources.ironBar),
           if (knowledge > 0)
             _CostItem('📚 Conhec.', knowledge, resources.knowledge),
-          if (stone > 0) _CostItem('🪨 Pedra', stone, resources.stone),
+          if (stoneBrick > 0) _CostItem('🧱 Tijolos', stoneBrick, resources.stoneBrick),
         ],
       ),
     );

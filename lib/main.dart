@@ -22,6 +22,7 @@ import 'screens/prison_screen.dart';
 import 'screens/arena_screen.dart';
 import 'screens/faction_screen.dart';
 import 'background/notification_worker.dart';
+import 'screens/simulacrum_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -106,10 +107,11 @@ class _AppShellState extends State<AppShell> {
     ),
     _NavGroup(
       icon: Icons.castle_outlined,
-      label: 'Cidadela',
+      label: 'CIDADELA',
       screens: [
         _NavItem(2, 'CIDADELA', Icons.castle_outlined),
         _NavItem(9, 'ARENA', Icons.sports_mma_outlined),
+        _NavItem(10, 'SIMULACRO', Icons.psychology_outlined),
         _NavItem(5, 'REGISTROS', Icons.article_outlined),
       ],
     ),
@@ -138,7 +140,8 @@ class _AppShellState extends State<AppShell> {
     PrisonScreen(), // 6
     CodexScreen(), // 7
     FactionScreen(), // 8
-    ArenaScreen(), // 9 — substituir por ArenaScreen()
+    ArenaScreen(), // 9
+    SimulacrumScreen(),
   ];
 
   static const _titles = [
@@ -152,6 +155,7 @@ class _AppShellState extends State<AppShell> {
     'CODEX',
     'FACCOES',
     'ARENA',
+    'SIMULACRO',
   ];
 
   int _groupOf(int screenIndex) {
@@ -218,6 +222,7 @@ class _AppShellState extends State<AppShell> {
             onPressed: () {
               Navigator.pop(context);
               gp.stopSimulation();
+              ToastController().clear();
               setState(() => _inGame = false);
             },
             child: const Text(
@@ -571,7 +576,7 @@ class _ExpandableNavBar extends StatelessWidget {
 
   Widget _buildSubMenu(_NavGroup group) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
       decoration: BoxDecoration(
         border: Border(
           top: BorderSide(color: AppTheme.cyan.withValues(alpha: 0.3)),
@@ -580,53 +585,59 @@ class _ExpandableNavBar extends StatelessWidget {
         color: AppTheme.bgElevated,
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: group.screens.map((item) {
           final isActive = currentScreen == item.index;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: InkWell(
-              onTap: () => onSubItemTap(item.index),
-              borderRadius: BorderRadius.circular(4),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: isActive ? AppTheme.cyan : AppTheme.border,
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: InkWell(
+                onTap: () => onSubItemTap(item.index),
+                borderRadius: BorderRadius.circular(4),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 8,
                   ),
-                  borderRadius: BorderRadius.circular(4),
-                  color: isActive ? AppTheme.cyan.withValues(alpha: 0.1) : null,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      item.icon,
-                      size: 14,
-                      color: isActive ? AppTheme.cyan : AppTheme.textSecondary,
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: isActive ? AppTheme.cyan : AppTheme.border,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      item.label,
-                      style: TextStyle(
-                        fontFamily: 'FiraCode',
-                        fontSize: 11,
+                    borderRadius: BorderRadius.circular(4),
+                    color: isActive
+                        ? AppTheme.cyan.withValues(alpha: 0.1)
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        item.icon,
+                        size: 14,
                         color: isActive
                             ? AppTheme.cyan
                             : AppTheme.textSecondary,
-                        fontWeight: isActive
-                            ? FontWeight.bold
-                            : FontWeight.normal,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Text(
+                        item.label,
+                        style: TextStyle(
+                          fontFamily: 'FiraCode',
+                          fontSize: 11,
+                          color: isActive
+                              ? AppTheme.cyan
+                              : AppTheme.textSecondary,
+                          fontWeight: isActive
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          );
+          ) ;
         }).toList(),
       ),
     );

@@ -825,10 +825,13 @@ class _TradeSectionState extends State<_TradeSection> {
       final res = widget.engine.citadel.resources;
       return switch (e.key) {
         'food' => res.food >= e.value,
-        'iron' => res.iron >= e.value,
-        'wood' => res.wood >= e.value,
-        'stone' => res.stone >= e.value,
         'knowledge' => res.knowledge >= e.value,
+        'woodLog' => res.woodLog >= e.value,
+        'stoneRaw' => res.stoneRaw >= e.value,
+        'ironOre' => res.ironOre >= e.value,
+        'lumber' => res.lumber >= e.value,
+        'stoneBrick' => res.stoneBrick >= e.value,
+        'ironBar' => res.ironBar >= e.value,
         _ => false,
       };
     });

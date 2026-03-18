@@ -710,9 +710,13 @@ class _OfferTile extends StatelessWidget {
     final r = gp.citadel.resources;
     return switch (key) {
       'food' => r.food >= amt,
-      'iron' => r.iron >= amt,
-      'wood' => r.wood >= amt,
       'knowledge' => r.knowledge >= amt,
+      'woodLog' => r.woodLog >= amt,
+      'stoneRaw' => r.stoneRaw >= amt,
+      'ironOre' => r.ironOre >= amt,
+      'lumber' => r.lumber >= amt,
+      'stoneBrick' => r.stoneBrick >= amt,
+      'ironBar' => r.ironBar >= amt,
       _ => false,
     };
   }
@@ -754,17 +758,25 @@ class _OfferTile extends StatelessWidget {
 
   IconData _resIcon(String r) => switch (r) {
     'food' => Icons.restaurant,
-    'iron' => Icons.hardware,
-    'wood' => Icons.forest,
     'knowledge' => Icons.auto_stories,
+    'woodLog' => Icons.forest,
+    'stoneRaw' => Icons.terrain,
+    'ironOre' => Icons.hardware,
+    'lumber' => Icons.carpenter,
+    'stoneBrick' => Icons.view_module,
+    'ironBar' => Icons.settings,
     _ => Icons.circle_outlined,
   };
 
   String _resLabel(String r) => switch (r) {
     'food' => 'comida',
-    'iron' => 'ferro',
-    'wood' => 'madeira',
     'knowledge' => 'conhecimento',
+    'woodLog' => 'troncos',
+    'stoneRaw' => 'pedra bruta',
+    'ironOre' => 'minério',
+    'lumber' => 'madeira',
+    'stoneBrick' => 'tijolos',
+    'ironBar' => 'ferro',
     _ => r,
   };
 }

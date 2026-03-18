@@ -1,13 +1,9 @@
 import 'dart:math';
 import 'package:collection/collection.dart';
-import 'package:flutter/material.dart';
 import 'package:tower_ascension/models/name_generator.dart';
+import 'package:tower_ascension/models/npc_enums.dart';
+export 'package:tower_ascension/models/npc_enums.dart';
 import 'equipment.dart'; // ← ADICIONADO: necessário para EquipmentSlot e Equipment
-
-// ─────────────────────────────────────────────
-// ATRIBUTOS
-// Escala física: 1–15 | Sanidade: 0–100
-// ─────────────────────────────────────────────
 
 class NpcAttributes {
   double strength;
@@ -208,8 +204,9 @@ extension NpcOriginExt on NpcOrigin {
       this == NpcOrigin.thief ||
       this == NpcOrigin.assassin ||
       this == NpcOrigin.fraudster;
+}
 
-  /// Atributos base de cada origem
+extension NpcOriginAttrExt on NpcOrigin {
   NpcAttributes get baseAttributes => _AttrPresets.forOrigin(this);
 }
 
@@ -417,322 +414,6 @@ abstract class _AttrPresets {
 }
 
 // ─────────────────────────────────────────────
-// PROFISSÃO
-// ─────────────────────────────────────────────
-
-enum Profession {
-  idle,
-  explorer,
-  guard,
-  chef,
-  doctor,
-  teacher,
-  blacksmith,
-  merchant,
-  scribe,
-  farmer,
-  builder,
-  scout,
-  trainer,
-}
-
-extension ProfessionExt on Profession {
-  String get label => const {
-    Profession.idle: 'Ocioso',
-    Profession.explorer: 'Explorador',
-    Profession.guard: 'Guarda',
-    Profession.chef: 'Cozinheiro',
-    Profession.doctor: 'Médico',
-    Profession.teacher: 'Professor',
-    Profession.blacksmith: 'Ferreiro',
-    Profession.merchant: 'Mercador',
-    Profession.scribe: 'Escriba',
-    Profession.farmer: 'Fazendeiro',
-    Profession.builder: 'Construtor',
-    Profession.scout: 'Batedor',
-    Profession.trainer: 'Instrutor',
-  }[this]!;
-}
-
-// ─────────────────────────────────────────────
-// TRAÇOS DE PERSONALIDADE
-// ─────────────────────────────────────────────
-
-enum PersonalityTrait {
-  brave,
-  coward,
-  leader,
-  loner,
-  compassionate,
-  ruthless,
-  optimist,
-  pessimist,
-  analytical,
-  impulsive,
-  loyal,
-  treacherous,
-  calm,
-  aggressive,
-  creative,
-  pragmatic,
-  // v5.0 — Sistema de Expedição Hardcore
-  cautious, // Menor chance de falha, menor teto de recompensa
-  ambitious, // Maior chance de alta recompensa, maior risco
-  lazy, // Reduz eficiência geral (–20% yield)
-  individualist, // Reduz bônus de sinergia do grupo
-  frugal, // Reduz consumo de recursos, mas também recompensas
-  gluttonous, // Consome mais recursos, mas tem chance de encontrar itens raros
-}
-
-extension PersonalityTraitExt on PersonalityTrait {
-  String get label => const {
-    PersonalityTrait.brave: 'Corajoso',
-    PersonalityTrait.coward: 'Covarde',
-    PersonalityTrait.leader: 'Líder',
-    PersonalityTrait.loner: 'Solitário',
-    PersonalityTrait.compassionate: 'Compassivo',
-    PersonalityTrait.ruthless: 'Implacável',
-    PersonalityTrait.optimist: 'Otimista',
-    PersonalityTrait.pessimist: 'Pessimista',
-    PersonalityTrait.analytical: 'Analítico',
-    PersonalityTrait.impulsive: 'Impulsivo',
-    PersonalityTrait.loyal: 'Leal',
-    PersonalityTrait.treacherous: 'Traiçoeiro',
-    PersonalityTrait.calm: 'Calmo',
-    PersonalityTrait.aggressive: 'Agressivo',
-    PersonalityTrait.creative: 'Criativo',
-    PersonalityTrait.pragmatic: 'Pragmático',
-    PersonalityTrait.cautious: 'Cauteloso',
-    PersonalityTrait.ambitious: 'Ambicioso',
-    PersonalityTrait.lazy: 'Preguiçoso',
-    PersonalityTrait.individualist: 'Individualista',
-    PersonalityTrait.frugal: 'Frugal',
-    PersonalityTrait.gluttonous: 'Glutão',
-  }[this]!;
-
-  /// Modificador de yield na expedição — alinhado com tabela do README v5.0
-  double get expeditionYieldModifier =>
-      const {
-        PersonalityTrait.ambitious: 0.15,
-        PersonalityTrait.brave: 0.05,
-        PersonalityTrait.analytical: 0.06,
-        PersonalityTrait.pragmatic: 0.04,
-        PersonalityTrait.loyal: 0.05,
-        PersonalityTrait.cautious: -0.12,
-        PersonalityTrait.calm: -0.05,
-        PersonalityTrait.lazy: -0.20,
-        PersonalityTrait.coward: -0.10,
-        PersonalityTrait.pessimist: -0.05,
-        PersonalityTrait.individualist: -0.05,
-        PersonalityTrait.frugal: -0.05,
-        PersonalityTrait.gluttonous: 0.10,
-      }[this] ??
-      0.0;
-
-  /// Modificador de risco de acidente na expedição
-  double get expeditionAccidentRiskModifier =>
-      const {
-        PersonalityTrait.ambitious: 0.02,
-        PersonalityTrait.cautious: -0.02,
-        PersonalityTrait.gluttonous: 0.01,
-      }[this] ??
-      0.0;
-
-  /// Modificador de sinergia de grupo
-  double get synergyModifier =>
-      const {
-        PersonalityTrait.loyal: 0.05,
-        PersonalityTrait.leader: 0.10,
-        PersonalityTrait.loner: -0.08,
-        PersonalityTrait.individualist: -0.10,
-      }[this] ??
-      0.0;
-}
-
-// ─────────────────────────────────────────────
-// TALENTO OCULTO
-// ─────────────────────────────────────────────
-
-enum HiddenTalent {
-  none,
-  hollyWarrior,
-  combatGenius,
-  healingTouch,
-  strategicMind,
-  naturalLeader,
-  beastWhisperer,
-  forgemaster,
-  herbalist,
-  runeReader,
-  shadowWalker,
-  ironWill,
-}
-
-extension HiddenTalentExt on HiddenTalent {
-  String get label => const {
-    HiddenTalent.none: 'Nenhum',
-    HiddenTalent.hollyWarrior: 'Guerreiro Sagrado',
-    HiddenTalent.combatGenius: 'Gênio do Combate',
-    HiddenTalent.healingTouch: 'Toque Curativo',
-    HiddenTalent.strategicMind: 'Mente Estratégica',
-    HiddenTalent.naturalLeader: 'Líder Natural',
-    HiddenTalent.beastWhisperer: 'Sussurrador de Feras',
-    HiddenTalent.forgemaster: 'Mestre da Forja',
-    HiddenTalent.herbalist: 'Herbalista',
-    HiddenTalent.runeReader: 'Leitor de Runas',
-    HiddenTalent.shadowWalker: 'Caminhante das Sombras',
-    HiddenTalent.ironWill: 'Vontade de Ferro',
-  }[this]!;
-
-  String get description => const {
-    HiddenTalent.none: 'Sem talento oculto descoberto',
-    HiddenTalent.hollyWarrior: '+4 poder de combate e +1.5 de carisma',
-    HiddenTalent.combatGenius: '+2 poder de combate',
-    HiddenTalent.healingTouch: 'Cura aliados após batalha',
-    HiddenTalent.strategicMind: 'Reduz mortalidade do grupo em 15%',
-    HiddenTalent.naturalLeader: '+20% moral do grupo, +15% sinergia',
-    HiddenTalent.beastWhisperer: 'Chance de domar criaturas',
-    HiddenTalent.forgemaster: 'Equipamentos 2x mais eficientes',
-    HiddenTalent.herbalist: 'Produz medicamentos naturais',
-    HiddenTalent.runeReader: 'Revela segredos dos andares',
-    HiddenTalent.shadowWalker: 'Pode evadir qualquer combate',
-    HiddenTalent.ironWill: 'Imune a perda de sanidade',
-  }[this]!;
-
-  /// Bônus de sinergia para grupos (usado no cálculo de expedição v5.0)
-  double get groupSynergyBonus =>
-      this == HiddenTalent.naturalLeader ? 0.15 : 0.0;
-}
-
-// ─────────────────────────────────────────────
-// CONDIÇÃO MENTAL
-// ─────────────────────────────────────────────
-
-enum MentalCondition {
-  stable,
-  stressed,
-  depressed,
-  rebellious,
-  isolated,
-  berserk,
-  broken,
-}
-
-extension MentalConditionExt on MentalCondition {
-  String get label => const {
-    MentalCondition.stable: 'Estável',
-    MentalCondition.stressed: 'Estressado',
-    MentalCondition.depressed: 'Deprimido',
-    MentalCondition.rebellious: 'Rebelde',
-    MentalCondition.isolated: 'Isolado',
-    MentalCondition.berserk: 'Descontrolado',
-    MentalCondition.broken: 'Quebrado',
-  }[this]!;
-
-  Color get color => const {
-    MentalCondition.stable: Color(0xFF48BB78),
-    MentalCondition.stressed: Color(0xFFECC94B),
-    MentalCondition.depressed: Color(0xFF63B3ED),
-    MentalCondition.rebellious: Color(0xFFED8936),
-    MentalCondition.isolated: Color(0xFF718096),
-    MentalCondition.berserk: Color(0xFFFC8181),
-    MentalCondition.broken: Color(0xFF9B2335),
-  }[this]!;
-
-  /// Impacto diário na lealdade
-  double get dailyLoyaltyImpact => const {
-    MentalCondition.stable: 0.0,
-    MentalCondition.stressed: -0.1,
-    MentalCondition.depressed: -0.2,
-    MentalCondition.rebellious: -0.3,
-    MentalCondition.isolated: -0.1,
-    MentalCondition.berserk: -0.5,
-    MentalCondition.broken: -1.0,
-  }[this]!;
-}
-
-// ─────────────────────────────────────────────
-// FASE DE CRESCIMENTO
-// ─────────────────────────────────────────────
-
-enum GrowthStage { baby, child, adolescent, adult }
-
-extension GrowthStageExt on GrowthStage {
-  String get label => const {
-    GrowthStage.baby: 'Bebê',
-    GrowthStage.child: 'Criança',
-    GrowthStage.adolescent: 'Adolescente',
-    GrowthStage.adult: 'Adulto',
-  }[this]!;
-
-  String get icon => const {
-    GrowthStage.baby: '👶',
-    GrowthStage.child: '🧒',
-    GrowthStage.adolescent: '🧑',
-    GrowthStage.adult: '🛡️',
-  }[this]!;
-}
-
-// ─────────────────────────────────────────────
-// ESTADO DE FADIGA
-// ─────────────────────────────────────────────
-
-enum FatigueState {
-  rested, // 0–29
-  lightlyTired, // 30–49
-  tired, // 50–69
-  exhausted, // 70–89
-  incapacitated, // 90–100
-}
-
-extension FatigueStateExt on FatigueState {
-  String get label => const {
-    FatigueState.rested: 'Descansado',
-    FatigueState.lightlyTired: 'Levemente cansado',
-    FatigueState.tired: 'Cansado',
-    FatigueState.exhausted: 'Exausto',
-    FatigueState.incapacitated: 'Incapacitado',
-  }[this]!;
-
-  /// Penalidade no poder de combate
-  double get combatPowerPenalty => const {
-    FatigueState.rested: 0.0,
-    FatigueState.lightlyTired: 0.0,
-    FatigueState.tired: 0.15,
-    FatigueState.exhausted: 0.35,
-    FatigueState.incapacitated: 0.60,
-  }[this]!;
-
-  /// Penalidade diária de sanidade
-  double get dailySanityPenalty => const {
-    FatigueState.rested: 0.0,
-    FatigueState.lightlyTired: 0.0,
-    FatigueState.tired: 0.0,
-    FatigueState.exhausted: 3.0,
-    FatigueState.incapacitated: 5.0,
-  }[this]!;
-
-  /// Penalidade diária de lealdade
-  double get dailyLoyaltyPenalty => const {
-    FatigueState.rested: 0.0,
-    FatigueState.lightlyTired: 0.0,
-    FatigueState.tired: 0.0,
-    FatigueState.exhausted: 0.5,
-    FatigueState.incapacitated: 1.0,
-  }[this]!;
-}
-
-extension FatigueStateHelpers on FatigueState {
-  static FatigueState fromValue(double fatigue) {
-    if (fatigue >= 90) return FatigueState.incapacitated;
-    if (fatigue >= 70) return FatigueState.exhausted;
-    if (fatigue >= 50) return FatigueState.tired;
-    if (fatigue >= 30) return FatigueState.lightlyTired;
-    return FatigueState.rested;
-  }
-}
-
-// ─────────────────────────────────────────────
 // RELACIONAMENTO
 // ─────────────────────────────────────────────
 
@@ -815,6 +496,29 @@ class Npc {
   List<String> psychologicalMarks;
   double maternalNutrition;
   int daysIdle;
+  
+// ── Rank / Raridade ──────────────────────────
+  NpcRank rank;
+
+  /// Teto real de atributos — promovidos têm cap levemente reduzido.
+  /// Nato: cap do rank. Promovido: cap do rank anterior + 1.
+  double get effectiveAttributeCap {
+    if (!isPromoted) return rank.attributeCap;
+    final prevIndex = (rank.index - 1).clamp(0, NpcRank.values.length - 1);
+    return NpcRank.values[prevIndex].attributeCap + 1;
+  }
+
+  // ── Deserção ─────────────────────────────────
+  bool wantsToLeave;
+  int wantsToLeaveDay;
+
+  // ── Narrativa de percepção ────────────────────
+  bool awarenessTriggered;
+
+  // ── Sistema de Estrelas e Promoção ───────────
+  int stars; // 0–5 dentro do rank atual
+  bool isPromoted; // true = chegou aqui via promoção, não por nascimento
+  bool isFavorite; // protegido de sacrifício
 
   // ── Slots de equipamento (null = slot vazio) ── [FASE 1]
   String? equippedWeaponId;
@@ -881,6 +585,17 @@ class Npc {
     List<String>? psychologicalMarks,
     this.maternalNutrition = 100.0,
     this.daysIdle = 0,
+    // ── Rank / Raridade ──
+    this.rank = NpcRank.n,
+    // ── Deserção ──
+    this.wantsToLeave = false,
+    this.wantsToLeaveDay = 0,
+    // ── Narrativa de percepção ──
+    this.awarenessTriggered = false,
+    // ── Estrelas e Promoção ──
+    this.stars = 0,
+    this.isPromoted = false,
+    this.isFavorite = false,
     // ── Equipamentos [FASE 1] ──
     this.equippedWeaponId,
     this.equippedArmorId,
@@ -983,6 +698,17 @@ class Npc {
     List<String>? psychologicalMarks,
     double? maternalNutrition,
     int? daysIdle,
+    // ── Rank / Raridade ──
+    NpcRank? rank,
+    // ── Deserção ──
+    bool? wantsToLeave,
+    int? wantsToLeaveDay,
+    // ── Narrativa de percepção ──
+    bool? awarenessTriggered,
+    // ── Estrelas e Promoção ──
+    int? stars,
+    bool? isPromoted,
+    bool? isFavorite,
     // ── Equipamentos [FASE 1] ──
     String? equippedWeaponId,
     bool clearWeapon = false,
@@ -1032,6 +758,13 @@ class Npc {
     psychologicalMarks: psychologicalMarks ?? this.psychologicalMarks,
     maternalNutrition: maternalNutrition ?? this.maternalNutrition,
     daysIdle: daysIdle ?? this.daysIdle,
+    rank: rank ?? this.rank,
+    wantsToLeave: wantsToLeave ?? this.wantsToLeave,
+    wantsToLeaveDay: wantsToLeaveDay ?? this.wantsToLeaveDay,
+    awarenessTriggered: awarenessTriggered ?? this.awarenessTriggered,
+    stars: stars ?? this.stars,
+    isPromoted: isPromoted ?? this.isPromoted,
+    isFavorite: isFavorite ?? this.isFavorite,
     // ── Equipamentos [FASE 1] ──
     equippedWeaponId: clearWeapon
         ? null
@@ -1253,12 +986,39 @@ class Npc {
     'psychologicalMarks': psychologicalMarks,
     'maternalNutrition': maternalNutrition,
     'daysIdle': daysIdle,
+    'rank': rank.name,
+    'wantsToLeave': wantsToLeave,
+    'wantsToLeaveDay': wantsToLeaveDay,
+    'awarenessTriggered': awarenessTriggered,
+    'stars': stars,
+    'isPromoted': isPromoted,
+    'isFavorite': isFavorite,
     // ── Equipamentos [FASE 1] ── saves antigos carregam como null (slot vazio) ✓
     'equippedWeaponId': equippedWeaponId,
     'equippedArmorId': equippedArmorId,
     'equippedAccessoryId': equippedAccessoryId,
     'lastBirthDay': lastBirthDay,
   };
+
+  static Profession _migrateProfession(dynamic raw) {
+    if (raw == null) return Profession.idle;
+    const legacy = {
+      'scout': Profession.scout,
+      'trainer': Profession.trainer,
+      'merchant': Profession.merchant,
+      'scribe': Profession.scribe,
+      'teacher': Profession.teacher,
+      'doctor': Profession.doctor,
+      'blacksmith': Profession.blacksmith,
+      'builder': Profession.builder,
+      'farmer': Profession.farmer,
+      'chef': Profession.chef,
+      'guard': Profession.guard,
+      'explorer': Profession.explorer,
+      'idle': Profession.idle,
+    };
+    return legacy[raw.toString()] ?? Profession.idle;
+  }
 
   factory Npc.fromJson(Map<String, dynamic> json) {
     T parseEnum<T extends Enum>(List<T> values, Object? raw, T fallback) {
@@ -1294,11 +1054,7 @@ class Npc {
         HiddenTalent.none,
       ),
       talentDiscovered: json['talentDiscovered'] as bool? ?? false,
-      profession: parseEnum(
-        Profession.values,
-        json['profession'],
-        Profession.idle,
-      ),
+      profession: _migrateProfession(json['profession']),
       relationships:
           (json['relationships'] as List<dynamic>?)
               ?.map((r) => Relationship.fromJson(r as Map<String, dynamic>))
@@ -1350,6 +1106,13 @@ class Npc {
       maternalNutrition:
           (json['maternalNutrition'] as num?)?.toDouble() ?? 100.0,
       daysIdle: json['daysIdle'] as int? ?? 0,
+      rank: parseEnum(NpcRank.values, json['rank'], NpcRank.n),
+      wantsToLeave: json['wantsToLeave'] as bool? ?? false,
+      wantsToLeaveDay: json['wantsToLeaveDay'] as int? ?? 0,
+      awarenessTriggered: json['awarenessTriggered'] as bool? ?? false,
+      stars: json['stars'] as int? ?? 0,
+      isPromoted: json['isPromoted'] as bool? ?? false,
+      isFavorite: json['isFavorite'] as bool? ?? false,
       // ── Equipamentos [FASE 1] ── null = slot vazio (compatível com saves antigos) ✓
       equippedWeaponId: json['equippedWeaponId'] as String?,
       equippedArmorId: json['equippedArmorId'] as String?,
@@ -1370,6 +1133,7 @@ class Npc {
     final origin = _pickOrigin(rng, allowDarkOrigins);
     final base = origin.baseAttributes;
     final traits = _pickTraits(rng, origin);
+    final rank = rollRank(rng);
 
     return Npc(
       id: id,
@@ -1377,17 +1141,18 @@ class Npc {
       origin: origin,
       generation: generation,
       age: 18 + rng.nextInt(30),
+      rank: rank,
       attributes: NpcAttributes(
-        strength: _vary(base.strength, rng),
-        agility: _vary(base.agility, rng),
-        intelligence: _vary(base.intelligence, rng),
-        endurance: _vary(base.endurance, rng),
-        charisma: _vary(base.charisma, rng),
+        strength: _vary(base.strength, rng, rank),
+        agility: _vary(base.agility, rng, rank),
+        intelligence: _vary(base.intelligence, rng, rank),
+        endurance: _vary(base.endurance, rng, rank),
+        charisma: _vary(base.charisma, rng, rank),
         mentalStability: _varyMental(base.mentalStability, rng),
-        luck: _vary(base.luck, rng),
+        luck: _vary(base.luck, rng, rank),
       ),
       traits: traits,
-      hiddenTalent: _rollTalent(rng, chance: 0.15),
+      hiddenTalent: _rollTalent(rng, chance: rank.talentChance),
       loyalty: _initialLoyalty(rng, origin, traits),
       history: ['Invocado para a Torre no Dia 1'],
     );
@@ -1401,15 +1166,12 @@ class Npc {
     int birthDay, {
     double maternalNutrition = 100.0,
   }) {
-    // Determina origem baseada na geração dos pais
     final generation =
         (parentA.generation > parentB.generation
             ? parentA.generation
             : parentB.generation) +
         1;
 
-    // G2 = filho de invocados → Nascido no Abismo
-    // G3+ = filho de nascidos na Torre → Nascido do Caos
     final origin = generation == 2
         ? NpcOrigin.bornInTheAbyss
         : NpcOrigin.bornOfChaos;
@@ -1419,14 +1181,60 @@ class Npc {
     final b = parentB.attributes;
     final nutritionPenalty = (100 - maternalNutrition) / 100;
 
-    double physicalInherit(double va, double vb) =>
-        (_inherit(va, vb, rng) * (1 - nutritionPenalty * 0.4)).clamp(1, 20);
+    // ── 1. Herança de rank ──────────────────────────────────
+    final higherRank = parentA.rank.index >= parentB.rank.index
+        ? parentA.rank
+        : parentB.rank;
+    final rankRoll = rng.nextDouble();
+    final NpcRank childRank = rankRoll < 0.60
+        ? higherRank
+        : rankRoll < 0.85
+        ? parentA.rank
+        : rollRank(rng);
+
+    // ── 2. Herança de atributos (média ± 15%, capeado pelo rank) ──
+    double physicalInherit(double va, double vb) {
+      final avg = (va + vb) / 2;
+      final variance = 0.85 + rng.nextDouble() * 0.30;
+      return (avg * variance * (1 - nutritionPenalty * 0.4)).clamp(
+        1.0,
+        childRank.attributeCap,
+      );
+    }
+
+    double mentalInherit(double va, double vb) {
+      final avg = (va + vb) / 2;
+      return (avg + avg * 0.15 * (rng.nextDouble() * 2 - 1)).clamp(1.0, 100.0);
+    }
+
+    // ── 3. Herança de HiddenTalent ──────────────────────────
+    double talentChance = childRank.talentChance;
+    if (parentA.hiddenTalent != HiddenTalent.none) talentChance += 0.15;
+    if (parentB.hiddenTalent != HiddenTalent.none) talentChance += 0.15;
+    talentChance = talentChance.clamp(0.0, 1.0);
 
     HiddenTalent talent = HiddenTalent.none;
-    if (rng.nextDouble() < 0.05) {
-      talent = _rollTalent(rng, chance: 1.0);
-    } else if (rng.nextDouble() < 0.15) {
-      talent = rng.nextBool() ? parentA.hiddenTalent : parentB.hiddenTalent;
+    if (rng.nextDouble() < talentChance) {
+      final parentTalents = [
+        if (parentA.hiddenTalent != HiddenTalent.none) parentA.hiddenTalent,
+        if (parentB.hiddenTalent != HiddenTalent.none) parentB.hiddenTalent,
+      ];
+      if (parentTalents.isNotEmpty && rng.nextDouble() < 0.70) {
+        talent = parentTalents[rng.nextInt(parentTalents.length)];
+      } else {
+        talent = generation >= 3
+            ? _rollEvolutionaryTalent(rng, parentA, parentB)
+            : _rollTalent(rng, chance: 1.0);
+      }
+    }
+
+    // ── 4. Herança de traits (40% chance de herdar 1 de cada pai) ──
+    final inheritedTraits = <PersonalityTrait>[];
+    for (final parent in [parentA, parentB]) {
+      if (parent.traits.isNotEmpty && rng.nextDouble() < 0.40) {
+        final trait = parent.traits[rng.nextInt(parent.traits.length)];
+        if (!inheritedTraits.contains(trait)) inheritedTraits.add(trait);
+      }
     }
 
     final childLoyalty =
@@ -1440,18 +1248,19 @@ class Npc {
         parentBName: parentB.name,
       ),
       origin: origin,
-      generation: max(parentA.generation, parentB.generation) + 1,
+      generation: generation,
       age: 0,
+      rank: childRank,
       attributes: NpcAttributes(
         strength: physicalInherit(a.strength, b.strength),
         agility: physicalInherit(a.agility, b.agility),
-        intelligence: _inherit(a.intelligence, b.intelligence, rng),
+        intelligence: physicalInherit(a.intelligence, b.intelligence),
         endurance: physicalInherit(a.endurance, b.endurance),
-        charisma: _inherit(a.charisma, b.charisma, rng),
-        mentalStability: _inherit(a.mentalStability, b.mentalStability, rng),
-        luck: _inherit(a.luck, b.luck, rng),
+        charisma: physicalInherit(a.charisma, b.charisma),
+        mentalStability: mentalInherit(a.mentalStability, b.mentalStability),
+        luck: physicalInherit(a.luck, b.luck),
       ),
-      traits: const [],
+      traits: inheritedTraits,
       hiddenTalent: talent,
       parentAId: parentA.id,
       parentBId: parentB.id,
@@ -1462,6 +1271,25 @@ class Npc {
         'Nasceu na Torre — Filho(a) de ${parentA.name} e ${parentB.name}',
       ],
     );
+  }
+
+  /// Talento evolutivo para geração 3+ com combinações especiais
+  static HiddenTalent _rollEvolutionaryTalent(
+    Random rng,
+    Npc parentA,
+    Npc parentB,
+  ) {
+    const combinations = {
+      'combatGenius+strategicMind': HiddenTalent.hollyWarrior,
+      'healingTouch+herbalist': HiddenTalent.ironWill,
+      'naturalLeader+runeReader': HiddenTalent.strategicMind,
+    };
+
+    final key = [parentA.hiddenTalent.name, parentB.hiddenTalent.name]..sort();
+    final combo = '${key[0]}+${key[1]}';
+    if (combinations.containsKey(combo)) return combinations[combo]!;
+
+    return _rollTalent(rng, chance: 1.0);
   }
 
   // ── Helpers privados ───────────────────────
@@ -1510,14 +1338,18 @@ class Npc {
     return l.clamp(10, 90);
   }
 
-  static double _vary(double base, Random rng) =>
-      (base + (rng.nextDouble() * 4 - 2)).clamp(1, 15);
+  static double _vary(double base, Random rng, [NpcRank rank = NpcRank.n]) {
+    // Bônus de rank sobre o preset de origem: N=+0%, R=+15%, SR=+35%, SSR=+60%
+    final rankBonus = switch (rank) {
+      NpcRank.n => 0.00,
+      NpcRank.r => 0.15,
+      NpcRank.sr => 0.35,
+      NpcRank.ssr => 0.60,
+    };
+    final boosted = base * (1.0 + rankBonus);
+    return (boosted + (rng.nextDouble() * 4 - 2)).clamp(1, rank.attributeCap);
+  }
 
   static double _varyMental(double base, Random rng) =>
       (base + (rng.nextDouble() * 20 - 10)).clamp(20, 100);
-
-  static double _inherit(double va, double vb, Random rng) {
-    final avg = (va + vb) / 2;
-    return (avg + avg * 0.15 * (rng.nextDouble() * 2 - 1)).clamp(1, 20);
-  }
 }
